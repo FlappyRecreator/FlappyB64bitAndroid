@@ -1,76 +1,79 @@
-# Flappy Bird (64-bit)
+# Flappy Bird 64-bit
 
 <p align="center">
   <img src="https://github.com/user-attachments/assets/bcac0cd7-7513-4d93-8461-deaf9bc0a74d" alt="Flappy Bird Screenshot" width="300">
 </p>
 
-### A Loyal Adaptation for Contemporary Android Platforms
+### A Faithful Recreation for Modern Android Devices
 
-This initiative presents an open-source, 64-bit Android Java version of the classic **Flappy Bird** game, engineered to function flawlessly on today's Android devices. Its objective is to meticulously reproduce the renowned and famously difficult game, ensuring an exact visual and functional duplicate that offers a genuine experience for both long-time admirers and newcomers.
+This project is an open-source, 64-bit Android Java recreation of the original **Flappy Bird** game, designed to run seamlessly on modern Android devices. It strives to be a pixel-perfect and behaviorally accurate replica of the beloved and notoriously challenging game, offering an authentic experience for both nostalgic fans and new players alike.
 
-This undertaking stems from a deep appreciation for the original game and a wish to ensure its longevity and playability on current technology. It serves as a non-commercial project, intended solely for educational and recreational enjoyment.
-
----
-
-## ❗ General Safety Notice
-This application is entirely secure, free from any harmful elements; its source code is available for verification. While Virus Total might occasionally report false positives, the most recent scan of this program indicated no such issues, confirming its complete safety. Rest assured!
+The motivation behind this project is a deep appreciation for the original game and a desire to preserve it for future generations. This is a non-commercial, educational, and entertainment-driven initiative.
 
 ---
 
-## ❗ Legal Notice
+## ❗ General Disclaimer
 
-This endeavor is a **community-created** version and holds **no association with**, **endorsement from**, or **ties to** *Flappy Bird*'s original developer, **Dong Nguyen**, or his company, **.GEARS**.
-
-All proprietary materials, such as the *Flappy Bird* title, character aesthetics, and audio effects, remain the property of their rightful owners.
-
-This re-creation:
-- Is available **without cost**
-- Is **not designed for profit-making activities**
-- **Generates no** income
-
-It was developed with profound regard for the original game and its creator. The main aim of this project is to **maintain and honor** this iconic game for contemporary devices and audiences.
-
-We contend that this project qualifies as **fair use** due to its nature as a **non-commercial, transformative work for educational and archival purposes**. Should you be a copyright owner and feel this project infringes upon your rights, please reach out to us, and we will address the matter accordingly.
+This app is completely safe and contains **no malicious code whatsoever**. The entire source code is available for inspection, ensuring full transparency. Although **VirusTotal** or similar scanners may occasionally flag indie projects with **false positives**, the most recent scan of this APK showed **zero detections** across all engines. Rest assured—this build is clean and secure. We encourage anyone with doubts to review the codebase or run their own scans to verify.
 
 ---
 
-## 🌟 Key Attributes
+## ❗ Legal Disclaimer
 
--   **Genuine Gameplay**: Relive the demanding "tap-to-flap" control scheme that propelled the game to worldwide fame.
--   **Flawless Visuals**: Graphic elements have been precisely reproduced to mirror the initial 8-bit artistic style.
--   **Precise Physics**: The bird's motion, gravitational effects, and evasion of pipes accurately replicate the original feel.
--   **64-Bit Support**: Developed for current Android hardware to guarantee fluid operation.
--   **Absence of Advertisements or In-App Purchases**: Enjoy an unadulterated, continuous gaming session.
--   **Open-Source Nature**: The complete source code is accessible for study, modification, or collaborative development.
+This project is a **fan-made** recreation and is **not affiliated with**, **endorsed by**, or **connected to** the original creator of *Flappy Bird*, **Dong Nguyen**, or his studio, **.GEARS**.
 
----
+All original assets—including the name *Flappy Bird*, character design, and sound effects—are the property of their respective owners.
 
-## 📲 Setup Guide
+This recreation:
+- Is provided **free of charge**
+- Is **not intended for commercial use**
+- **Does not** generate any revenue
 
-To get the game running on your Android device:
+It has been developed with great respect for the original work and its creator. The primary goal is to **preserve and celebrate** this classic title by making it playable on modern hardware.
 
-1.  Navigate to your device's security settings and activate the option for **"Installation from unknown sources."**
-2.  Obtain the most recent `.apk` file by downloading it from the **[Releases](#)** area of this repository.
-3.  Execute the downloaded `.apk` file to complete the game's installation.
+We believe this project qualifies as **fair use** under the category of a **non-commercial, transformative work of commentary and preservation**.  
+If you are a copyright holder and feel that this project infringes upon your rights, please reach out and we will take the necessary action.
 
 ---
 
-## 👨‍💻 Contributing to the Project
+## 🌟 Features
 
-We encourage contributions aimed at refining this re-creation and ensuring its adherence to the original. To make a contribution:
-
-1.  Duplicate the repository to your own account (fork).
-2.  Establish a new branch using the command:
-    `git checkout -b feature/your-feature-name`
-3.  Implement your modifications and save them with concise, informative commit messages.
-4.  Upload your updated branch to your personal repository (push).
-5.  Submit a pull request detailing the enhancements you've introduced.
+- **Authentic Gameplay**: Experience the original, unforgiving "tap-to-flap" mechanic that made the game a global hit.
+- **Pixel-Perfect Graphics**: Carefully recreated visuals that mirror the 8-bit aesthetic of the original.
+- **Accurate Physics**: Bird motion, gravity, and collision behavior match the original gameplay precisely.
+- **64-Bit Compatibility**: Optimized for modern Android hardware to ensure smooth, lag-free performance.
+- **Custom Settings**: Additional options added for enhanced personal customization, allowing players to tailor gameplay to their preferences.
+- **No Ads, No In-App Purchases**: A pure, distraction-free gaming experience.
+- **Open Source**: Full source code available to explore, modify, and contribute to.
 
 ---
 
-## 🙏 Attributions & Recognitions
+## 📲 Installation
 
--   **Dong Nguyen (.GEARS)** – Acknowledged for developing the original Flappy Bird, which served as the inspiration for this initiative.
--   **Android Studio, Sketchware Pro, Google** – Recognized for providing the necessary development tools, programming libraries, and foundational knowledge enabling this project's realization.
+To install the game on your Android device:
+
+1. Enable **"Install from unknown sources"** in your device’s security settings.
+2. Download the latest `.apk` file from the **[Releases](#)** section of this repository.
+3. Open the downloaded `.apk` file and follow the prompts to install.
+
+---
+
+## 👨‍💻 How to Contribute
+
+We welcome contributions to help improve this recreation and ensure its accuracy. To contribute:
+
+1. Fork the repository.
+2. Create a new branch:  
+   `git checkout -b feature/your-feature-name`
+3. Make your changes and commit them with clear, descriptive messages.
+4. Push your changes to your fork.
+5. Open a pull request describing your updates.
+
+---
+
+## 🙏 Credits & Acknowledgements
+
+- **Dong Nguyen (.GEARS)** – for creating the original Flappy Bird and inspiring this project.
+- **Android Studio, Sketchware Pro, Google** – for providing the tools, libraries, and documentation that made this possible.
 
 ---
