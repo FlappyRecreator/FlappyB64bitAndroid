@@ -138,8 +138,10 @@ class GameView extends View implements Choreographer.FrameCallback {
     private int soundWing, soundPoint, soundHit, soundDie, soundSwooshing;
     private ExecutorService soundExecutor;
     private boolean hasTier1Triggered = false, hasTier2Triggered = false;
-    private float BASE_GRAVITY_PER_SEC, BASE_FLAP_VELOCITY_PER_SEC, BASE_PIPE_SPEED_PER_SEC, BASE_ROTATION_DELAY_THRESHOLD_PER_SEC;
-    private float GRAVITY_PER_SEC, FLAP_VELOCITY_PER_SEC, PIPE_SPEED_PER_SEC, ROTATION_DELAY_THRESHOLD_PER_SEC;
+    private float BASE_GRAVITY_PER_SEC, BASE_FLAP_VELOCITY_PER_SEC, BASE_PIPE_SPEED_PER_SEC;
+    private float BASE_ROTATION_DELAY_THRESHOLD_PER_SEC, BASE_ROTATION_DOWN_SPEED_PER_SEC;
+    private float GRAVITY_PER_SEC, FLAP_VELOCITY_PER_SEC, PIPE_SPEED_PER_SEC;
+    private float ROTATION_DELAY_THRESHOLD_PER_SEC, ROTATION_DOWN_SPEED_PER_SEC;
     private Random random = new Random();
     private int flashAlpha = 0;
     private Paint flashPaint;
@@ -334,7 +336,8 @@ class GameView extends View implements Choreographer.FrameCallback {
         BASE_GRAVITY_PER_SEC = (0.10f * scale) * TARGET_FPS * TARGET_FPS;
         BASE_FLAP_VELOCITY_PER_SEC = (-3.2f * scale) * TARGET_FPS;
         BASE_PIPE_SPEED_PER_SEC = (1.1f * scale) * TARGET_FPS;
-        BASE_ROTATION_DELAY_THRESHOLD_PER_SEC = (2.2f * scale) * TARGET_FPS;
+        BASE_ROTATION_DELAY_THRESHOLD_PER_SEC = (2.8f * scale) * TARGET_FPS; // Was 2.2f
+        BASE_ROTATION_DOWN_SPEED_PER_SEC = (2.5f * TARGET_FPS); // Was 3.0f, defined locally in update()
         TRANSITION_FADE_SPEED_PER_SEC = 800.0f;
         pressOffsetY = 4 * scale;
         maxPipeMoveRange = (getPlayableHeight() - groundHeight) * 0.08f;
@@ -366,6 +369,7 @@ class GameView extends View implements Choreographer.FrameCallback {
         FLAP_VELOCITY_PER_SEC = BASE_FLAP_VELOCITY_PER_SEC * settingJumpStrength * (settingUpsideDownEnabled ? -1 : 1);
         PIPE_SPEED_PER_SEC = BASE_PIPE_SPEED_PER_SEC * settingGameSpeed * (settingReversePipesEnabled ? -1 : 1);
         ROTATION_DELAY_THRESHOLD_PER_SEC = BASE_ROTATION_DELAY_THRESHOLD_PER_SEC * settingBirdHangDelay;
+        ROTATION_DOWN_SPEED_PER_SEC = BASE_ROTATION_DOWN_SPEED_PER_SEC;
         final int UNSCALED_BIRD_HEIGHT_FOR_GAP = 48;
         pipeGap = (int) (UNSCALED_BIRD_HEIGHT_FOR_GAP * scale * PIPE_GAP_BIRD_HEIGHT_MULTIPLIER * settingPipeGap);
 
@@ -488,18 +492,17 @@ class GameView extends View implements Choreographer.FrameCallback {
                 birdY += birdVelocityY * deltaTime;
 
                 final float ROTATION_UP_SPEED = 6.0f * TARGET_FPS;
-                final float ROTATION_DOWN_SPEED = 3.0f * TARGET_FPS;
                 if (settingUpsideDownEnabled) {
                     if (birdVelocityY > 0) {
                         birdRotation = Math.min(25f, birdRotation + ROTATION_UP_SPEED * deltaTime);
                     } else if (birdVelocityY < -ROTATION_DELAY_THRESHOLD_PER_SEC) {
-                        birdRotation = Math.max(-90f, birdRotation - ROTATION_DOWN_SPEED * deltaTime);
+                        birdRotation = Math.max(-90f, birdRotation - ROTATION_DOWN_SPEED_PER_SEC * deltaTime);
                     }
                 } else {
                     if (birdVelocityY < 0) {
                         birdRotation = Math.max(-25f, birdRotation - ROTATION_UP_SPEED * deltaTime);
                     } else if (birdVelocityY > ROTATION_DELAY_THRESHOLD_PER_SEC) {
-                        birdRotation = Math.min(90f, birdRotation + ROTATION_DOWN_SPEED * deltaTime);
+                        birdRotation = Math.min(90f, birdRotation + ROTATION_DOWN_SPEED_PER_SEC * deltaTime);
                     }
                 }
                 break;
