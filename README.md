@@ -70,6 +70,6 @@ We welcome contributions to help improve this recreation and keep it faithful to
 ## 🙏 Credits & Acknowledgements
 
 - **Dong Nguyen (.GEARS)** – for creating the original Flappy Bird and inspiring this project.
-- **The Open Source Community** – for the tools, libraries, and knowledge that made this possible.
+- **Android Studio, Sketchware Pro, Google** – for the tools, libraries, and knowledge that made this possible.
 
 ---
