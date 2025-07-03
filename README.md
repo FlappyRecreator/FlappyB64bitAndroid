@@ -53,7 +53,7 @@ If you are a copyright holder and feel that this project infringes upon your rig
 To install the game on your Android device:
 
 1. Enable **"Install from unknown sources"** in your device’s security settings.
-2. Download the latest `.apk` file from the **[Releases](#)** section of this repository.
+2. Download the latest `.apk` file from the **[Releases](#https://www.mediafire.com/folder/qj3ujpv2r2o63/Flappy+Bird+64-bit+Android+Recreation)** section of this repository.
 3. Open the downloaded `.apk` file and follow the prompts to install.
 
 ---
