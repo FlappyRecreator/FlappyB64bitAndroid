@@ -63,11 +63,11 @@ To install the game on your Android device:
 We welcome contributions to help improve this recreation and ensure its accuracy. To contribute:
 
 1. Fork the repository.
-2. Create a new branch:  
-   `git checkout -b feature/your-feature-name`
+2. Create a new branch.
 3. Make your changes and commit them with clear, descriptive messages.
 4. Push your changes to your fork.
 5. Open a pull request describing your updates.
+6. Explain how to push the changes to `main` properly as the developer isn't familiar with GitHub yet!
 
 ---
 
