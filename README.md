@@ -14,7 +14,7 @@ The motivation behind this project is a deep appreciation for the original game 
 
 ## ❗ General Disclaimer
 
-This app is completely safe and contains **no malicious code whatsoever**. The entire source code is available for inspection, ensuring full transparency. Although **VirusTotal** or similar scanners may occasionally flag indie projects with **false positives**, the most recent scan of this APK showed **zero detections** across all engines. Rest assured—this build is clean and secure. We encourage anyone with doubts to review the codebase or run their own scans to verify. If there happens to be a virus, I didn't put it in there lol.
+This app is completely safe and contains **no malicious code whatsoever**. The entire source code is available for inspection, ensuring full transparency. Although **VirusTotal** or similar scanners may occasionally flag indie projects with **false positives**, the most recent scan of this APK showed **zero detections** across all engines. Rest assured—this build is clean and secure. We encourage anyone with doubts to review the codebase or run their own scans to verify. _If there happens to be a virus/malicious content, I didn't put it in there lol._
 
 ---
 
