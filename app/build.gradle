@@ -1,0 +1,48 @@
+plugins {
+	id 'com.android.application'
+}
+
+android {
+	compileSdk 34
+	
+	useLibrary 'org.apache.http.legacy'
+	
+	defaultConfig {
+		applicationId "com.flappybird.recreation"
+		namespace "com.flappybird.recreation"
+		minSdkVersion 21
+		targetSdkVersion 35
+		versionCode 14
+		versionName "1.4"
+	}
+	
+	buildTypes {
+		release {
+			minifyEnabled false
+			proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+		}
+	}
+	buildFeatures {
+		 viewBinding true
+	}
+}
+
+dependencies {
+	implementation fileTree(dir: 'libs', include: ['*.jar'])
+	implementation 'androidx.core:core:1.13.1'
+	implementation 'androidx.activity:activity:1.9.3'
+	implementation 'androidx.lifecycle:lifecycle-runtime:2.7.0'
+	implementation 'androidx.lifecycle:lifecycle-process:2.7.0'
+	implementation 'androidx.lifecycle:lifecycle-livedata-core:2.7.0'
+	implementation 'androidx.lifecycle:lifecycle-common:2.7.0'
+	implementation 'androidx.lifecycle:lifecycle-viewmodel:2.7.0'
+	implementation 'androidx.lifecycle:lifecycle-viewmodel-savedstate:2.7.0'
+	implementation 'org.jetbrains:annotations:26.0.1'
+	implementation 'androidx.profileinstaller:profileinstaller:1.4.1'
+	implementation 'androidx.webkit:webkit:1.13.0'
+	implementation 'androidx.transition:transition:1.6.0'
+	implementation 'com.google.android.material:material:1.14.0-alpha01'
+	implementation 'androidx.dynamicanimation:dynamicanimation:1.1.0'
+	implementation 'androidx.graphics:graphics-shapes:1.0.1'
+	implementation 'com.google.code.gson:gson:2.13.1'
+}
