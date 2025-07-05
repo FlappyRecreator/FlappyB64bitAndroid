@@ -1,7 +1,7 @@
 # Flappy Bird 64-bit
 
 <p align="center">
-  <img src="[https://github.com/user-attachments/assets/bcac0cd7-7513-4d93-8461-deaf9bc0a74d](https://github.com/user-attachments/assets/fd685be8-0166-4b06-a90b-afc2388b7258)" alt="Flappy Bird Screenshot" width="300">
+  <img src="https://github.com/user-attachments/assets/fd685be8-0166-4b06-a90b-afc2388b7258" alt="Flappy Bird Screenshot" width="300">
 </p>
 
 ### A Faithful Recreation for Modern Android Devices
