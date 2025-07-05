@@ -29,9 +29,7 @@ Contributions are welcome but subject to the following:
 
 ## 🛑 Final Reminder
 
-This project exists to **preserve, study, and enjoy** a piece of gaming history in a private, respectful, and legally cautious context. It is **not intended for release, promotion, or profit**.
-
-If you are a copyright holder and believe this project infringes upon your rights, please [contact the maintainer] so that appropriate action can be taken.
+This project exists to **preserve, study, and enjoy** a piece of gaming history in a private, respectful, and legally cautious context. It is **not intended for release, promotion, or profit**. This app was primarily built for educational purposes and nostalgia.
 
 ---
 
