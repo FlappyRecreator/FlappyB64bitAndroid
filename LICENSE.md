@@ -46,4 +46,4 @@ By using this codebase, you acknowledge that:
 - You will not use it in any project that could result in legal or commercial conflicts.  
 - Any contributions you make are voluntary and subject to the same non-ownership principle.  
   
-In short: Feel free to explore, tinker, and improve this 64-bit Java version of Flappy Bird for your own learning or enjoyment — just keep it personal.  
+In short: Feel free to explore, tinker, and help improve/contribute to this 64-bit Java version of Flappy Bird for your own learning or enjoyment — just keep it personal.  
