@@ -8,7 +8,7 @@
 
 This project is an open-source, 64-bit Android Java recreation of the original **Flappy Bird** game, designed to run seamlessly on modern Android devices. It strives to be a pixel-perfect and behaviorally accurate replica of the beloved and notoriously challenging game, offering an authentic experience for both nostalgic fans and new players alike.
 
-The motivation behind this project is a deep appreciation for the original game and a desire to preserve it for future generations. This is a non-commercial, educational, and entertainment-driven initiative.
+The motivation behind this project is a deep appreciation for the original game and a desire to preserve it for future generations. This is a non-commercial, educational, and entertainment-driven initiative. Please don't steal the code, help contribute! Contributions will help keep this project alive!
 
 ---
 
