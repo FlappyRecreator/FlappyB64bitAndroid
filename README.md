@@ -1,4 +1,4 @@
-# Flappy Bird 64-bit (Recreation/Modern Version)
+# Flappy Bird 64-bit (Recreation)
 
 <p align="center">
   <img src="https://github.com/user-attachments/assets/fd685be8-0166-4b06-a90b-afc2388b7258" alt="Flappy Bird Screenshot" width="300">
@@ -8,7 +8,7 @@
 
 This project is an open-source, 64-bit Android Java recreation of the original **Flappy Bird** game, designed to run seamlessly on modern Android devices. It strives to be a pixel-perfect and behaviorally accurate replica of the beloved and notoriously challenging game, offering an authentic experience for both nostalgic fans and new players alike.
 
-The motivation behind this project is a deep appreciation for the original game and a desire to preserve it for future generations. This is a non-commercial, educational, and entertainment-driven initiative. Please don't steal the code, if you want to help, contribute to this project. Contributions will help keep this project alive!
+The motivation behind this project is a deep appreciation for the original game and a desire to preserve it for future generations. This is a non-commercial, educational, and entertainment-driven initiative. Please don't steal the code, if you want to help, contribute to this project. Contributions will help keep this project alive! I strive (and hopefully with help from other people) to make this the absolute best Flappy Bird game for Android, keeping the original feel intact, while also incorporating enhancements.
 
 ---
 
