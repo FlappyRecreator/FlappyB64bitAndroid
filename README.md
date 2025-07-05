@@ -10,6 +10,8 @@ This project is an open-source, 64-bit Android Java recreation of the original *
 
 The motivation behind this project is a deep appreciation for the original game and a desire to preserve it for future generations. This is a non-commercial, educational, and entertainment-driven initiative. Please don't steal the code, if you want to help, contribute to this project. Contributions will help keep this project alive! I strive (and hopefully with help from other people) to make this the absolute best Flappy Bird game for Android, keeping the original feel intact, while also incorporating enhancements.
 
+_Note: This app was based off V1.3 of the original Flappy Bird._
+
 ---
 
 ## ❗ General Disclaimer
@@ -64,7 +66,7 @@ We welcome contributions to help improve this recreation and ensure its accuracy
 
 1. Fork the repository.
 2. Create a new branch.
-3. Make your changes and commit them with clear, descriptive messages.
+3. Make your changes and commit them with clear, descriptive messages along with screenshots and video recordings.
 4. Push your changes to your fork.
 5. Open a pull request describing your updates.
 6. Explain how to push the changes to `main` properly as the developer isn't familiar with GitHub yet!
