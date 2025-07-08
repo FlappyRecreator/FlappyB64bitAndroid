@@ -337,7 +337,7 @@ class GameView extends View implements Choreographer.FrameCallback {
         BASE_GRAVITY_PER_SEC = (0.10f * scale) * TARGET_FPS * TARGET_FPS;
         BASE_FLAP_VELOCITY_PER_SEC = (-3.2f * scale) * TARGET_FPS;
         BASE_PIPE_SPEED_PER_SEC = (1.1f * scale) * TARGET_FPS;
-        BASE_ROTATION_DELAY_THRESHOLD_PER_SEC = (2.8f * scale) * TARGET_FPS;
+        BASE_ROTATION_DELAY_THRESHOLD_PER_SEC = (2.7f * scale) * TARGET_FPS;
         BASE_ROTATION_DOWN_SPEED_PER_SEC = (2.5f * TARGET_FPS); 
         TRANSITION_FADE_SPEED_PER_SEC = 800.0f;
         pressOffsetY = 4 * scale;
