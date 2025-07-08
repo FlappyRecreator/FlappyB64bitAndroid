@@ -145,7 +145,8 @@ class GameView extends View implements Choreographer.FrameCallback {
     private Random random = new Random();
     private int flashAlpha = 0;
     private Paint flashPaint;
-    private final float UI_MARGIN_HORIZONTAL_PERCENT = 0.05f;
+
+    private final float UI_MARGIN_HORIZONTAL_PERCENT = 0.025f; // Original value was 0.05f
     private final float HOME_BUTTON_GAP_PERCENT = 0.05f;
     private final float SETTINGS_BUTTON_SCALE_MULTIPLIER = 0.20f;
     private final float PIPE_GAP_BIRD_HEIGHT_MULTIPLIER = 2.2f;
@@ -336,8 +337,8 @@ class GameView extends View implements Choreographer.FrameCallback {
         BASE_GRAVITY_PER_SEC = (0.10f * scale) * TARGET_FPS * TARGET_FPS;
         BASE_FLAP_VELOCITY_PER_SEC = (-3.2f * scale) * TARGET_FPS;
         BASE_PIPE_SPEED_PER_SEC = (1.1f * scale) * TARGET_FPS;
-        BASE_ROTATION_DELAY_THRESHOLD_PER_SEC = (2.8f * scale) * TARGET_FPS; // Was 2.2f
-        BASE_ROTATION_DOWN_SPEED_PER_SEC = (2.5f * TARGET_FPS); // Was 3.0f, defined locally in update()
+        BASE_ROTATION_DELAY_THRESHOLD_PER_SEC = (2.8f * scale) * TARGET_FPS;
+        BASE_ROTATION_DOWN_SPEED_PER_SEC = (2.5f * TARGET_FPS); 
         TRANSITION_FADE_SPEED_PER_SEC = 800.0f;
         pressOffsetY = 4 * scale;
         maxPipeMoveRange = (getPlayableHeight() - groundHeight) * 0.08f;
