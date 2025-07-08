@@ -20,6 +20,7 @@ android:icon="@mipmap/launcher"
 			android:configChanges="orientation|screenSize|keyboardHidden|smallestScreenSize|screenLayout"
 			android:hardwareAccelerated="true"
 			android:supportsPictureInPicture="true"
+			android:screenOrientation="portrait"
 			android:exported="true">
 			<intent-filter>
 				<action android:name="android.intent.action.MAIN" />
@@ -30,7 +31,8 @@ android:icon="@mipmap/launcher"
 			android:name=".SettingsActivity"
 			android:configChanges="orientation|screenSize|keyboardHidden|smallestScreenSize|screenLayout"
 			android:hardwareAccelerated="true"
-			android:supportsPictureInPicture="true" />
+			android:supportsPictureInPicture="true"
+			android:screenOrientation="portrait" />
 		<activity
 			android:name=".DebugActivity"
 			android:screenOrientation="portrait"
