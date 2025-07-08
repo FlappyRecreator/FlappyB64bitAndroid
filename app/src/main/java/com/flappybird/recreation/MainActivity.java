@@ -148,7 +148,7 @@ class GameView extends View implements Choreographer.FrameCallback {
 
     private final float UI_MARGIN_HORIZONTAL_PERCENT = 0.025f; // Original value was 0.05f
     private final float HOME_BUTTON_GAP_PERCENT = 0.05f;
-    private final float SETTINGS_BUTTON_SCALE_MULTIPLIER = 0.20f;
+    private final float SETTINGS_BUTTON_SCALE_MULTIPLIER = 0.75f;
     private final float PIPE_GAP_BIRD_HEIGHT_MULTIPLIER = 2.2f;
     private final float SCORE_PANEL_NUMBER_SCALE_MULTIPLIER = 0.6f;
     private final int SCORE_PANEL_CURRENT_SCORE_Y_OFFSET = 55;
