@@ -508,10 +508,12 @@ class GameView extends View implements Choreographer.FrameCallback {
                 }
                 break;
             case HOME:
-                birdX = settingReversePipesEnabled ?
-                screenWidth * 2 / 3f : screenWidth / 2f;
+                birdX = screenWidth / 2f;
                 birdY = (systemBarTop + (getPlayableHeight() - groundHeight) / 2f) + (float) (Math.sin(System.currentTimeMillis() / 200.0) * 6 * scale);
-                if (settingUpsideDownEnabled) birdY = screenHeight - birdY;
+                if (settingUpsideDownEnabled) {
+                    birdY += getPlayableHeight() * 0.18f;
+                    birdY = screenHeight - birdY;
+                }
                 birdRotation = 0;
                 break;
             case TRANSITION_TO_WAITING:
@@ -836,14 +838,14 @@ class GameView extends View implements Choreographer.FrameCallback {
         } else if (gameState == GameState.PLAYING) {
             drawScoreWithImages(canvas, score, screenWidth / 2, systemBarTop + (int) (getPlayableHeight() * 0.15));
         } else if (gameState == GameState.PANEL_SLIDING || gameState == GameState.GAME_OVER) {
+            if (darkenPaint.getAlpha() > 0) {
+                canvas.drawRect(0, 0, screenWidth, screenHeight, darkenPaint);
+            }
             drawGameOverScreen(canvas);
         }
 
         canvas.restore();
 
-        if (darkenPaint.getAlpha() > 0) {
-            canvas.drawRect(0, 0, screenWidth, screenHeight, darkenPaint);
-        }
         if (flashAlpha > 0) {
             flashPaint.setAlpha(flashAlpha);
             canvas.drawRect(0, 0, screenWidth, screenHeight, flashPaint);
