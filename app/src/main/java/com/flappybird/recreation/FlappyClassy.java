@@ -17,21 +17,22 @@ public class FlappyClassy extends Application {
 
     @Override
     public void onCreate() {
+        super.onCreate();
         mApplicationContext = getApplicationContext();
+        if (mApplicationContext == null) {
+            mApplicationContext = this;
+        }
+
         DynamicColors.applyToActivitiesIfAvailable(this);
 
         Thread.setDefaultUncaughtExceptionHandler(
-                new Thread.UncaughtExceptionHandler() {
-                    @Override
-                    public void uncaughtException(Thread thread, Throwable throwable) {
-                        Intent intent = new Intent(getApplicationContext(), DebugActivity.class);
-                        intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
-                        intent.putExtra("error", Log.getStackTraceString(throwable));
-                        startActivity(intent);
-                        Process.killProcess(Process.myPid());
-                        System.exit(1);
-                    }
+                (thread, throwable) -> {
+                    Intent intent = new Intent(getApplicationContext(), DebugActivity.class);
+                    intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
+                    intent.putExtra("error", Log.getStackTraceString(throwable));
+                    startActivity(intent);
+                    Process.killProcess(Process.myPid());
+                    System.exit(1);
                 });
-        super.onCreate();
     }
 }
