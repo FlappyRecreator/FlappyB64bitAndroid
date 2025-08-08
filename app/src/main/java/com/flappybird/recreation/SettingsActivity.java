@@ -55,6 +55,17 @@ public class SettingsActivity extends AppCompatActivity {
     public static final String PREF_UPSIDE_DOWN_ENABLED = "pref_upside_down_enabled";
     public static final String PREF_REVERSE_PIPES_ENABLED = "pref_reverse_pipes_enabled";
     public static final String PREF_SETTINGS_DISCLAIMER_SHOWN = "pref_settings_disclaimer_shown";
+    public static final String PREF_HAPTIC_FEEDBACK_ENABLED = "pref_haptic_feedback_enabled";
+    public static final String PREF_BIRD_TRAIL_ENABLED = "pref_bird_trail_enabled";
+    public static final String PREF_GHOST_MODE_ENABLED = "pref_ghost_mode_enabled";
+    public static final String PREF_PIPE_SPEED_VARIATION = "pref_pipe_speed_variation";
+    public static final String PREF_BIRD_SIZE = "pref_bird_size";
+    public static final String PREF_PIPE_WIDTH = "pref_pipe_width";
+    public static final String PREF_BG_SCROLL_SPEED = "pref_bg_scroll_speed";
+    public static final String PREF_GROUND_SCROLL_SPEED = "pref_ground_scroll_speed";
+    public static final String PREF_RANDOM_PIPE_COLORS_ENABLED = "pref_random_pipe_colors_enabled";
+    public static final String PREF_INFINITE_FLAP_ENABLED = "pref_infinite_flap_enabled";
+
 
     public static final int DEFAULT_BIRD_COLOR = -1;
     public static final int DEFAULT_BACKGROUND = -1;
@@ -79,15 +90,27 @@ public class SettingsActivity extends AppCompatActivity {
     public static final boolean DEFAULT_NO_CLIP_ENABLED = false;
     public static final boolean DEFAULT_UPSIDE_DOWN_ENABLED = false;
     public static final boolean DEFAULT_REVERSE_PIPES_ENABLED = false;
+    public static final boolean DEFAULT_HAPTIC_FEEDBACK_ENABLED = true;
+    public static final boolean DEFAULT_BIRD_TRAIL_ENABLED = false;
+    public static final boolean DEFAULT_GHOST_MODE_ENABLED = false;
+    public static final float DEFAULT_PIPE_SPEED_VARIATION = 0.0f;
+    public static final float DEFAULT_BIRD_SIZE = 1.0f;
+    public static final float DEFAULT_PIPE_WIDTH = 1.0f;
+    public static final float DEFAULT_BG_SCROLL_SPEED = 0.5f;
+    public static final float DEFAULT_GROUND_SCROLL_SPEED = 1.0f;
+    public static final boolean DEFAULT_RANDOM_PIPE_COLORS_ENABLED = false;
+    public static final boolean DEFAULT_INFINITE_FLAP_ENABLED = false;
 
     private SettingsBackgroundView backgroundView;
     private SharedPreferences prefs;
     private SharedPreferences.Editor editor;
     private RadioGroup birdColorGroup, backgroundGroup, pipeColorGroup;
     private MaterialSwitch soundSwitch, noClipSwitch, wingAnimationSwitch, movingPipesSwitch, hideSettingsIconSwitch;
-    private MaterialSwitch rainbowBirdSwitch, upsideDownSwitch, reversePipesSwitch;
+    private MaterialSwitch rainbowBirdSwitch, upsideDownSwitch, reversePipesSwitch, hapticFeedbackSwitch, birdTrailSwitch;
+    private MaterialSwitch ghostModeSwitch, randomPipeColorsSwitch, infiniteFlapSwitch;
     private EditText opacityEditText, speedEditText, gravityEditText, jumpEditText, pipeGapEditText, pipeMoveTier1EditText, pipeMoveTier2EditText, hangDelayEditText;
-    private EditText pipeSpacingEditText, birdHitboxEditText, pipeVariationEditText, scoreMultiplierEditText;
+    private EditText pipeSpacingEditText, birdHitboxEditText, pipeVariationEditText, scoreMultiplierEditText, pipeSpeedVariationEditText, birdSizeEditText;
+    private EditText pipeWidthEditText, bgScrollEditText, groundScrollEditText;
     private Button backButton, resetButton;
     @Override
     protected void onCreate(@Nullable Bundle savedInstanceState) {
@@ -158,6 +181,16 @@ public class SettingsActivity extends AppCompatActivity {
         reversePipesSwitch = findViewById(R.id.switch_reverse_pipes);
         pipeVariationEditText = findViewById(R.id.et_pipe_variation);
         scoreMultiplierEditText = findViewById(R.id.et_score_multiplier);
+        hapticFeedbackSwitch = findViewById(R.id.switch_haptic_feedback);
+        birdTrailSwitch = findViewById(R.id.switch_bird_trail);
+        ghostModeSwitch = findViewById(R.id.switch_ghost_mode);
+        pipeSpeedVariationEditText = findViewById(R.id.et_pipe_speed_variation);
+        birdSizeEditText = findViewById(R.id.et_bird_size);
+        pipeWidthEditText = findViewById(R.id.et_pipe_width);
+        bgScrollEditText = findViewById(R.id.et_bg_scroll);
+        groundScrollEditText = findViewById(R.id.et_ground_scroll);
+        randomPipeColorsSwitch = findViewById(R.id.switch_random_pipe_colors);
+        infiniteFlapSwitch = findViewById(R.id.switch_flap_timeout);
     }
 
     private void loadSettings() {
@@ -189,6 +222,12 @@ public class SettingsActivity extends AppCompatActivity {
         rainbowBirdSwitch.setChecked(prefs.getBoolean(PREF_RAINBOW_BIRD_ENABLED, DEFAULT_RAINBOW_BIRD_ENABLED));
         upsideDownSwitch.setChecked(prefs.getBoolean(PREF_UPSIDE_DOWN_ENABLED, DEFAULT_UPSIDE_DOWN_ENABLED));
         reversePipesSwitch.setChecked(prefs.getBoolean(PREF_REVERSE_PIPES_ENABLED, DEFAULT_REVERSE_PIPES_ENABLED));
+        hapticFeedbackSwitch.setChecked(prefs.getBoolean(PREF_HAPTIC_FEEDBACK_ENABLED, DEFAULT_HAPTIC_FEEDBACK_ENABLED));
+        birdTrailSwitch.setChecked(prefs.getBoolean(PREF_BIRD_TRAIL_ENABLED, DEFAULT_BIRD_TRAIL_ENABLED));
+        ghostModeSwitch.setChecked(prefs.getBoolean(PREF_GHOST_MODE_ENABLED, DEFAULT_GHOST_MODE_ENABLED));
+        randomPipeColorsSwitch.setChecked(prefs.getBoolean(PREF_RANDOM_PIPE_COLORS_ENABLED, DEFAULT_RANDOM_PIPE_COLORS_ENABLED));
+        infiniteFlapSwitch.setChecked(prefs.getBoolean(PREF_INFINITE_FLAP_ENABLED, DEFAULT_INFINITE_FLAP_ENABLED));
+
         int pipeColor = prefs.getInt(PREF_PIPE_COLOR, DEFAULT_PIPE_COLOR);
         switch (pipeColor) {
             case 1: pipeColorGroup.check(R.id.rb_pipe_red); break;
@@ -220,6 +259,12 @@ public class SettingsActivity extends AppCompatActivity {
 
         pipeMoveTier1EditText.setText(String.valueOf(prefs.getInt(PREF_PIPE_MOVE_TIER_1_SCORE, DEFAULT_PIPE_MOVE_TIER_1_SCORE)));
         pipeMoveTier2EditText.setText(String.valueOf(prefs.getInt(PREF_PIPE_MOVE_TIER_2_SCORE, DEFAULT_PIPE_MOVE_TIER_2_SCORE)));
+
+        pipeSpeedVariationEditText.setText(String.valueOf(prefs.getFloat(PREF_PIPE_SPEED_VARIATION, DEFAULT_PIPE_SPEED_VARIATION)));
+        birdSizeEditText.setText(String.valueOf(prefs.getFloat(PREF_BIRD_SIZE, DEFAULT_BIRD_SIZE)));
+        pipeWidthEditText.setText(String.valueOf(prefs.getFloat(PREF_PIPE_WIDTH, DEFAULT_PIPE_WIDTH)));
+        bgScrollEditText.setText(String.valueOf(prefs.getFloat(PREF_BG_SCROLL_SPEED, DEFAULT_BG_SCROLL_SPEED)));
+        groundScrollEditText.setText(String.valueOf(prefs.getFloat(PREF_GROUND_SCROLL_SPEED, DEFAULT_GROUND_SCROLL_SPEED)));
     }
 
     private void setupListeners() {
@@ -249,6 +294,16 @@ public class SettingsActivity extends AppCompatActivity {
             editor.putBoolean(PREF_NO_CLIP_ENABLED, DEFAULT_NO_CLIP_ENABLED);
             editor.putBoolean(PREF_UPSIDE_DOWN_ENABLED, DEFAULT_UPSIDE_DOWN_ENABLED);
             editor.putBoolean(PREF_REVERSE_PIPES_ENABLED, DEFAULT_REVERSE_PIPES_ENABLED);
+            editor.putBoolean(PREF_HAPTIC_FEEDBACK_ENABLED, DEFAULT_HAPTIC_FEEDBACK_ENABLED);
+            editor.putBoolean(PREF_BIRD_TRAIL_ENABLED, DEFAULT_BIRD_TRAIL_ENABLED);
+            editor.putBoolean(PREF_GHOST_MODE_ENABLED, DEFAULT_GHOST_MODE_ENABLED);
+            editor.putFloat(PREF_PIPE_SPEED_VARIATION, DEFAULT_PIPE_SPEED_VARIATION);
+            editor.putFloat(PREF_BIRD_SIZE, DEFAULT_BIRD_SIZE);
+            editor.putFloat(PREF_PIPE_WIDTH, DEFAULT_PIPE_WIDTH);
+            editor.putFloat(PREF_BG_SCROLL_SPEED, DEFAULT_BG_SCROLL_SPEED);
+            editor.putFloat(PREF_GROUND_SCROLL_SPEED, DEFAULT_GROUND_SCROLL_SPEED);
+            editor.putBoolean(PREF_RANDOM_PIPE_COLORS_ENABLED, DEFAULT_RANDOM_PIPE_COLORS_ENABLED);
+            editor.putBoolean(PREF_INFINITE_FLAP_ENABLED, DEFAULT_INFINITE_FLAP_ENABLED);
 
             editor.apply();
             loadSettings();
@@ -307,6 +362,12 @@ public class SettingsActivity extends AppCompatActivity {
         rainbowBirdSwitch.setOnCheckedChangeListener((buttonView, isChecked) -> editor.putBoolean(PREF_RAINBOW_BIRD_ENABLED, isChecked).apply());
         upsideDownSwitch.setOnCheckedChangeListener((buttonView, isChecked) -> editor.putBoolean(PREF_UPSIDE_DOWN_ENABLED, isChecked).apply());
         reversePipesSwitch.setOnCheckedChangeListener((buttonView, isChecked) -> editor.putBoolean(PREF_REVERSE_PIPES_ENABLED, isChecked).apply());
+        hapticFeedbackSwitch.setOnCheckedChangeListener((buttonView, isChecked) -> editor.putBoolean(PREF_HAPTIC_FEEDBACK_ENABLED, isChecked).apply());
+        birdTrailSwitch.setOnCheckedChangeListener((buttonView, isChecked) -> editor.putBoolean(PREF_BIRD_TRAIL_ENABLED, isChecked).apply());
+        ghostModeSwitch.setOnCheckedChangeListener((buttonView, isChecked) -> editor.putBoolean(PREF_GHOST_MODE_ENABLED, isChecked).apply());
+        randomPipeColorsSwitch.setOnCheckedChangeListener((buttonView, isChecked) -> editor.putBoolean(PREF_RANDOM_PIPE_COLORS_ENABLED, isChecked).apply());
+        infiniteFlapSwitch.setOnCheckedChangeListener((buttonView, isChecked) -> editor.putBoolean(PREF_INFINITE_FLAP_ENABLED, isChecked).apply());
+
         speedEditText.addTextChangedListener(new TextWatcher() {
             @Override public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
             @Override public void onTextChanged(CharSequence s, int start, int before, int count) {}
@@ -339,6 +400,11 @@ public class SettingsActivity extends AppCompatActivity {
         setupIntEditTextListener(pipeMoveTier2EditText, PREF_PIPE_MOVE_TIER_2_SCORE, 99999);
         setupFloatEditTextListener(pipeVariationEditText, PREF_PIPE_VARIATION);
         setupIntEditTextListener(scoreMultiplierEditText, PREF_SCORE_MULTIPLIER, 999);
+        setupFloatEditTextListener(pipeSpeedVariationEditText, PREF_PIPE_SPEED_VARIATION);
+        setupFloatEditTextListener(birdSizeEditText, PREF_BIRD_SIZE);
+        setupFloatEditTextListener(pipeWidthEditText, PREF_PIPE_WIDTH);
+        setupFloatEditTextListener(bgScrollEditText, PREF_BG_SCROLL_SPEED);
+        setupFloatEditTextListener(groundScrollEditText, PREF_GROUND_SCROLL_SPEED);
     }
 
     private void setupIntEditTextListener(EditText editText, String prefKey, int maxValue) {
