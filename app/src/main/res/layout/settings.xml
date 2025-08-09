@@ -8,11 +8,11 @@
 	android:background="#1C1C1E"
 	tools:context=".SettingsActivity">
 	<androidx.coordinatorlayout.widget.CoordinatorLayout
-		android:id="@+id/coordinator_layout137"
+		android:id="@+id/coordinator_layout"
 		android:layout_width="match_parent"
 		android:layout_height="match_parent">
 		<com.google.android.material.appbar.AppBarLayout
-			android:id="@+id/app_bar_layout138"
+			android:id="@+id/app_bar_layout"
 			android:layout_width="match_parent"
 			android:layout_height="wrap_content"
 			android:background="#2C2C2C"
@@ -70,13 +70,13 @@
 			android:clipToPadding="false"
 			app:layout_behavior="@string/appbar_scrolling_view_behavior">
 			<LinearLayout
-				android:id="@+id/linear139"
+				android:id="@+id/linear_layout_main"
 				android:layout_width="match_parent"
 				android:layout_height="wrap_content"
 				android:padding="16dp"
 				android:orientation="vertical">
 				<com.google.android.material.card.MaterialCardView
-					android:id="@+id/cardview29"
+					android:id="@+id/card_visuals"
 					android:layout_width="match_parent"
 					android:layout_height="wrap_content"
 					android:layout_marginBottom="16dp"
@@ -84,7 +84,7 @@
 					style="@style/Widget.Material3.CardView.Filled"
 					app:strokeWidth="0dp">
 					<LinearLayout
-						android:id="@+id/linear140"
+						android:id="@+id/linear29"
 						android:layout_width="match_parent"
 						android:layout_height="wrap_content"
 						android:orientation="vertical">
@@ -95,7 +95,7 @@
 							android:padding="16dp"
 							android:background="?attr/selectableItemBackground">
 							<TextView
-								android:id="@+id/textview119"
+								android:id="@+id/textview25"
 								android:layout_width="wrap_content"
 								android:layout_height="wrap_content"
 								android:text="Visuals"
@@ -121,15 +121,14 @@
 							android:paddingBottom="16dp"
 							android:orientation="vertical"
 							android:paddingHorizontal="16dp"
-							android:visibility="gone"
-							tools:visibility="visible">
+							android:visibility="gone">
 							<TextView
-								android:id="@+id/textview120"
+								android:id="@+id/textview26"
 								android:layout_width="wrap_content"
 								android:layout_height="wrap_content"
 								android:layout_marginBottom="8dp"
 								android:text="Bird Color"
-								android:textSize="12sp"
+								android:textSize="14sp"
 								android:textColor="#E0E0E0"
 								style="@style/TextAppearance.AppCompat.Body2"
 								android:fontFamily="@font/flappy_font" />
@@ -180,19 +179,18 @@
 									android:fontFamily="@font/flappy_font" />
 							</RadioGroup>
 							<View
-								android:id="@+id/view141"
-								android:layout_width="wrap_content"
+								android:id="@+id/view30"
+								android:layout_width="match_parent"
 								android:layout_height="1dp"
 								android:background="#4A4A4A"
-								style="@style/Widget.AppCompat.ButtonBar.AlertDialog"
 								android:layout_marginVertical="16dp" />
 							<TextView
-								android:id="@+id/textview121"
+								android:id="@+id/textview27"
 								android:layout_width="wrap_content"
 								android:layout_height="wrap_content"
 								android:layout_marginBottom="8dp"
 								android:text="Background"
-								android:textSize="12sp"
+								android:textSize="14sp"
 								android:textColor="#E0E0E0"
 								style="@style/TextAppearance.AppCompat.Body2"
 								android:fontFamily="@font/flappy_font" />
@@ -233,12 +231,21 @@
 									android:fontFamily="@font/flappy_font" />
 							</RadioGroup>
 							<View
-								android:id="@+id/view142"
-								android:layout_width="wrap_content"
+								android:id="@+id/view31"
+								android:layout_width="match_parent"
 								android:layout_height="1dp"
 								android:background="#4A4A4A"
-								style="@style/Widget.AppCompat.ButtonBar.AlertDialog"
 								android:layout_marginVertical="16dp" />
+							<TextView
+								android:id="@+id/textview28"
+								android:layout_width="wrap_content"
+								android:layout_height="wrap_content"
+								android:layout_marginBottom="8dp"
+								android:text="Pipe Color"
+								android:textSize="14sp"
+								android:textColor="#E0E0E0"
+								style="@style/TextAppearance.AppCompat.Body2"
+								android:fontFamily="@font/flappy_font" />
 							<com.google.android.material.materialswitch.MaterialSwitch
 								android:id="@+id/switch_random_pipe_colors"
 								android:layout_width="match_parent"
@@ -248,7 +255,7 @@
 								android:textColor="#FFFFFF"
 								android:fontFamily="@font/flappy_font" />
 							<HorizontalScrollView
-								android:id="@+id/hscroll4"
+								android:id="@+id/hscroll2"
 								android:layout_width="match_parent"
 								android:layout_height="wrap_content"
 								android:layout_marginTop="8dp"
@@ -363,7 +370,7 @@
 					</LinearLayout>
 				</com.google.android.material.card.MaterialCardView>
 				<com.google.android.material.card.MaterialCardView
-					android:id="@+id/cardview30"
+					android:id="@+id/card_gameplay"
 					android:layout_width="match_parent"
 					android:layout_height="wrap_content"
 					android:layout_marginBottom="16dp"
@@ -371,7 +378,7 @@
 					style="@style/Widget.Material3.CardView.Filled"
 					app:strokeWidth="0dp">
 					<LinearLayout
-						android:id="@+id/linear143"
+						android:id="@+id/linear32"
 						android:layout_width="match_parent"
 						android:layout_height="wrap_content"
 						android:orientation="vertical">
@@ -382,7 +389,7 @@
 							android:padding="16dp"
 							android:background="?attr/selectableItemBackground">
 							<TextView
-								android:id="@+id/textview122"
+								android:id="@+id/textview29"
 								android:layout_width="wrap_content"
 								android:layout_height="wrap_content"
 								android:text="Gameplay &amp; Physics"
@@ -408,20 +415,19 @@
 							android:paddingBottom="16dp"
 							android:orientation="vertical"
 							android:paddingHorizontal="16dp"
-							android:visibility="gone"
-							tools:visibility="visible">
+							android:visibility="gone">
 							<LinearLayout
-								android:id="@+id/linear144"
+								android:id="@+id/linear33"
 								android:layout_width="match_parent"
 								android:layout_height="wrap_content"
 								android:gravity="center_vertical"
 								android:orientation="horizontal">
 								<TextView
-									android:id="@+id/textview123"
+									android:id="@+id/textview30"
 									android:layout_width="0dp"
 									android:layout_height="wrap_content"
-									android:text="Master Game Speed"
-									android:textSize="12sp"
+									android:text="Game Speed"
+									android:textSize="14sp"
 									android:textColor="#E0E0E0"
 									android:layout_weight="1"
 									style="@style/TextAppearance.AppCompat.Body2"
@@ -430,7 +436,7 @@
 									android:id="@+id/et_game_speed"
 									android:layout_width="70dp"
 									android:layout_height="wrap_content"
-									android:textSize="12sp"
+									android:textSize="14sp"
 									android:textColor="#FFFFFF"
 									android:textColorHint="#607D8B"
 									android:inputType="numberDecimal"
@@ -446,123 +452,27 @@
 								android:stepSize="0.1"
 								android:valueFrom="0.1"
 								android:valueTo="10.0" />
-							<com.google.android.material.materialswitch.MaterialSwitch
-								android:id="@+id/switch_advanced_speed"
-								android:layout_width="match_parent"
-								android:layout_height="wrap_content"
-								android:text="Advanced Speed Controls"
-								android:textSize="18sp"
-								android:textColor="#FFFFFF"
-								android:fontFamily="@font/flappy_font" />
 							<LinearLayout
-								android:id="@+id/advanced_speed_layout"
-								android:layout_width="match_parent"
-								android:layout_height="wrap_content"
-								android:layout_marginTop="8dp"
-								android:orientation="vertical"
-								android:visibility="gone"
-								tools:visibility="visible">
-								<LinearLayout
-									android:id="@+id/linear145"
-									android:layout_width="match_parent"
-									android:layout_height="wrap_content"
-									android:gravity="center_vertical"
-									android:orientation="horizontal">
-									<TextView
-										android:id="@+id/textview124"
-										android:layout_width="0dp"
-										android:layout_height="wrap_content"
-										android:text="Background Speed"
-										android:textSize="12sp"
-										android:textColor="#E0E0E0"
-										android:layout_weight="1"
-										style="@style/TextAppearance.AppCompat.Body2"
-										android:fontFamily="@font/flappy_font" />
-									<EditText
-										android:id="@+id/et_bg_scroll"
-										android:layout_width="70dp"
-										android:layout_height="wrap_content"
-										android:textSize="12sp"
-										android:textColor="#FFFFFF"
-										android:textColorHint="#607D8B"
-										android:inputType="numberDecimal"
-										android:gravity="end"
-										android:background="@null"
-										android:fontFamily="@font/flappy_font" />
-								</LinearLayout>
-								<com.google.android.material.slider.Slider
-									android:id="@+id/slider_bg_scroll"
-									android:layout_width="match_parent"
-									android:layout_height="wrap_content"
-									android:value="0.5"
-									android:stepSize="0.1"
-									android:valueFrom="0.0"
-									android:valueTo="10.0" />
-								<LinearLayout
-									android:id="@+id/linear146"
-									android:layout_width="match_parent"
-									android:layout_height="wrap_content"
-									android:gravity="center_vertical"
-									android:orientation="horizontal">
-									<TextView
-										android:id="@+id/textview125"
-										android:layout_width="0dp"
-										android:layout_height="wrap_content"
-										android:text="Ground Speed"
-										android:textSize="12sp"
-										android:textColor="#E0E0E0"
-										android:layout_weight="1"
-										style="@style/TextAppearance.AppCompat.Body2"
-										android:fontFamily="@font/flappy_font" />
-									<EditText
-										android:id="@+id/et_ground_scroll"
-										android:layout_width="70dp"
-										android:layout_height="wrap_content"
-										android:textSize="12sp"
-										android:textColor="#FFFFFF"
-										android:textColorHint="#607D8B"
-										android:inputType="numberDecimal"
-										android:gravity="end"
-										android:background="@null"
-										android:fontFamily="@font/flappy_font" />
-								</LinearLayout>
-								<com.google.android.material.slider.Slider
-									android:id="@+id/slider_ground_scroll"
-									android:layout_width="match_parent"
-									android:layout_height="wrap_content"
-									android:value="1.0"
-									android:stepSize="0.1"
-									android:valueFrom="0.0"
-									android:valueTo="10.0" />
-							</LinearLayout>
-							<View
-								android:id="@+id/view147"
-								android:layout_width="wrap_content"
-								android:layout_height="1dp"
-								android:background="#4A4A4A"
-								style="@style/Widget.AppCompat.ButtonBar.AlertDialog"
-								android:layout_marginVertical="16dp" />
-							<LinearLayout
-								android:id="@+id/linear148"
+								android:id="@+id/linear34"
 								android:layout_width="match_parent"
 								android:layout_height="wrap_content"
 								android:gravity="center_vertical"
 								android:orientation="horizontal">
 								<TextView
-									android:id="@+id/textview126"
+									android:id="@+id/textview31"
 									android:layout_width="0dp"
 									android:layout_height="wrap_content"
-									android:text="Master Bird Scale"
-									android:textSize="12sp"
+									android:text="Background Scroll Speed"
+									android:textSize="14sp"
 									android:textColor="#E0E0E0"
 									android:layout_weight="1"
 									style="@style/TextAppearance.AppCompat.Body2"
 									android:fontFamily="@font/flappy_font" />
 								<EditText
-									android:id="@+id/et_bird_scale"
+									android:id="@+id/et_bg_scroll"
 									android:layout_width="70dp"
 									android:layout_height="wrap_content"
-									android:textSize="12sp"
+									android:textSize="14sp"
 									android:textColor="#FFFFFF"
 									android:textColorHint="#607D8B"
 									android:inputType="numberDecimal"
@@ -571,121 +481,145 @@
 									android:fontFamily="@font/flappy_font" />
 							</LinearLayout>
 							<com.google.android.material.slider.Slider
-								android:id="@+id/slider_bird_scale"
+								android:id="@+id/slider_bg_scroll"
+								android:layout_width="match_parent"
+								android:layout_height="wrap_content"
+								android:value="0.5"
+								android:stepSize="0.1"
+								android:valueFrom="0.0"
+								android:valueTo="10.0" />
+							<LinearLayout
+								android:id="@+id/linear35"
+								android:layout_width="match_parent"
+								android:layout_height="wrap_content"
+								android:gravity="center_vertical"
+								android:orientation="horizontal">
+								<TextView
+									android:id="@+id/textview32"
+									android:layout_width="0dp"
+									android:layout_height="wrap_content"
+									android:text="Ground Scroll Speed"
+									android:textSize="14sp"
+									android:textColor="#E0E0E0"
+									android:layout_weight="1"
+									style="@style/TextAppearance.AppCompat.Body2"
+									android:fontFamily="@font/flappy_font" />
+								<EditText
+									android:id="@+id/et_ground_scroll"
+									android:layout_width="70dp"
+									android:layout_height="wrap_content"
+									android:textSize="14sp"
+									android:textColor="#FFFFFF"
+									android:textColorHint="#607D8B"
+									android:inputType="numberDecimal"
+									android:gravity="end"
+									android:background="@null"
+									android:fontFamily="@font/flappy_font" />
+							</LinearLayout>
+							<com.google.android.material.slider.Slider
+								android:id="@+id/slider_ground_scroll"
+								android:layout_width="match_parent"
+								android:layout_height="wrap_content"
+								android:value="1.0"
+								android:stepSize="0.1"
+								android:valueFrom="0.0"
+								android:valueTo="10.0" />
+							<View
+								android:id="@+id/view36"
+								android:layout_width="match_parent"
+								android:layout_height="1dp"
+								android:background="#4A4A4A"
+								android:layout_marginVertical="16dp" />
+							<LinearLayout
+								android:id="@+id/linear37"
+								android:layout_width="match_parent"
+								android:layout_height="wrap_content"
+								android:gravity="center_vertical"
+								android:orientation="horizontal">
+								<TextView
+									android:id="@+id/textview33"
+									android:layout_width="0dp"
+									android:layout_height="wrap_content"
+									android:text="Bird Visual Size"
+									android:textSize="14sp"
+									android:textColor="#E0E0E0"
+									android:layout_weight="1"
+									style="@style/TextAppearance.AppCompat.Body2"
+									android:fontFamily="@font/flappy_font" />
+								<EditText
+									android:id="@+id/et_bird_size"
+									android:layout_width="70dp"
+									android:layout_height="wrap_content"
+									android:textSize="14sp"
+									android:textColor="#FFFFFF"
+									android:textColorHint="#607D8B"
+									android:inputType="numberDecimal"
+									android:gravity="end"
+									android:background="@null"
+									android:fontFamily="@font/flappy_font" />
+							</LinearLayout>
+							<com.google.android.material.slider.Slider
+								android:id="@+id/slider_bird_size"
 								android:layout_width="match_parent"
 								android:layout_height="wrap_content"
 								android:value="1.0"
 								android:stepSize="0.1"
 								android:valueFrom="0.2"
 								android:valueTo="5.0" />
-							<com.google.android.material.materialswitch.MaterialSwitch
-								android:id="@+id/switch_advanced_sizing"
-								android:layout_width="match_parent"
-								android:layout_height="wrap_content"
-								android:text="Advanced Sizing Controls"
-								android:textSize="18sp"
-								android:textColor="#FFFFFF"
-								android:fontFamily="@font/flappy_font" />
 							<LinearLayout
-								android:id="@+id/advanced_sizing_layout"
-								android:layout_width="match_parent"
-								android:layout_height="wrap_content"
-								android:layout_marginTop="8dp"
-								android:orientation="vertical"
-								android:visibility="gone"
-								tools:visibility="visible">
-								<LinearLayout
-									android:id="@+id/linear149"
-									android:layout_width="match_parent"
-									android:layout_height="wrap_content"
-									android:gravity="center_vertical"
-									android:orientation="horizontal">
-									<TextView
-										android:id="@+id/textview127"
-										android:layout_width="0dp"
-										android:layout_height="wrap_content"
-										android:text="Bird Visual Size"
-										android:textSize="12sp"
-										android:textColor="#E0E0E0"
-										android:layout_weight="1"
-										style="@style/TextAppearance.AppCompat.Body2"
-										android:fontFamily="@font/flappy_font" />
-									<EditText
-										android:id="@+id/et_bird_size"
-										android:layout_width="70dp"
-										android:layout_height="wrap_content"
-										android:textSize="12sp"
-										android:textColor="#FFFFFF"
-										android:textColorHint="#607D8B"
-										android:inputType="numberDecimal"
-										android:gravity="end"
-										android:background="@null"
-										android:fontFamily="@font/flappy_font" />
-								</LinearLayout>
-								<com.google.android.material.slider.Slider
-									android:id="@+id/slider_bird_size"
-									android:layout_width="match_parent"
-									android:layout_height="wrap_content"
-									android:value="1.0"
-									android:stepSize="0.1"
-									android:valueFrom="0.2"
-									android:valueTo="5.0" />
-								<LinearLayout
-									android:id="@+id/linear150"
-									android:layout_width="match_parent"
-									android:layout_height="wrap_content"
-									android:gravity="center_vertical"
-									android:orientation="horizontal">
-									<TextView
-										android:id="@+id/textview128"
-										android:layout_width="0dp"
-										android:layout_height="wrap_content"
-										android:text="Bird Hitbox Size"
-										android:textSize="12sp"
-										android:textColor="#E0E0E0"
-										android:layout_weight="1"
-										style="@style/TextAppearance.AppCompat.Body2"
-										android:fontFamily="@font/flappy_font" />
-									<EditText
-										android:id="@+id/et_bird_hitbox"
-										android:layout_width="70dp"
-										android:layout_height="wrap_content"
-										android:textSize="12sp"
-										android:textColor="#FFFFFF"
-										android:textColorHint="#607D8B"
-										android:inputType="numberDecimal"
-										android:gravity="end"
-										android:background="@null"
-										android:fontFamily="@font/flappy_font" />
-								</LinearLayout>
-								<com.google.android.material.slider.Slider
-									android:id="@+id/slider_bird_hitbox"
-									android:layout_width="match_parent"
-									android:layout_height="wrap_content"
-									android:value="1.0"
-									android:stepSize="0.1"
-									android:valueFrom="0.2"
-									android:valueTo="5.0" />
-							</LinearLayout>
-							<View
-								android:id="@+id/view151"
-								android:layout_width="wrap_content"
-								android:layout_height="1dp"
-								android:background="#4A4A4A"
-								style="@style/Widget.AppCompat.ButtonBar.AlertDialog"
-								android:layout_marginVertical="16dp" />
-							<LinearLayout
-								android:id="@+id/linear152"
+								android:id="@+id/linear38"
 								android:layout_width="match_parent"
 								android:layout_height="wrap_content"
 								android:gravity="center_vertical"
 								android:orientation="horizontal">
 								<TextView
-									android:id="@+id/textview129"
+									android:id="@+id/textview34"
+									android:layout_width="0dp"
+									android:layout_height="wrap_content"
+									android:text="Bird Hitbox Size"
+									android:textSize="14sp"
+									android:textColor="#E0E0E0"
+									android:layout_weight="1"
+									style="@style/TextAppearance.AppCompat.Body2"
+									android:fontFamily="@font/flappy_font" />
+								<EditText
+									android:id="@+id/et_bird_hitbox"
+									android:layout_width="70dp"
+									android:layout_height="wrap_content"
+									android:textSize="14sp"
+									android:textColor="#FFFFFF"
+									android:textColorHint="#607D8B"
+									android:inputType="numberDecimal"
+									android:gravity="end"
+									android:background="@null"
+									android:fontFamily="@font/flappy_font" />
+							</LinearLayout>
+							<com.google.android.material.slider.Slider
+								android:id="@+id/slider_bird_hitbox"
+								android:layout_width="match_parent"
+								android:layout_height="wrap_content"
+								android:value="1.0"
+								android:stepSize="0.1"
+								android:valueFrom="0.2"
+								android:valueTo="5.0" />
+							<View
+								android:id="@+id/view39"
+								android:layout_width="match_parent"
+								android:layout_height="1dp"
+								android:background="#4A4A4A"
+								android:layout_marginVertical="16dp" />
+							<LinearLayout
+								android:id="@+id/linear40"
+								android:layout_width="match_parent"
+								android:layout_height="wrap_content"
+								android:gravity="center_vertical"
+								android:orientation="horizontal">
+								<TextView
+									android:id="@+id/textview35"
 									android:layout_width="0dp"
 									android:layout_height="wrap_content"
 									android:text="Gravity"
-									android:textSize="12sp"
+									android:textSize="14sp"
 									android:textColor="#E0E0E0"
 									android:layout_weight="1"
 									style="@style/TextAppearance.AppCompat.Body2"
@@ -694,7 +628,7 @@
 									android:id="@+id/et_gravity"
 									android:layout_width="70dp"
 									android:layout_height="wrap_content"
-									android:textSize="12sp"
+									android:textSize="14sp"
 									android:textColor="#FFFFFF"
 									android:textColorHint="#607D8B"
 									android:inputType="numberDecimal"
@@ -711,17 +645,17 @@
 								android:valueFrom="0.1"
 								android:valueTo="10.0" />
 							<LinearLayout
-								android:id="@+id/linear153"
+								android:id="@+id/linear41"
 								android:layout_width="match_parent"
 								android:layout_height="wrap_content"
 								android:gravity="center_vertical"
 								android:orientation="horizontal">
 								<TextView
-									android:id="@+id/textview130"
+									android:id="@+id/textview36"
 									android:layout_width="0dp"
 									android:layout_height="wrap_content"
 									android:text="Jump Strength"
-									android:textSize="12sp"
+									android:textSize="14sp"
 									android:textColor="#E0E0E0"
 									android:layout_weight="1"
 									style="@style/TextAppearance.AppCompat.Body2"
@@ -730,7 +664,7 @@
 									android:id="@+id/et_jump"
 									android:layout_width="70dp"
 									android:layout_height="wrap_content"
-									android:textSize="12sp"
+									android:textSize="14sp"
 									android:textColor="#FFFFFF"
 									android:textColorHint="#607D8B"
 									android:inputType="numberDecimal"
@@ -746,12 +680,47 @@
 								android:stepSize="0.1"
 								android:valueFrom="0.1"
 								android:valueTo="10.0" />
+							<LinearLayout
+								android:id="@+id/linear42"
+								android:layout_width="match_parent"
+								android:layout_height="wrap_content"
+								android:gravity="center_vertical"
+								android:orientation="horizontal">
+								<TextView
+									android:id="@+id/textview37"
+									android:layout_width="0dp"
+									android:layout_height="wrap_content"
+									android:text="Bird Hang Delay"
+									android:textSize="14sp"
+									android:textColor="#E0E0E0"
+									android:layout_weight="1"
+									style="@style/TextAppearance.AppCompat.Body2"
+									android:fontFamily="@font/flappy_font" />
+								<EditText
+									android:id="@+id/et_hang_delay"
+									android:layout_width="70dp"
+									android:layout_height="wrap_content"
+									android:textSize="14sp"
+									android:textColor="#FFFFFF"
+									android:textColorHint="#607D8B"
+									android:inputType="numberDecimal"
+									android:gravity="end"
+									android:background="@null"
+									android:fontFamily="@font/flappy_font" />
+							</LinearLayout>
+							<com.google.android.material.slider.Slider
+								android:id="@+id/slider_hang_delay"
+								android:layout_width="match_parent"
+								android:layout_height="wrap_content"
+								android:value="1.0"
+								android:stepSize="0.1"
+								android:valueFrom="0.0"
+								android:valueTo="10.0" />
 							<View
-								android:id="@+id/view154"
-								android:layout_width="wrap_content"
+								android:id="@+id/view43"
+								android:layout_width="match_parent"
 								android:layout_height="1dp"
 								android:background="#4A4A4A"
-								style="@style/Widget.AppCompat.ButtonBar.AlertDialog"
 								android:layout_marginVertical="16dp" />
 							<com.google.android.material.materialswitch.MaterialSwitch
 								android:id="@+id/switch_moving_pipes"
@@ -762,18 +731,113 @@
 								android:textColor="#FFFFFF"
 								android:fontFamily="@font/flappy_font" />
 							<LinearLayout
-								android:id="@+id/linear155"
+								android:id="@+id/linear44"
 								android:layout_width="match_parent"
 								android:layout_height="wrap_content"
 								android:layout_marginTop="8dp"
 								android:gravity="center_vertical"
 								android:orientation="horizontal">
 								<TextView
-									android:id="@+id/textview131"
+									android:id="@+id/textview38"
+									android:layout_width="0dp"
+									android:layout_height="wrap_content"
+									android:text="Tier 1 Start Score"
+									android:textSize="14sp"
+									android:textColor="#E0E0E0"
+									android:layout_weight="1"
+									style="@style/TextAppearance.AppCompat.Body2"
+									android:fontFamily="@font/flappy_font" />
+								<EditText
+									android:id="@+id/et_pipe_move_tier1"
+									android:layout_width="70dp"
+									android:layout_height="wrap_content"
+									android:textSize="14sp"
+									android:textColor="#FFFFFF"
+									android:textColorHint="#607D8B"
+									android:gravity="end"
+									android:background="@null"
+									android:inputType="number"
+									android:maxLength="5"
+									android:fontFamily="@font/flappy_font" />
+							</LinearLayout>
+							<LinearLayout
+								android:id="@+id/linear45"
+								android:layout_width="match_parent"
+								android:layout_height="wrap_content"
+								android:layout_marginTop="8dp"
+								android:gravity="center_vertical"
+								android:orientation="horizontal">
+								<TextView
+									android:id="@+id/textview39"
+									android:layout_width="0dp"
+									android:layout_height="wrap_content"
+									android:text="Tier 2 Start Score"
+									android:textSize="14sp"
+									android:textColor="#E0E0E0"
+									android:layout_weight="1"
+									style="@style/TextAppearance.AppCompat.Body2"
+									android:fontFamily="@font/flappy_font" />
+								<EditText
+									android:id="@+id/et_pipe_move_tier2"
+									android:layout_width="70dp"
+									android:layout_height="wrap_content"
+									android:textSize="14sp"
+									android:textColor="#FFFFFF"
+									android:textColorHint="#607D8B"
+									android:gravity="end"
+									android:background="@null"
+									android:inputType="number"
+									android:maxLength="5"
+									android:fontFamily="@font/flappy_font" />
+							</LinearLayout>
+							<LinearLayout
+								android:id="@+id/linear46"
+								android:layout_width="match_parent"
+								android:layout_height="wrap_content"
+								android:layout_marginTop="8dp"
+								android:gravity="center_vertical"
+								android:orientation="horizontal">
+								<TextView
+									android:id="@+id/textview40"
+									android:layout_width="0dp"
+									android:layout_height="wrap_content"
+									android:text="Score Multiplier"
+									android:textSize="14sp"
+									android:textColor="#E0E0E0"
+									android:layout_weight="1"
+									style="@style/TextAppearance.AppCompat.Body2"
+									android:fontFamily="@font/flappy_font" />
+								<EditText
+									android:id="@+id/et_score_multiplier"
+									android:layout_width="70dp"
+									android:layout_height="wrap_content"
+									android:textSize="14sp"
+									android:textColor="#FFFFFF"
+									android:textColorHint="#607D8B"
+									android:gravity="end"
+									android:background="@null"
+									android:inputType="number"
+									android:maxLength="3"
+									android:fontFamily="@font/flappy_font" />
+							</LinearLayout>
+							<View
+								android:id="@+id/view47"
+								android:layout_width="match_parent"
+								android:layout_height="1dp"
+								android:background="#4A4A4A"
+								android:layout_marginVertical="16dp" />
+							<LinearLayout
+								android:id="@+id/linear48"
+								android:layout_width="match_parent"
+								android:layout_height="wrap_content"
+								android:gravity="center_vertical"
+								android:orientation="horizontal">
+								<TextView
+									android:id="@+id/textview41"
 									android:layout_width="0dp"
 									android:layout_height="wrap_content"
 									android:text="Pipe Gap Size"
-									android:textSize="12sp"
+									android:textSize="14sp"
 									android:textColor="#E0E0E0"
 									android:layout_weight="1"
 									style="@style/TextAppearance.AppCompat.Body2"
@@ -782,7 +846,7 @@
 									android:id="@+id/et_pipe_gap"
 									android:layout_width="70dp"
 									android:layout_height="wrap_content"
-									android:textSize="12sp"
+									android:textSize="14sp"
 									android:textColor="#FFFFFF"
 									android:textColorHint="#607D8B"
 									android:inputType="numberDecimal"
@@ -799,17 +863,17 @@
 								android:valueFrom="0.2"
 								android:valueTo="8.0" />
 							<LinearLayout
-								android:id="@+id/linear156"
+								android:id="@+id/linear49"
 								android:layout_width="match_parent"
 								android:layout_height="wrap_content"
 								android:gravity="center_vertical"
 								android:orientation="horizontal">
 								<TextView
-									android:id="@+id/textview132"
+									android:id="@+id/textview42"
 									android:layout_width="0dp"
 									android:layout_height="wrap_content"
 									android:text="Pipe Spacing"
-									android:textSize="12sp"
+									android:textSize="14sp"
 									android:textColor="#E0E0E0"
 									android:layout_weight="1"
 									style="@style/TextAppearance.AppCompat.Body2"
@@ -818,7 +882,7 @@
 									android:id="@+id/et_pipe_spacing"
 									android:layout_width="70dp"
 									android:layout_height="wrap_content"
-									android:textSize="12sp"
+									android:textSize="14sp"
 									android:textColor="#FFFFFF"
 									android:textColorHint="#607D8B"
 									android:inputType="numberDecimal"
@@ -834,11 +898,119 @@
 								android:stepSize="0.1"
 								android:valueFrom="0.2"
 								android:valueTo="8.0" />
+							<LinearLayout
+								android:id="@+id/linear50"
+								android:layout_width="match_parent"
+								android:layout_height="wrap_content"
+								android:gravity="center_vertical"
+								android:orientation="horizontal">
+								<TextView
+									android:id="@+id/textview43"
+									android:layout_width="0dp"
+									android:layout_height="wrap_content"
+									android:text="Pipe Width"
+									android:textSize="14sp"
+									android:textColor="#E0E0E0"
+									android:layout_weight="1"
+									style="@style/TextAppearance.AppCompat.Body2"
+									android:fontFamily="@font/flappy_font" />
+								<EditText
+									android:id="@+id/et_pipe_width"
+									android:layout_width="70dp"
+									android:layout_height="wrap_content"
+									android:textSize="14sp"
+									android:textColor="#FFFFFF"
+									android:textColorHint="#607D8B"
+									android:inputType="numberDecimal"
+									android:gravity="end"
+									android:background="@null"
+									android:fontFamily="@font/flappy_font" />
+							</LinearLayout>
+							<com.google.android.material.slider.Slider
+								android:id="@+id/slider_pipe_width"
+								android:layout_width="match_parent"
+								android:layout_height="wrap_content"
+								android:value="1.0"
+								android:stepSize="0.1"
+								android:valueFrom="0.2"
+								android:valueTo="5.0" />
+							<LinearLayout
+								android:id="@+id/linear51"
+								android:layout_width="match_parent"
+								android:layout_height="wrap_content"
+								android:gravity="center_vertical"
+								android:orientation="horizontal">
+								<TextView
+									android:id="@+id/textview44"
+									android:layout_width="0dp"
+									android:layout_height="wrap_content"
+									android:text="Pipe Gap Variation"
+									android:textSize="14sp"
+									android:textColor="#E0E0E0"
+									android:layout_weight="1"
+									style="@style/TextAppearance.AppCompat.Body2"
+									android:fontFamily="@font/flappy_font" />
+								<EditText
+									android:id="@+id/et_pipe_variation"
+									android:layout_width="70dp"
+									android:layout_height="wrap_content"
+									android:textSize="14sp"
+									android:textColor="#FFFFFF"
+									android:textColorHint="#607D8B"
+									android:inputType="numberDecimal"
+									android:gravity="end"
+									android:background="@null"
+									android:fontFamily="@font/flappy_font" />
+							</LinearLayout>
+							<com.google.android.material.slider.Slider
+								android:id="@+id/slider_pipe_variation"
+								android:layout_width="match_parent"
+								android:layout_height="wrap_content"
+								android:value="1.0"
+								android:stepSize="0.1"
+								android:valueFrom="0.0"
+								android:valueTo="5.0" />
+							<LinearLayout
+								android:id="@+id/linear52"
+								android:layout_width="match_parent"
+								android:layout_height="wrap_content"
+								android:gravity="center_vertical"
+								android:orientation="horizontal">
+								<TextView
+									android:id="@+id/textview45"
+									android:layout_width="0dp"
+									android:layout_height="wrap_content"
+									android:text="Pipe Speed Variation"
+									android:textSize="14sp"
+									android:textColor="#E0E0E0"
+									android:layout_weight="1"
+									style="@style/TextAppearance.AppCompat.Body2"
+									android:fontFamily="@font/flappy_font" />
+								<EditText
+									android:id="@+id/et_pipe_speed_variation"
+									android:layout_width="70dp"
+									android:layout_height="wrap_content"
+									android:textSize="14sp"
+									android:textColor="#FFFFFF"
+									android:textColorHint="#607D8B"
+									android:inputType="numberDecimal"
+									android:gravity="end"
+									android:background="@null"
+									android:fontFamily="@font/flappy_font" />
+							</LinearLayout>
+							<com.google.android.material.slider.Slider
+								android:id="@+id/slider_pipe_speed_variation"
+								android:layout_width="match_parent"
+								android:layout_height="wrap_content"
+								android:value="0.0"
+								android:stepSize="0.1"
+								android:valueFrom="0.0"
+								android:valueTo="5.0" />
 						</LinearLayout>
 					</LinearLayout>
 				</com.google.android.material.card.MaterialCardView>
 				<com.google.android.material.card.MaterialCardView
-					android:id="@+id/cardview31"
+					android:id="@+id/card_cheats"
 					android:layout_width="match_parent"
 					android:layout_height="wrap_content"
 					android:layout_marginBottom="16dp"
@@ -846,7 +1018,7 @@
 					style="@style/Widget.Material3.CardView.Filled"
 					app:strokeWidth="0dp">
 					<LinearLayout
-						android:id="@+id/linear157"
+						android:id="@+id/linear53"
 						android:layout_width="match_parent"
 						android:layout_height="wrap_content"
 						android:orientation="vertical">
@@ -857,7 +1029,7 @@
 							android:padding="16dp"
 							android:background="?attr/selectableItemBackground">
 							<TextView
-								android:id="@+id/textview133"
+								android:id="@+id/textview46"
 								android:layout_width="wrap_content"
 								android:layout_height="wrap_content"
 								android:text="Special Modes &amp; Cheats"
@@ -883,8 +1055,7 @@
 							android:paddingBottom="16dp"
 							android:orientation="vertical"
 							android:paddingHorizontal="16dp"
-							android:visibility="gone"
-							tools:visibility="visible">
+							android:visibility="gone">
 							<com.google.android.material.materialswitch.MaterialSwitch
 								android:id="@+id/switch_no_clip"
 								android:layout_width="match_parent"
@@ -952,14 +1123,14 @@
 					</LinearLayout>
 				</com.google.android.material.card.MaterialCardView>
 				<com.google.android.material.card.MaterialCardView
-					android:id="@+id/cardview32"
+					android:id="@+id/card_system"
 					android:layout_width="match_parent"
 					android:layout_height="wrap_content"
 					app:cardBackgroundColor="#2C2C2C"
 					style="@style/Widget.Material3.CardView.Filled"
 					app:strokeWidth="0dp">
 					<LinearLayout
-						android:id="@+id/linear158"
+						android:id="@+id/linear54"
 						android:layout_width="match_parent"
 						android:layout_height="wrap_content"
 						android:orientation="vertical">
@@ -970,7 +1141,7 @@
 							android:padding="16dp"
 							android:background="?attr/selectableItemBackground">
 							<TextView
-								android:id="@+id/textview134"
+								android:id="@+id/textview47"
 								android:layout_width="wrap_content"
 								android:layout_height="wrap_content"
 								android:text="System &amp; General"
@@ -996,8 +1167,7 @@
 							android:paddingBottom="16dp"
 							android:orientation="vertical"
 							android:paddingHorizontal="16dp"
-							android:visibility="gone"
-							tools:visibility="visible">
+							android:visibility="gone">
 							<com.google.android.material.materialswitch.MaterialSwitch
 								android:id="@+id/switch_sound"
 								android:layout_width="match_parent"
@@ -1034,6 +1204,49 @@
 								android:textColor="#FFFFFF"
 								android:fontFamily="@font/flappy_font"
 								android:paddingVertical="8dp" />
+							<View
+								android:id="@+id/view55"
+								android:layout_width="match_parent"
+								android:layout_height="1dp"
+								android:background="#4A4A4A"
+								android:layout_marginVertical="16dp" />
+							<LinearLayout
+								android:id="@+id/linear56"
+								android:layout_width="match_parent"
+								android:layout_height="wrap_content"
+								android:gravity="center_vertical"
+								android:orientation="horizontal">
+								<TextView
+									android:id="@+id/textview48"
+									android:layout_width="0dp"
+									android:layout_height="wrap_content"
+									android:text="Game Over Opacity (%)"
+									android:textSize="14sp"
+									android:textColor="#E0E0E0"
+									android:layout_weight="1"
+									style="@style/TextAppearance.AppCompat.Body2"
+									android:fontFamily="@font/flappy_font" />
+								<EditText
+									android:id="@+id/et_opacity"
+									android:layout_width="70dp"
+									android:layout_height="wrap_content"
+									android:textSize="14sp"
+									android:textColor="#FFFFFF"
+									android:textColorHint="#607D8B"
+									android:gravity="end"
+									android:background="@null"
+									android:inputType="number"
+									android:maxLength="3"
+									android:fontFamily="@font/flappy_font" />
+							</LinearLayout>
+							<com.google.android.material.slider.Slider
+								android:id="@+id/slider_opacity"
+								android:layout_width="match_parent"
+								android:layout_height="wrap_content"
+								android:value="5"
+								android:stepSize="1"
+								android:valueFrom="0"
+								android:valueTo="100" />
 						</LinearLayout>
 					</LinearLayout>
 				</com.google.android.material.card.MaterialCardView>
