@@ -152,9 +152,9 @@ public class SettingsActivity extends AppCompatActivity {
 
     private void showDisclaimerDialog() {
         new MaterialAlertDialogBuilder(this)
-                .setTitle("Settings Overhauled!")
-                .setMessage("Welcome to the new expandable settings screen! Tap on a category to show its options.\n\nEnjoy the restored live background and more powerful controls!")
-                .setPositiveButton("Let's Go!", (dialog, which) -> {
+                .setTitle("Settings Disclaimer")
+                .setMessage("Adjusting these settings, especially the gameplay values, can potentially break the game, cause unexpected behavior, or make it unstable. Proceed with caution.")
+                .setPositiveButton("I Understand", (dialog, which) -> {
                     editor.putBoolean(PREF_SETTINGS_DISCLAIMER_SHOWN, true).apply();
                     dialog.dismiss();
                 })

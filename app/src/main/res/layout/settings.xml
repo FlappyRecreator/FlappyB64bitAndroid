@@ -26,10 +26,13 @@
 					android:layout_width="wrap_content"
 					android:layout_height="wrap_content"
 					android:text="Back"
-					android:textSize="22sp"
-					android:textColor="#FFFFFF"
+					android:textSize="18sp"
+					android:textColor="#4CAF50"
 					style="@style/Widget.Material3.Button.TextButton"
-					android:fontFamily="@font/flappy_font" />
+					android:fontFamily="@font/flappy_font"
+					android:shadowDx="2"
+					android:shadowDy="2"
+					android:shadowRadius="3" />
 				<TextView
 					android:id="@+id/tv_settings_title"
 					android:layout_width="wrap_content"
@@ -38,7 +41,11 @@
 					android:textSize="30sp"
 					android:textColor="#FFFFFF"
 					android:layout_gravity="center_horizontal|center_vertical"
-					android:fontFamily="@font/flappy_bold" />
+					android:fontFamily="@font/flappy_bold"
+					android:shadowColor="#000000"
+					android:shadowDx="2"
+					android:shadowDy="2"
+					android:shadowRadius="3" />
 				<Button
 					android:id="@+id/button_reset"
 					android:layout_width="wrap_content"
@@ -49,7 +56,10 @@
 					android:layout_gravity="end"
 					style="@style/Widget.Material3.Button.TextButton"
 					android:layout_marginEnd="16dp"
-					android:fontFamily="@font/flappy_font" />
+					android:fontFamily="@font/flappy_font"
+					android:shadowDx="2"
+					android:shadowDy="2"
+					android:shadowRadius="3" />
 			</com.google.android.material.appbar.MaterialToolbar>
 		</com.google.android.material.appbar.AppBarLayout>
 		<androidx.core.widget.NestedScrollView
