@@ -28,7 +28,7 @@
 					android:text="Back"
 					android:textSize="18sp"
 					android:textColor="#4CAF50"
-					style="@style/Widget.Material3.Button.TextButton"
+					style="@style/Widget.Material3Expressive.Button.TextButton"
 					android:fontFamily="@font/flappy_font"
 					android:shadowDx="2"
 					android:shadowDy="2"
@@ -47,14 +47,14 @@
 					android:shadowDy="2"
 					android:shadowRadius="3" />
 				<Button
-					android:id="@+id/button_reset"
+					android:id="@+id/button_reset_all"
 					android:layout_width="wrap_content"
 					android:layout_height="wrap_content"
-					android:text="Reset"
+					android:text="Reset All"
 					android:textSize="18sp"
 					android:textColor="#FF6B6B"
 					android:layout_gravity="end"
-					style="@style/Widget.Material3.Button.TextButton"
+					style="@style/Widget.Material3Expressive.Button.TextButton"
 					android:layout_marginEnd="16dp"
 					android:fontFamily="@font/flappy_font"
 					android:shadowDx="2"
@@ -366,6 +366,22 @@
 										android:paddingEnd="12dp" />
 								</RadioGroup>
 							</HorizontalScrollView>
+							<View
+								android:id="@+id/view5"
+								android:layout_width="match_parent"
+								android:layout_height="1dp"
+								android:background="#4A4A4A"
+								android:layout_marginVertical="16dp" />
+							<Button
+								android:id="@+id/button_reset_visuals"
+								android:layout_width="wrap_content"
+								android:layout_height="wrap_content"
+								android:text="Reset Visuals"
+								android:textSize="18sp"
+								android:textColor="#FF6B6B"
+								android:layout_gravity="end"
+								style="@style/Widget.Material3Expressive.Button.OutlinedButton"
+								android:fontFamily="@font/flappy_font" />
 						</LinearLayout>
 					</LinearLayout>
 				</com.google.android.material.card.MaterialCardView>
@@ -1006,6 +1022,22 @@
 								android:stepSize="0.1"
 								android:valueFrom="0.0"
 								android:valueTo="5.0" />
+							<View
+								android:id="@+id/view6"
+								android:layout_width="match_parent"
+								android:layout_height="1dp"
+								android:background="#4A4A4A"
+								android:layout_marginVertical="16dp" />
+							<Button
+								android:id="@+id/button_reset_gameplay"
+								android:layout_width="wrap_content"
+								android:layout_height="wrap_content"
+								android:text="Reset Gameplay"
+								android:textSize="18sp"
+								android:textColor="#FF6B6B"
+								android:layout_gravity="end"
+								style="@style/Widget.Material3Expressive.Button.OutlinedButton"
+								android:fontFamily="@font/flappy_font" />
 						</LinearLayout>
 					</LinearLayout>
 				</com.google.android.material.card.MaterialCardView>
@@ -1119,6 +1151,22 @@
 								android:textColor="#FFFFFF"
 								android:fontFamily="@font/flappy_font"
 								android:paddingVertical="8dp" />
+							<View
+								android:id="@+id/view7"
+								android:layout_width="match_parent"
+								android:layout_height="1dp"
+								android:background="#4A4A4A"
+								android:layout_marginVertical="16dp" />
+							<Button
+								android:id="@+id/button_reset_cheats"
+								android:layout_width="wrap_content"
+								android:layout_height="wrap_content"
+								android:text="Reset Cheats"
+								android:textSize="18sp"
+								android:textColor="#FF6B6B"
+								android:layout_gravity="end"
+								style="@style/Widget.Material3Expressive.Button.OutlinedButton"
+								android:fontFamily="@font/flappy_font" />
 						</LinearLayout>
 					</LinearLayout>
 				</com.google.android.material.card.MaterialCardView>
@@ -1247,6 +1295,22 @@
 								android:stepSize="1"
 								android:valueFrom="0"
 								android:valueTo="100" />
+							<View
+								android:id="@+id/view8"
+								android:layout_width="match_parent"
+								android:layout_height="1dp"
+								android:background="#4A4A4A"
+								android:layout_marginVertical="16dp" />
+							<Button
+								android:id="@+id/button_reset_system"
+								android:layout_width="wrap_content"
+								android:layout_height="wrap_content"
+								android:text="Reset System"
+								android:textSize="18sp"
+								android:textColor="#FF6B6B"
+								android:layout_gravity="end"
+								style="@style/Widget.Material3Expressive.Button.OutlinedButton"
+								android:fontFamily="@font/flappy_font" />
 						</LinearLayout>
 					</LinearLayout>
 				</com.google.android.material.card.MaterialCardView>

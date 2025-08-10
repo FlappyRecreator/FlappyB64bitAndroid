@@ -16,7 +16,6 @@ import android.graphics.PorterDuff;
 import android.graphics.PorterDuffColorFilter;
 import android.graphics.Rect;
 import android.graphics.RectF;
-import android.graphics.Typeface;
 import android.media.AudioAttributes;
 import android.media.SoundPool;
 import android.os.Bundle;
@@ -25,18 +24,16 @@ import android.view.Choreographer;
 import android.view.HapticFeedbackConstants;
 import android.view.MotionEvent;
 import android.view.View;
-import android.view.Window;
-import androidx.activity.EdgeToEdge;
+import android.widget.FrameLayout;
 
+import androidx.activity.EdgeToEdge;
 import androidx.annotation.Nullable;
 import androidx.appcompat.app.AppCompatActivity;
-import androidx.core.content.res.ResourcesCompat;
 import androidx.core.graphics.Insets;
 import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowCompat;
 import androidx.core.view.WindowInsetsCompat;
 import androidx.core.view.WindowInsetsControllerCompat;
-import android.widget.FrameLayout;
 
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 
@@ -47,24 +44,25 @@ import java.util.List;
 import java.util.Random;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.function.BiFunction;
 
-import static com.flappybird.recreation.SettingsActivity.*;
+// Correctly import all constants from the new central settings file
+import static com.flappybird.recreation.GameSettings.*;
+
 public class MainActivity extends AppCompatActivity {
 
     private GameView gameView;
+
     @Override
     protected void onCreate(@Nullable Bundle savedInstanceState) {
         EdgeToEdge.enable(this);
-
         super.onCreate(savedInstanceState);
+
         WindowInsetsControllerCompat windowInsetsController =
                 WindowCompat.getInsetsController(getWindow(), getWindow().getDecorView());
         windowInsetsController.setSystemBarsBehavior(
                 WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
         );
         windowInsetsController.hide(WindowInsetsCompat.Type.systemBars());
-
 
         setContentView(R.layout.main);
         FrameLayout gameContainer = findViewById(R.id.game_container);
@@ -185,7 +183,6 @@ class GameView extends View implements Choreographer.FrameCallback {
     private boolean isGameOverIconAnimationDone = false;
     private long panelFinishedSlidingTime = 0;
 
-
     private Paint transitionPaint;
     private float transitionAlpha = 0;
     private boolean isFadingOut = false;
@@ -234,7 +231,6 @@ class GameView extends View implements Choreographer.FrameCallback {
     private Deque<TrailParticle> birdTrail;
     private Paint trailPaint;
     private static final int MAX_TRAIL_PARTICLES = 15;
-
 
     private int displayedScore = 0;
     private long lastScoreTickTime = 0;
@@ -300,6 +296,14 @@ class GameView extends View implements Choreographer.FrameCallback {
         trailPaint = new Paint();
     }
 
+    private float getSanitizedFloat(String key, float defaultValue) {
+        float value = prefs.getFloat(key, defaultValue);
+        if (Float.isNaN(value) || Float.isInfinite(value)) {
+            return defaultValue;
+        }
+        return value;
+    }
+
     private void loadSettings() {
         if (prefs == null) return;
         settingBirdColor = prefs.getInt(PREF_BIRD_COLOR, DEFAULT_BIRD_COLOR);
@@ -309,13 +313,13 @@ class GameView extends View implements Choreographer.FrameCallback {
         settingPipeColor = prefs.getInt(PREF_PIPE_COLOR, DEFAULT_PIPE_COLOR);
         settingHideSettingsIcon = prefs.getBoolean(PREF_HIDE_SETTINGS_ICON, DEFAULT_HIDE_SETTINGS_ICON);
         settingGameOverOpacity = prefs.getInt(PREF_GAMEOVER_OPACITY, DEFAULT_GAMEOVER_OPACITY);
-        settingGameSpeed = prefs.getFloat(PREF_GAME_SPEED, DEFAULT_GAME_SPEED);
-        settingGravity = prefs.getFloat(PREF_GRAVITY, DEFAULT_GRAVITY);
-        settingJumpStrength = prefs.getFloat(PREF_JUMP_STRENGTH, DEFAULT_JUMP_STRENGTH);
-        settingPipeGap = prefs.getFloat(PREF_PIPE_GAP, DEFAULT_PIPE_GAP);
-        settingBirdHangDelay = prefs.getFloat(PREF_BIRD_HANG_DELAY, DEFAULT_BIRD_HANG_DELAY);
-        settingPipeSpacing = prefs.getFloat(PREF_PIPE_SPACING, DEFAULT_PIPE_SPACING);
-        settingBirdHitbox = prefs.getFloat(PREF_BIRD_HITBOX, DEFAULT_BIRD_HITBOX);
+        settingGameSpeed = getSanitizedFloat(PREF_GAME_SPEED, DEFAULT_GAME_SPEED);
+        settingGravity = getSanitizedFloat(PREF_GRAVITY, DEFAULT_GRAVITY);
+        settingJumpStrength = getSanitizedFloat(PREF_JUMP_STRENGTH, DEFAULT_JUMP_STRENGTH);
+        settingPipeGap = getSanitizedFloat(PREF_PIPE_GAP, DEFAULT_PIPE_GAP);
+        settingBirdHangDelay = getSanitizedFloat(PREF_BIRD_HANG_DELAY, DEFAULT_BIRD_HANG_DELAY);
+        settingPipeSpacing = getSanitizedFloat(PREF_PIPE_SPACING, DEFAULT_PIPE_SPACING);
+        settingBirdHitbox = getSanitizedFloat(PREF_BIRD_HITBOX, DEFAULT_BIRD_HITBOX);
         settingMovingPipesEnabled = prefs.getBoolean(PREF_MOVING_PIPES_ENABLED, DEFAULT_MOVING_PIPES_ENABLED);
         settingPipeMoveTier1 = prefs.getInt(PREF_PIPE_MOVE_TIER_1_SCORE, DEFAULT_PIPE_MOVE_TIER_1_SCORE);
         settingPipeMoveTier2 = prefs.getInt(PREF_PIPE_MOVE_TIER_2_SCORE, DEFAULT_PIPE_MOVE_TIER_2_SCORE);
@@ -323,16 +327,16 @@ class GameView extends View implements Choreographer.FrameCallback {
         settingRainbowBirdEnabled = prefs.getBoolean(PREF_RAINBOW_BIRD_ENABLED, DEFAULT_RAINBOW_BIRD_ENABLED);
         settingUpsideDownEnabled = prefs.getBoolean(PREF_UPSIDE_DOWN_ENABLED, DEFAULT_UPSIDE_DOWN_ENABLED);
         settingReversePipesEnabled = prefs.getBoolean(PREF_REVERSE_PIPES_ENABLED, DEFAULT_REVERSE_PIPES_ENABLED);
-        settingPipeVariation = prefs.getFloat(PREF_PIPE_VARIATION, DEFAULT_PIPE_VARIATION);
+        settingPipeVariation = getSanitizedFloat(PREF_PIPE_VARIATION, DEFAULT_PIPE_VARIATION);
         settingScoreMultiplier = prefs.getInt(PREF_SCORE_MULTIPLIER, DEFAULT_SCORE_MULTIPLIER);
         settingHapticFeedbackEnabled = prefs.getBoolean(PREF_HAPTIC_FEEDBACK_ENABLED, DEFAULT_HAPTIC_FEEDBACK_ENABLED);
         settingBirdTrailEnabled = prefs.getBoolean(PREF_BIRD_TRAIL_ENABLED, DEFAULT_BIRD_TRAIL_ENABLED);
         settingGhostModeEnabled = prefs.getBoolean(PREF_GHOST_MODE_ENABLED, DEFAULT_GHOST_MODE_ENABLED);
-        settingPipeSpeedVariation = prefs.getFloat(PREF_PIPE_SPEED_VARIATION, DEFAULT_PIPE_SPEED_VARIATION);
-        settingBirdSize = prefs.getFloat(PREF_BIRD_SIZE, DEFAULT_BIRD_SIZE);
-        settingPipeWidth = prefs.getFloat(PREF_PIPE_WIDTH, DEFAULT_PIPE_WIDTH);
-        settingBgScrollSpeed = prefs.getFloat(PREF_BG_SCROLL_SPEED, DEFAULT_BG_SCROLL_SPEED);
-        settingGroundScrollSpeed = prefs.getFloat(PREF_GROUND_SCROLL_SPEED, DEFAULT_GROUND_SCROLL_SPEED);
+        settingPipeSpeedVariation = getSanitizedFloat(PREF_PIPE_SPEED_VARIATION, DEFAULT_PIPE_SPEED_VARIATION);
+        settingBirdSize = getSanitizedFloat(PREF_BIRD_SIZE, DEFAULT_BIRD_SIZE);
+        settingPipeWidth = getSanitizedFloat(PREF_PIPE_WIDTH, DEFAULT_PIPE_WIDTH);
+        settingBgScrollSpeed = getSanitizedFloat(PREF_BG_SCROLL_SPEED, DEFAULT_BG_SCROLL_SPEED);
+        settingGroundScrollSpeed = getSanitizedFloat(PREF_GROUND_SCROLL_SPEED, DEFAULT_GROUND_SCROLL_SPEED);
         settingRandomPipeColorsEnabled = prefs.getBoolean(PREF_RANDOM_PIPE_COLORS_ENABLED, DEFAULT_RANDOM_PIPE_COLORS_ENABLED);
         settingInfiniteFlapEnabled = prefs.getBoolean(PREF_INFINITE_FLAP_ENABLED, DEFAULT_INFINITE_FLAP_ENABLED);
     }
@@ -365,7 +369,7 @@ class GameView extends View implements Choreographer.FrameCallback {
         BASE_FLAP_VELOCITY_PER_SEC = (-3.2f * scale) * TARGET_FPS;
         BASE_PIPE_SPEED_PER_SEC = (1.1f * scale) * TARGET_FPS;
         BASE_ROTATION_DELAY_THRESHOLD_PER_SEC = (2.7f * scale) * TARGET_FPS;
-        BASE_ROTATION_DOWN_SPEED_PER_SEC = (2.5f * TARGET_FPS); 
+        BASE_ROTATION_DOWN_SPEED_PER_SEC = (2.5f * TARGET_FPS);
         TRANSITION_FADE_SPEED_PER_SEC = 800.0f;
         pressOffsetY = 4 * scale;
         maxPipeMoveRange = (getPlayableHeight() - groundHeight) * 0.08f;
@@ -392,6 +396,9 @@ class GameView extends View implements Choreographer.FrameCallback {
     }
 
     private void resetGame() {
+        backgroundX = 0;
+        groundX = 0;
+
         loadSettings();
 
         float speedVariation = 1.0f + (random.nextFloat() - 0.5f) * 2 * settingPipeSpeedVariation;
@@ -424,7 +431,7 @@ class GameView extends View implements Choreographer.FrameCallback {
         if (settingBackground == 0) backgroundBitmap = bgDayBitmap;
         else if (settingBackground == 1) backgroundBitmap = bgNightBitmap;
         else backgroundBitmap = random.nextBoolean() ?
-        bgNightBitmap : bgDayBitmap;
+                bgNightBitmap : bgDayBitmap;
 
         currentPipeTopBitmap = pipeDownBitmap;
         currentPipeBottomBitmap = pipeUpBitmap;
@@ -436,10 +443,10 @@ class GameView extends View implements Choreographer.FrameCallback {
         for (int i = 0; i < 3; i++) birdBitmaps[i] = scaledAllBirdBitmaps[birdColor][i];
 
         birdX = settingReversePipesEnabled ?
-        screenWidth * 2 / 3f : screenWidth / 3f;
+                screenWidth * 2 / 3f : screenWidth / 3f;
         birdY = systemBarTop + (getPlayableHeight() - groundHeight) / 2f;
         if (settingUpsideDownEnabled) {
-             birdY = screenHeight - birdY;
+            birdY = screenHeight - birdY;
         }
         birdVelocityY = 0; birdRotation = 0; birdFrame = 0;
         pipes = new ArrayList<>();
@@ -456,7 +463,7 @@ class GameView extends View implements Choreographer.FrameCallback {
             float pipeX = firstPipeX + (i * pipeSpacing * (settingReversePipesEnabled ? -1 : 1));
             Pipe pipe = new Pipe(pipeX, currentPipeBottomBitmap.getWidth(), currentPipeBottomBitmap.getHeight());
             pipe.resetHeight(pipeGap, playableAreaHeight, systemBarTop, settingPipeVariation);
-            
+
             int colorToSet = settingPipeColor;
             if (settingRandomPipeColorsEnabled) {
                 colorToSet = random.nextInt(9);
@@ -515,8 +522,8 @@ class GameView extends View implements Choreographer.FrameCallback {
 
         boolean wingAnimation = settingWingAnimationEnabled && (settingInfiniteFlapEnabled || System.currentTimeMillis() - lastFlapTimeMillis < FLAP_ANIMATION_TIMEOUT_MS);
         if (gameState == GameState.PLAYING) {
-             if (wingAnimation) birdFrame = (int) ((System.currentTimeMillis() / 75) % birdBitmaps.length);
-             else birdFrame = 1;
+            if (wingAnimation) birdFrame = (int) ((System.currentTimeMillis() / 75) % birdBitmaps.length);
+            else birdFrame = 1;
         } else if (gameState == GameState.HOME || gameState == GameState.TRANSITION_TO_WAITING || gameState == GameState.WAITING) {
             if (settingWingAnimationEnabled) birdFrame = (int) ((System.currentTimeMillis() / 150) % birdBitmaps.length);
             else birdFrame = 1;
@@ -585,7 +592,7 @@ class GameView extends View implements Choreographer.FrameCallback {
                 break;
             case WAITING:
                 birdX = settingReversePipesEnabled ?
-                screenWidth * 2 / 3f : screenWidth / 3f;
+                        screenWidth * 2 / 3f : screenWidth / 3f;
                 birdY = (systemBarTop + (getPlayableHeight() - groundHeight) / 2f) + (float) (Math.sin(System.currentTimeMillis() / 200.0) * 6 * scale);
                 if (settingUpsideDownEnabled) birdY = screenHeight - birdY;
                 birdRotation = 0;
@@ -652,11 +659,11 @@ class GameView extends View implements Choreographer.FrameCallback {
                         long scoreDiff = score - displayedScore;
                         long interval; int increment;
                         if (scoreDiff > 100) { interval = SCORE_ANIMATION_INTERVAL_MS_FAST;
-                        increment = 11; }
+                            increment = 11; }
                         else if (scoreDiff > 10) { interval = SCORE_ANIMATION_INTERVAL_MS_FAST;
-                        increment = 3; }
+                            increment = 3; }
                         else { interval = SCORE_ANIMATION_INTERVAL_MS_SLOW;
-                        increment = 1; }
+                            increment = 1; }
                         if (currentTime - lastScoreTickTime > interval) {
                             displayedScore += increment;
                             if (displayedScore > score) { displayedScore = score; }
@@ -723,7 +730,7 @@ class GameView extends View implements Choreographer.FrameCallback {
                     for (Pipe pipe : pipes) { if (!pipe.isAtRest()) { allPipesAtRest = false; break;
                     } }
                     if (allPipesAtRest) { pipesAreMoving = false;
-                    pipesAreStopping = false; }
+                        pipesAreStopping = false; }
                 }
                 if (pipesAreMoving || pipesAreStopping) {
                     pipeAnimationCounter += (pipeAnimationSpeed * TARGET_FPS) * deltaTime;
@@ -803,11 +810,11 @@ class GameView extends View implements Choreographer.FrameCallback {
 
         for (Pipe pipe : pipes) {
             if (Rect.intersects(birdRect, pipe.getTopHeadRect(settingPipeWidth)) ||
-                Rect.intersects(birdRect, pipe.getTopBodyRect(settingPipeWidth)) ||
-                Rect.intersects(birdRect, pipe.getBottomHeadRect(pipeGap, settingPipeWidth)) ||
-                Rect.intersects(birdRect, pipe.getBottomBodyRect(pipeGap, settingPipeWidth))) {
-         
-               gameOver(); return;
+                    Rect.intersects(birdRect, pipe.getTopBodyRect(settingPipeWidth)) ||
+                    Rect.intersects(birdRect, pipe.getBottomHeadRect(pipeGap, settingPipeWidth)) ||
+                    Rect.intersects(birdRect, pipe.getBottomBodyRect(pipeGap, settingPipeWidth))) {
+
+                gameOver(); return;
             }
         }
     }
@@ -848,7 +855,7 @@ class GameView extends View implements Choreographer.FrameCallback {
         for (float x = startX; x < screenWidth; x += bgDrawWidth) {
             canvas.drawBitmap(backgroundBitmap, x, 0, pixelPaint);
         }
-        
+
         if (gameState != GameState.HOME && !(gameState == GameState.TRANSITION_TO_WAITING && isFadingOut)) {
             for (Pipe pipe : pipes) {
                 float visualPipeWidth = pipe.width * settingPipeWidth;
@@ -856,12 +863,12 @@ class GameView extends View implements Choreographer.FrameCallback {
 
                 pipeDestRect.set(xPos, pipe.getTopPipeY(), xPos + visualPipeWidth, pipe.getTopPipeY() + pipe.height);
                 canvas.drawBitmap(currentPipeTopBitmap, null, pipeDestRect, pipe.pipePaint);
-                
+
                 pipeDestRect.set(xPos, pipe.getBottomPipeY(pipeGap), xPos + visualPipeWidth, pipe.getBottomPipeY(pipeGap) + pipe.height);
                 canvas.drawBitmap(currentPipeBottomBitmap, null, pipeDestRect, pipe.pipePaint);
             }
         }
-        
+
         float groundDrawWidth = groundBitmap.getWidth();
         float groundTopY = screenHeight - systemBarBottom - groundHeight;
         startX = groundX % groundDrawWidth;
@@ -872,16 +879,16 @@ class GameView extends View implements Choreographer.FrameCallback {
             groundDestRect.set(x, groundTopY, x + groundDrawWidth, screenHeight);
             canvas.drawBitmap(groundBitmap, null, groundDestRect, pixelPaint);
         }
-        
+
         drawBirdTrail(canvas);
 
         birdPaint.setColorFilter(null);
         if(settingRainbowBirdEnabled) {
-             ColorMatrix colorMatrix = new ColorMatrix();
-             colorMatrix.setRotate(0, rainbowHue);
-             colorMatrix.setRotate(1, rainbowHue);
-             colorMatrix.setRotate(2, rainbowHue);
-             birdPaint.setColorFilter(new ColorMatrixColorFilter(colorMatrix));
+            ColorMatrix colorMatrix = new ColorMatrix();
+            colorMatrix.setRotate(0, rainbowHue);
+            colorMatrix.setRotate(1, rainbowHue);
+            colorMatrix.setRotate(2, rainbowHue);
+            birdPaint.setColorFilter(new ColorMatrixColorFilter(colorMatrix));
         }
         if (settingGhostModeEnabled) {
             birdPaint.setAlpha(128);
@@ -958,8 +965,8 @@ class GameView extends View implements Choreographer.FrameCallback {
                 if (pressedButtonRect != null && pressedButtonRect.contains(touchX, touchY)) {
                     if (gameState == GameState.HOME) {
                         if (pressedButtonRect == playButtonRect) {
-                       
-                             gameState = GameState.TRANSITION_TO_WAITING; isFadingOut = true; playSound(soundSwooshing);
+
+                            gameState = GameState.TRANSITION_TO_WAITING; isFadingOut = true; playSound(soundSwooshing);
                         } else if (pressedButtonRect == settingsButtonRect) {
                             playSound(soundSwooshing);
                             Intent intent = new Intent(getContext(), SettingsActivity.class);
@@ -977,21 +984,21 @@ class GameView extends View implements Choreographer.FrameCallback {
                     }
                 }
                 if (pressedButtonRect != null) { pressedButtonRect = null;
-                invalidate(); }
+                    invalidate(); }
                 break;
             case MotionEvent.ACTION_MOVE:
                 if (pressedButtonRect != null && !pressedButtonRect.contains(touchX, touchY)) { pressedButtonRect = null;
-                invalidate(); }
+                    invalidate(); }
                 break;
             case MotionEvent.ACTION_CANCEL:
-                 if (pressedButtonRect != null) { pressedButtonRect = null;
-                 invalidate(); }
+                if (pressedButtonRect != null) { pressedButtonRect = null;
+                    invalidate(); }
                 break;
         }
         return true;
     }
     private void flap() {
-        birdVelocityY = FLAP_VELOCITY_PER_SEC; 
+        birdVelocityY = FLAP_VELOCITY_PER_SEC;
         playSound(soundWing);
         if (settingHapticFeedbackEnabled) {
             this.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY);
@@ -1019,7 +1026,7 @@ class GameView extends View implements Choreographer.FrameCallback {
         for (TrailParticle particle : birdTrail) {
             float progress = (float) i / birdTrail.size();
             int alpha = (int) (progress * 100);
-            
+
             trailPaint.setColorFilter(null);
             if (particle.rainbowHue != -1) {
                 ColorMatrix colorMatrix = new ColorMatrix();
@@ -1040,7 +1047,6 @@ class GameView extends View implements Choreographer.FrameCallback {
             i++;
         }
     }
-
 
     private void drawHomeScreen(Canvas canvas) {
         float titleX = (screenWidth - titleBitmap.getWidth()) / 2f;
@@ -1217,9 +1223,11 @@ class GameView extends View implements Choreographer.FrameCallback {
         new MaterialAlertDialogBuilder(getContext())
                 .setTitle("Display Notice")
                 .setMessage("Flappy Bird is not optimized for this screen's aspect ratio. You may encounter visual issues. For the best experience, a device with a smaller screen (and preferably Android 14+) is recommended.")
-                .setPositiveButton("Continue", (dialog, which) -> {
- 
-                    prefs.edit().putBoolean(PREF_KEY_WARNING_SHOWN, true).apply();
+                .setPositiveButton("OK", (dialog, which) -> dialog.dismiss())
+                .setNegativeButton("Don't show again", (dialog, which) -> {
+                    if (prefs != null) {
+                        prefs.edit().putBoolean(PREF_KEY_WARNING_SHOWN, true).apply();
+                    }
                     dialog.dismiss();
                 })
                 .setCancelable(false)
@@ -1270,7 +1278,7 @@ class GameView extends View implements Choreographer.FrameCallback {
             int resId = getResources().getIdentifier("number_" + i, "drawable", getContext().getPackageName());
             if (resId != 0) unscaledNumberBitmaps[i] = BitmapFactory.decodeResource(getResources(), resId, options);
             else { Log.e("GameView", "Missing number resource: number_" + i);
-            unscaledNumberBitmaps[i] = Bitmap.createBitmap(1, 1, Bitmap.Config.ARGB_8888); }
+                unscaledNumberBitmaps[i] = Bitmap.createBitmap(1, 1, Bitmap.Config.ARGB_8888); }
         }
     }
     private Bitmap scaleBitmap(Bitmap bitmap) {
@@ -1343,15 +1351,82 @@ class GameView extends View implements Choreographer.FrameCallback {
         }
     }
 
+    private void recycleBitmap(Bitmap bmp) {
+        if (bmp != null && !bmp.isRecycled()) {
+            bmp.recycle();
+        }
+    }
+
+    private void recycleBitmapArray(Bitmap[] array) {
+        if (array == null) return;
+        for (int i = 0; i < array.length; i++) {
+            recycleBitmap(array[i]);
+            array[i] = null;
+        }
+    }
+
+    private void recycle2DBitmapArray(Bitmap[][] array) {
+        if (array == null) return;
+        for (int i = 0; i < array.length; i++) {
+            recycleBitmapArray(array[i]);
+            array[i] = null;
+        }
+    }
+
     @Override
     protected void onDetachedFromWindow() {
         super.onDetachedFromWindow();
         pause();
-        if (soundExecutor != null) { soundExecutor.shutdownNow(); soundExecutor = null;
+        if (soundExecutor != null) {
+            soundExecutor.shutdownNow();
+            soundExecutor = null;
         }
-        if (soundPool != null) { soundPool.release(); soundPool = null;
+        if (soundPool != null) {
+            soundPool.release();
+            soundPool = null;
         }
+
+        recycleBitmap(unscaledBgDay);
+        recycleBitmap(unscaledBgNight);
+        recycleBitmap(unscaledLand);
+        recycleBitmap(unscaledPipeGreen);
+        recycleBitmap(unscaledTextReady);
+        recycleBitmap(unscaledTextGameOver);
+        recycleBitmap(unscaledScorePanel);
+        recycleBitmap(unscaledButtonPlay);
+        recycleBitmap(unscaledButtonScore);
+        recycleBitmap(unscaledTitle);
+        recycleBitmap(unscaledCopyright);
+        recycleBitmap(unscaledButtonSettings);
+        recycle2DBitmapArray(unscaledAllBirdBitmaps);
+        recycleBitmapArray(unscaledMedalsBitmaps);
+        recycleBitmapArray(unscaledNumberBitmaps);
+
+        recycleBitmap(bgDayBitmap);
+        recycleBitmap(bgNightBitmap);
+        recycleBitmap(groundBitmap);
+        recycleBitmap(pipeUpBitmap);
+        recycleBitmap(pipeDownBitmap);
+        recycle2DBitmapArray(scaledAllBirdBitmaps);
+        recycleBitmap(getReadyBitmap);
+        recycleBitmap(gameOverBitmap);
+        recycleBitmap(scorePanelBitmap);
+        recycleBitmap(playButtonBitmap);
+        recycleBitmap(scoreButtonBitmap);
+        recycleBitmap(titleBitmap);
+        recycleBitmap(copyrightBitmap);
+        recycleBitmap(settingsButtonBitmap);
+        recycleBitmapArray(medalBitmaps);
+        recycleBitmapArray(numberBitmaps);
+        recycleBitmapArray(smallNumberBitmaps);
+
+        backgroundBitmap = null;
+        currentPipeTopBitmap = null;
+        currentPipeBottomBitmap = null;
+        currentMedalBitmap = null;
+        birdBitmaps = null;
     }
+
     @Override
     public void doFrame(long frameTimeNanos) {
         if (!isRunning) return;
@@ -1383,16 +1458,16 @@ class Pipe {
     float x; int topPipeY; boolean isScored; int width, height;
     private static Random random = new Random();
     public Paint pipePaint;
-    
+
     private Rect topHeadRect = new Rect(), topBodyRect = new Rect();
     private Rect bottomHeadRect = new Rect(), bottomBodyRect = new Rect();
 
     private static float pipeHeadWidth, pipeHeadHeight;
     private static float pipeBodyWidth, pipeBodyOffsetX;
     private float currentYOffset = 0;
-    public Pipe(float x, int width, int height) { 
+    public Pipe(float x, int width, int height) {
         this.x = x; this.width = width;
-        this.height = height; this.isScored = false; 
+        this.height = height; this.isScored = false;
         this.pipePaint = new Paint();
         this.pipePaint.setFilterBitmap(false);
         this.pipePaint.setAntiAlias(false);
@@ -1427,22 +1502,22 @@ class Pipe {
 
     public void updateAnimation(boolean isMoving, float animationCounter, float moveRange, boolean isStopping) {
         if (isStopping) { currentYOffset *= 0.9f;
-        if (Math.abs(currentYOffset) < 0.1f) currentYOffset = 0; }
+            if (Math.abs(currentYOffset) < 0.1f) currentYOffset = 0; }
         else if (isMoving) { float phaseShift = (this.x / 500f) * (float)Math.PI;
-        this.currentYOffset = ((float) Math.sin(animationCounter + phaseShift) * moveRange); }
+            this.currentYOffset = ((float) Math.sin(animationCounter + phaseShift) * moveRange); }
         else { currentYOffset = 0;
         }
     }
     public boolean isAtRest() { return currentYOffset == 0;
     }
-    
+
     private float getCurrentTopPipeY() { return topPipeY + currentYOffset;
     }
     public float getTopPipeY() { return getCurrentTopPipeY() - this.height;
     }
     public float getBottomPipeY(int pipeGap) { return getCurrentTopPipeY() + pipeGap;
     }
-    
+
     public void setColorFilter(ColorFilter filter) {
         this.pipePaint.setColorFilter(filter);
     }
@@ -1453,7 +1528,7 @@ class Pipe {
         baseRect.right = baseRect.left + (int)visualWidth;
         return baseRect;
     }
-    
+
     public Rect getTopHeadRect(float widthMultiplier) {
         float top = getCurrentTopPipeY() - pipeHeadHeight;
         float bottom = getCurrentTopPipeY();
@@ -1469,10 +1544,10 @@ class Pipe {
         float visualWidth = pipeBodyWidth * widthMultiplier;
         float xPos = x + pipeBodyOffsetX + (pipeBodyWidth - visualWidth) / 2.0f;
         topBodyRect.set(
-            (int) xPos, 
-            (int) top, 
-            (int) (xPos + visualWidth), 
-            (int) bottom
+                (int) xPos,
+                (int) top,
+                (int) (xPos + visualWidth),
+                (int) bottom
         );
         return topBodyRect;
     }
@@ -1492,10 +1567,10 @@ class Pipe {
         float visualWidth = pipeBodyWidth * widthMultiplier;
         float xPos = x + pipeBodyOffsetX + (pipeBodyWidth - visualWidth) / 2.0f;
         bottomBodyRect.set(
-            (int) xPos, 
-            (int) top, 
-            (int) (xPos + visualWidth), 
-            (int) bottom
+                (int) xPos,
+                (int) top,
+                (int) (xPos + visualWidth),
+                (int) bottom
         );
         return bottomBodyRect;
     }
