@@ -6,515 +6,486 @@ import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.Canvas;
 import android.graphics.Paint;
+import android.graphics.RectF;
 import android.os.Bundle;
 import android.text.Editable;
-import android.text.InputFilter;
-import android.text.Spanned;
 import android.text.TextWatcher;
 import android.view.Choreographer;
 import android.view.View;
+import android.widget.Button;
 import android.widget.EditText;
 import android.widget.FrameLayout;
-import android.widget.ImageView;
+import android.widget.RadioButton;
 import android.widget.RadioGroup;
-import androidx.annotation.IdRes;
-import androidx.annotation.NonNull;
+import android.widget.TextView;
+
 import androidx.annotation.Nullable;
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowCompat;
 import androidx.core.view.WindowInsetsCompat;
 import androidx.core.view.WindowInsetsControllerCompat;
+
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 import com.google.android.material.materialswitch.MaterialSwitch;
-import com.google.android.material.slider.Slider;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Locale;
-import java.util.Map;
-import java.util.function.Consumer;
-
-// Statically import all constants from the central GameSettings file
-import static com.flappybird.recreation.GameSettings.*;
-
 public class SettingsActivity extends AppCompatActivity {
 
-    private final Map<String, Object> defaultValues = new HashMap<>();
+    public static final String PREFS_NAME = "FlappyBirdPrefs";
+    public static final String PREF_BIRD_COLOR = "pref_bird_color";
+    public static final String PREF_BACKGROUND = "pref_background";
+    public static final String PREF_SOUND_ENABLED = "pref_sound_enabled";
+    public static final String PREF_WING_ANIMATION_ENABLED = "pref_wing_animation_enabled";
+    public static final String PREF_PIPE_COLOR = "pref_pipe_color";
+    public static final String PREF_HIDE_SETTINGS_ICON = "pref_hide_settings_icon";
+    public static final String PREF_RAINBOW_BIRD_ENABLED = "pref_rainbow_bird_enabled";
+    public static final String PREF_GAMEOVER_OPACITY = "pref_gameover_opacity_percent";
+    public static final String PREF_GAME_SPEED = "pref_game_speed";
+    public static final String PREF_GRAVITY = "pref_gravity";
+    public static final String PREF_JUMP_STRENGTH = "pref_jump_strength";
+    public static final String PREF_BIRD_HANG_DELAY = "pref_bird_hang_delay";
+    public static final String PREF_PIPE_GAP = "pref_pipe_gap";
+    public static final String PREF_PIPE_SPACING = "pref_pipe_spacing";
+    public static final String PREF_BIRD_HITBOX = "pref_bird_hitbox";
+    public static final String PREF_PIPE_VARIATION = "pref_pipe_variation";
+    public static final String PREF_SCORE_MULTIPLIER = "pref_score_multiplier";
+    public static final String PREF_MOVING_PIPES_ENABLED = "pref_moving_pipes_enabled";
+    public static final String PREF_PIPE_MOVE_TIER_1_SCORE = "pref_pipe_move_tier_1";
+    public static final String PREF_PIPE_MOVE_TIER_2_SCORE = "pref_pipe_move_tier_2";
+    public static final String PREF_NO_CLIP_ENABLED = "pref_no_clip_enabled";
+    public static final String PREF_UPSIDE_DOWN_ENABLED = "pref_upside_down_enabled";
+    public static final String PREF_REVERSE_PIPES_ENABLED = "pref_reverse_pipes_enabled";
+    public static final String PREF_SETTINGS_DISCLAIMER_SHOWN = "pref_settings_disclaimer_shown";
+    public static final String PREF_HAPTIC_FEEDBACK_ENABLED = "pref_haptic_feedback_enabled";
+    public static final String PREF_BIRD_TRAIL_ENABLED = "pref_bird_trail_enabled";
+    public static final String PREF_GHOST_MODE_ENABLED = "pref_ghost_mode_enabled";
+    public static final String PREF_PIPE_SPEED_VARIATION = "pref_pipe_speed_variation";
+    public static final String PREF_BIRD_SIZE = "pref_bird_size";
+    public static final String PREF_PIPE_WIDTH = "pref_pipe_width";
+    public static final String PREF_BG_SCROLL_SPEED = "pref_bg_scroll_speed";
+    public static final String PREF_GROUND_SCROLL_SPEED = "pref_ground_scroll_speed";
+    public static final String PREF_RANDOM_PIPE_COLORS_ENABLED = "pref_random_pipe_colors_enabled";
+    public static final String PREF_INFINITE_FLAP_ENABLED = "pref_infinite_flap_enabled";
+
+
+    public static final int DEFAULT_BIRD_COLOR = -1;
+    public static final int DEFAULT_BACKGROUND = -1;
+    public static final boolean DEFAULT_SOUND_ENABLED = true;
+    public static final boolean DEFAULT_WING_ANIMATION_ENABLED = true;
+    public static final int DEFAULT_PIPE_COLOR = 0;
+    public static final boolean DEFAULT_HIDE_SETTINGS_ICON = false;
+    public static final boolean DEFAULT_RAINBOW_BIRD_ENABLED = false;
+    public static final int DEFAULT_GAMEOVER_OPACITY = 5;
+    public static final float DEFAULT_GAME_SPEED = 1.0f;
+    public static final float DEFAULT_GRAVITY = 1.0f;
+    public static final float DEFAULT_JUMP_STRENGTH = 1.0f;
+    public static final float DEFAULT_BIRD_HANG_DELAY = 1.0f;
+    public static final float DEFAULT_PIPE_GAP = 1.0f;
+    public static final float DEFAULT_PIPE_SPACING = 1.0f;
+    public static final float DEFAULT_BIRD_HITBOX = 1.0f;
+    public static final float DEFAULT_PIPE_VARIATION = 1.0f;
+    public static final int DEFAULT_SCORE_MULTIPLIER = 1;
+    public static final boolean DEFAULT_MOVING_PIPES_ENABLED = true;
+    public static final int DEFAULT_PIPE_MOVE_TIER_1_SCORE = 2000;
+    public static final int DEFAULT_PIPE_MOVE_TIER_2_SCORE = 3000;
+    public static final boolean DEFAULT_NO_CLIP_ENABLED = false;
+    public static final boolean DEFAULT_UPSIDE_DOWN_ENABLED = false;
+    public static final boolean DEFAULT_REVERSE_PIPES_ENABLED = false;
+    public static final boolean DEFAULT_HAPTIC_FEEDBACK_ENABLED = true;
+    public static final boolean DEFAULT_BIRD_TRAIL_ENABLED = false;
+    public static final boolean DEFAULT_GHOST_MODE_ENABLED = false;
+    public static final float DEFAULT_PIPE_SPEED_VARIATION = 0.0f;
+    public static final float DEFAULT_BIRD_SIZE = 1.0f;
+    public static final float DEFAULT_PIPE_WIDTH = 1.0f;
+    public static final float DEFAULT_BG_SCROLL_SPEED = 0.5f;
+    public static final float DEFAULT_GROUND_SCROLL_SPEED = 1.0f;
+    public static final boolean DEFAULT_RANDOM_PIPE_COLORS_ENABLED = false;
+    public static final boolean DEFAULT_INFINITE_FLAP_ENABLED = false;
+
+    private SettingsBackgroundView backgroundView;
     private SharedPreferences prefs;
     private SharedPreferences.Editor editor;
-    private SettingsBackgroundView backgroundView;
-    private final List<SettingControl> visualControls = new ArrayList<>();
-    private final List<SettingControl> gameplayControls = new ArrayList<>();
-    private final List<SettingControl> cheatControls = new ArrayList<>();
-    private final List<SettingControl> systemControls = new ArrayList<>();
-
+    private RadioGroup birdColorGroup, backgroundGroup, pipeColorGroup;
+    private MaterialSwitch soundSwitch, noClipSwitch, wingAnimationSwitch, movingPipesSwitch, hideSettingsIconSwitch;
+    private MaterialSwitch rainbowBirdSwitch, upsideDownSwitch, reversePipesSwitch, hapticFeedbackSwitch, birdTrailSwitch;
+    private MaterialSwitch ghostModeSwitch, randomPipeColorsSwitch, infiniteFlapSwitch;
+    private EditText opacityEditText, speedEditText, gravityEditText, jumpEditText, pipeGapEditText, pipeMoveTier1EditText, pipeMoveTier2EditText, hangDelayEditText;
+    private EditText pipeSpacingEditText, birdHitboxEditText, pipeVariationEditText, scoreMultiplierEditText, pipeSpeedVariationEditText, birdSizeEditText;
+    private EditText pipeWidthEditText, bgScrollEditText, groundScrollEditText;
+    private Button backButton, resetButton;
     @Override
     protected void onCreate(@Nullable Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        configureWindow();
-        setContentView(R.layout.settings);
-        
         prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
         editor = prefs.edit();
 
-        setupBackgroundView();
-        populateDefaultValues();
-        initializeAndBindControls();
-        setupClickListeners();
-
-        checkDisclaimer();
-    }
-    
-    private void initializeAndBindControls() {
-        // Visuals
-        visualControls.add(new RadioSetting(PREF_BIRD_COLOR, R.id.rg_bird_color, new int[]{R.id.rb_bird_random, R.id.rb_bird_yellow, R.id.rb_bird_blue, R.id.rb_bird_red}));
-        visualControls.add(new RadioSetting(PREF_BACKGROUND, R.id.rg_background, new int[]{R.id.rb_bg_random, R.id.rb_bg_day, R.id.rb_bg_night}, style -> backgroundView.setBackgroundStyle(style)));
-        RadioSetting pipeColorSetting = new RadioSetting(PREF_PIPE_COLOR, R.id.rg_pipe_color, new int[]{R.id.rb_pipe_default, R.id.rb_pipe_red, R.id.rb_pipe_blue, R.id.rb_pipe_yellow, R.id.rb_pipe_white, R.id.rb_pipe_pink, R.id.rb_pipe_black, R.id.rb_pipe_purple, R.id.rb_pipe_orange});
-        visualControls.add(pipeColorSetting);
-        visualControls.add(new SwitchSetting(PREF_RANDOM_PIPE_COLORS_ENABLED, R.id.switch_random_pipe_colors, isEnabled -> pipeColorSetting.setEnabled(!isEnabled)));
-
-        // Gameplay
-        gameplayControls.add(new SliderSetting(PREF_GAME_SPEED, R.id.slider_game_speed, R.id.et_game_speed, speed -> backgroundView.setSpeedMultiplier(speed)));
-        gameplayControls.add(new SliderSetting(PREF_BG_SCROLL_SPEED, R.id.slider_bg_scroll, R.id.et_bg_scroll, speed -> backgroundView.setBgScrollMultiplier(speed)));
-        gameplayControls.add(new SliderSetting(PREF_GROUND_SCROLL_SPEED, R.id.slider_ground_scroll, R.id.et_ground_scroll, speed -> backgroundView.setGroundScrollMultiplier(speed)));
-        gameplayControls.add(new SliderSetting(PREF_BIRD_SIZE, R.id.slider_bird_size, R.id.et_bird_size, null));
-        gameplayControls.add(new SliderSetting(PREF_BIRD_HITBOX, R.id.slider_bird_hitbox, R.id.et_bird_hitbox, null));
-        gameplayControls.add(new SliderSetting(PREF_GRAVITY, R.id.slider_gravity, R.id.et_gravity, null));
-        gameplayControls.add(new SliderSetting(PREF_JUMP_STRENGTH, R.id.slider_jump, R.id.et_jump, null));
-        gameplayControls.add(new SliderSetting(PREF_BIRD_HANG_DELAY, R.id.slider_hang_delay, R.id.et_hang_delay, null));
-        gameplayControls.add(new SliderSetting(PREF_PIPE_GAP, R.id.slider_pipe_gap, R.id.et_pipe_gap, null));
-        gameplayControls.add(new SliderSetting(PREF_PIPE_SPACING, R.id.slider_pipe_spacing, R.id.et_pipe_spacing, null));
-        gameplayControls.add(new SliderSetting(PREF_PIPE_WIDTH, R.id.slider_pipe_width, R.id.et_pipe_width, null));
-        gameplayControls.add(new SliderSetting(PREF_PIPE_VARIATION, R.id.slider_pipe_variation, R.id.et_pipe_variation, null));
-        gameplayControls.add(new SliderSetting(PREF_PIPE_SPEED_VARIATION, R.id.slider_pipe_speed_variation, R.id.et_pipe_speed_variation, null));
-        gameplayControls.add(new EditTextSetting(PREF_PIPE_MOVE_TIER_1_SCORE, R.id.et_pipe_move_tier1));
-        gameplayControls.add(new EditTextSetting(PREF_PIPE_MOVE_TIER_2_SCORE, R.id.et_pipe_move_tier2));
-        gameplayControls.add(new EditTextSetting(PREF_SCORE_MULTIPLIER, R.id.et_score_multiplier));
-        gameplayControls.add(new SwitchSetting(PREF_MOVING_PIPES_ENABLED, R.id.switch_moving_pipes, null));
-
-        // Cheats
-        cheatControls.add(new SwitchSetting(PREF_NO_CLIP_ENABLED, R.id.switch_no_clip, null));
-        cheatControls.add(new SwitchSetting(PREF_INFINITE_FLAP_ENABLED, R.id.switch_infinite_flap, null));
-        cheatControls.add(new SwitchSetting(PREF_RAINBOW_BIRD_ENABLED, R.id.switch_rainbow_bird, null));
-        cheatControls.add(new SwitchSetting(PREF_BIRD_TRAIL_ENABLED, R.id.switch_bird_trail, null));
-        cheatControls.add(new SwitchSetting(PREF_GHOST_MODE_ENABLED, R.id.switch_ghost_mode, null));
-        cheatControls.add(new SwitchSetting(PREF_UPSIDE_DOWN_ENABLED, R.id.switch_upside_down, null));
-        cheatControls.add(new SwitchSetting(PREF_REVERSE_PIPES_ENABLED, R.id.switch_reverse_pipes, null));
-
-        // System
-        systemControls.add(new SwitchSetting(PREF_SOUND_ENABLED, R.id.switch_sound, null));
-        systemControls.add(new SwitchSetting(PREF_HAPTIC_FEEDBACK_ENABLED, R.id.switch_haptic_feedback, null));
-        systemControls.add(new SwitchSetting(PREF_WING_ANIMATION_ENABLED, R.id.switch_wing_animation, null));
-        systemControls.add(new SwitchSetting(PREF_HIDE_SETTINGS_ICON, R.id.switch_hide_settings_icon, null));
-        systemControls.add(new SliderSetting(PREF_GAMEOVER_OPACITY, R.id.slider_opacity, R.id.et_opacity, null));
-
-        loadAllSettings();
-    }
-
-    private void loadAllSettings() {
-        visualControls.forEach(SettingControl::load);
-        gameplayControls.forEach(SettingControl::load);
-        cheatControls.forEach(SettingControl::load);
-        systemControls.forEach(SettingControl::load);
-    }
-
-    private void resetCategory(List<SettingControl> controls) {
-        controls.forEach(SettingControl::reset);
-    }
-    
-    private void setupClickListeners() {
-        findViewById(R.id.button_back).setOnClickListener(v -> finish());
-        findViewById(R.id.button_reset_all).setOnClickListener(v -> showResetAllConfirmation());
-
-        setupExpandableSection(R.id.header_visuals, R.id.content_visuals, R.id.icon_visuals);
-        setupExpandableSection(R.id.header_gameplay, R.id.content_gameplay, R.id.icon_gameplay);
-        setupExpandableSection(R.id.header_cheats, R.id.content_cheats, R.id.icon_cheats);
-        setupExpandableSection(R.id.header_system, R.id.content_system, R.id.icon_system);
-
-        findViewById(R.id.button_reset_visuals).setOnClickListener(v -> resetCategory(visualControls));
-        findViewById(R.id.button_reset_gameplay).setOnClickListener(v -> resetCategory(gameplayControls));
-        findViewById(R.id.button_reset_cheats).setOnClickListener(v -> resetCategory(cheatControls));
-        findViewById(R.id.button_reset_system).setOnClickListener(v -> resetCategory(systemControls));
-    }
-
-    private void showResetAllConfirmation() {
-        new MaterialAlertDialogBuilder(this)
-            .setTitle("Reset All Settings")
-            .setMessage("Are you sure you want to reset ALL settings to their original defaults? This action cannot be undone.")
-            .setNegativeButton("Cancel", null)
-            .setPositiveButton("Reset", (dialog, which) -> {
-                boolean disclaimer = prefs.getBoolean(PREF_SETTINGS_DISCLAIMER_SHOWN, false);
-                editor.clear().putBoolean(PREF_SETTINGS_DISCLAIMER_SHOWN, disclaimer).apply();
-                if (backgroundView != null) {
-                    backgroundView.resetPositions();
-                }
-                loadAllSettings();
-            })
-            .show();
-    }
-    
-    // --- Helper Methods and Classes ---
-
-    private void configureWindow() {
-        WindowCompat.setDecorFitsSystemWindows(getWindow(), false);
-        WindowInsetsControllerCompat controller = WindowCompat.getInsetsController(getWindow(), getWindow().getDecorView());
-        if (controller != null) {
-            controller.hide(WindowInsetsCompat.Type.systemBars());
-            controller.setSystemBarsBehavior(WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);
-        }
-    }
-
-    private void setupBackgroundView() {
-        FrameLayout rootContainer = findViewById(R.id.settings_root_container);
-        backgroundView = new SettingsBackgroundView(this, prefs);
-        rootContainer.addView(backgroundView, 0);
-    }
-
-    private void setupExpandableSection(int headerId, int contentId, int iconId) {
-        View header = findViewById(headerId);
-        View content = findViewById(contentId);
-        ImageView icon = findViewById(iconId);
-        header.setOnClickListener(v -> {
-            boolean isVisible = content.getVisibility() == View.VISIBLE;
-            content.setVisibility(isVisible ? View.GONE : View.VISIBLE);
-            icon.animate().rotation(isVisible ? 0f : 180f).setDuration(300).start();
-        });
-    }
-    
-    private void checkDisclaimer() {
         if (!prefs.getBoolean(PREF_SETTINGS_DISCLAIMER_SHOWN, false)) {
-            new MaterialAlertDialogBuilder(this)
+            showDisclaimerDialog();
+        }
+
+        WindowCompat.setDecorFitsSystemWindows(getWindow(), false);
+        WindowInsetsControllerCompat windowInsetsController =
+                WindowCompat.getInsetsController(getWindow(), getWindow().getDecorView());
+        windowInsetsController.setSystemBarsBehavior(
+                WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+        );
+        windowInsetsController.hide(WindowInsetsCompat.Type.systemBars());
+
+        setContentView(R.layout.settings);
+
+        FrameLayout container = findViewById(R.id.settings_container);
+
+        backgroundView = new SettingsBackgroundView(this);
+        container.addView(backgroundView, 0);
+
+        initViews();
+        loadSettings();
+        setupListeners();
+    }
+
+    private void showDisclaimerDialog() {
+        new MaterialAlertDialogBuilder(this)
                 .setTitle("Settings Disclaimer")
                 .setMessage("Adjusting these settings, especially the gameplay values, can potentially break the game, cause unexpected behavior, or make it unstable. Proceed with caution.")
-                .setPositiveButton("I Understand", (dialog, which) -> editor.putBoolean(PREF_SETTINGS_DISCLAIMER_SHOWN, true).apply())
+                .setPositiveButton("I Understand", (dialog, which) -> {
+    
+                    prefs.edit().putBoolean(PREF_SETTINGS_DISCLAIMER_SHOWN, true).apply();
+                    dialog.dismiss();
+                })
                 .setCancelable(false)
                 .show();
-        }
-    }
-    
-    private interface SettingControl {
-        void load();
-        void reset();
     }
 
-    private abstract class BaseSetting<T> implements SettingControl {
-        protected String key;
-        protected T defaultValue;
-        
-        BaseSetting(String key) {
-            this.key = key;
-            this.defaultValue = (T) defaultValues.get(key);
+    private void initViews() {
+        backButton = findViewById(R.id.button_back);
+        resetButton = findViewById(R.id.button_reset);
+        birdColorGroup = findViewById(R.id.rg_bird_color);
+        backgroundGroup = findViewById(R.id.rg_background);
+        soundSwitch = findViewById(R.id.switch_sound);
+        opacityEditText = findViewById(R.id.et_opacity);
+        speedEditText = findViewById(R.id.et_game_speed);
+        gravityEditText = findViewById(R.id.et_gravity);
+        jumpEditText = findViewById(R.id.et_jump);
+        pipeGapEditText = findViewById(R.id.et_pipe_gap);
+        hangDelayEditText = findViewById(R.id.et_hang_delay);
+        pipeSpacingEditText = findViewById(R.id.et_pipe_spacing);
+        birdHitboxEditText = findViewById(R.id.et_bird_hitbox);
+        noClipSwitch = findViewById(R.id.switch_no_clip);
+        wingAnimationSwitch = findViewById(R.id.switch_wing_animation);
+        pipeColorGroup = findViewById(R.id.rg_pipe_color);
+        movingPipesSwitch = findViewById(R.id.switch_moving_pipes);
+        pipeMoveTier1EditText = findViewById(R.id.et_pipe_move_tier1);
+        pipeMoveTier2EditText = findViewById(R.id.et_pipe_move_tier2);
+        hideSettingsIconSwitch = findViewById(R.id.switch_hide_settings_icon);
+        rainbowBirdSwitch = findViewById(R.id.switch_rainbow_bird);
+        upsideDownSwitch = findViewById(R.id.switch_upside_down);
+        reversePipesSwitch = findViewById(R.id.switch_reverse_pipes);
+        pipeVariationEditText = findViewById(R.id.et_pipe_variation);
+        scoreMultiplierEditText = findViewById(R.id.et_score_multiplier);
+        hapticFeedbackSwitch = findViewById(R.id.switch_haptic_feedback);
+        birdTrailSwitch = findViewById(R.id.switch_bird_trail);
+        ghostModeSwitch = findViewById(R.id.switch_ghost_mode);
+        pipeSpeedVariationEditText = findViewById(R.id.et_pipe_speed_variation);
+        birdSizeEditText = findViewById(R.id.et_bird_size);
+        pipeWidthEditText = findViewById(R.id.et_pipe_width);
+        bgScrollEditText = findViewById(R.id.et_bg_scroll);
+        groundScrollEditText = findViewById(R.id.et_ground_scroll);
+        randomPipeColorsSwitch = findViewById(R.id.switch_random_pipe_colors);
+        infiniteFlapSwitch = findViewById(R.id.switch_flap_timeout);
+    }
+
+    private void loadSettings() {
+        int birdColor = prefs.getInt(PREF_BIRD_COLOR, DEFAULT_BIRD_COLOR);
+        switch (birdColor) {
+            case 0: birdColorGroup.check(R.id.rb_bird_yellow); break;
+            case 1: birdColorGroup.check(R.id.rb_bird_blue); break;
+            case 2: birdColorGroup.check(R.id.rb_bird_red); break;
+            default: birdColorGroup.check(R.id.rb_bird_random); break;
         }
 
-        @Override
-        public abstract void load();
-        
-        @Override
-        public void reset() {
-            if (defaultValue instanceof Float) editor.putFloat(key, (Float) defaultValue);
-            else if (defaultValue instanceof Integer) editor.putInt(key, (Integer) defaultValue);
-            else if (defaultValue instanceof Boolean) editor.putBoolean(key, (Boolean) defaultValue);
+        int background = prefs.getInt(PREF_BACKGROUND, DEFAULT_BACKGROUND);
+        if (background == 0) {
+            backgroundGroup.check(R.id.rb_bg_day);
+        } else if (background == 1) {
+            backgroundGroup.check(R.id.rb_bg_night);
+        } else {
+            backgroundGroup.check(R.id.rb_bg_random);
+        }
+        if (backgroundView != null) {
+            backgroundView.setBackgroundStyle(background);
+        }
+
+        soundSwitch.setChecked(prefs.getBoolean(PREF_SOUND_ENABLED, DEFAULT_SOUND_ENABLED));
+        noClipSwitch.setChecked(prefs.getBoolean(PREF_NO_CLIP_ENABLED, DEFAULT_NO_CLIP_ENABLED));
+        wingAnimationSwitch.setChecked(prefs.getBoolean(PREF_WING_ANIMATION_ENABLED, DEFAULT_WING_ANIMATION_ENABLED));
+        movingPipesSwitch.setChecked(prefs.getBoolean(PREF_MOVING_PIPES_ENABLED, DEFAULT_MOVING_PIPES_ENABLED));
+        hideSettingsIconSwitch.setChecked(prefs.getBoolean(PREF_HIDE_SETTINGS_ICON, DEFAULT_HIDE_SETTINGS_ICON));
+        rainbowBirdSwitch.setChecked(prefs.getBoolean(PREF_RAINBOW_BIRD_ENABLED, DEFAULT_RAINBOW_BIRD_ENABLED));
+        upsideDownSwitch.setChecked(prefs.getBoolean(PREF_UPSIDE_DOWN_ENABLED, DEFAULT_UPSIDE_DOWN_ENABLED));
+        reversePipesSwitch.setChecked(prefs.getBoolean(PREF_REVERSE_PIPES_ENABLED, DEFAULT_REVERSE_PIPES_ENABLED));
+        hapticFeedbackSwitch.setChecked(prefs.getBoolean(PREF_HAPTIC_FEEDBACK_ENABLED, DEFAULT_HAPTIC_FEEDBACK_ENABLED));
+        birdTrailSwitch.setChecked(prefs.getBoolean(PREF_BIRD_TRAIL_ENABLED, DEFAULT_BIRD_TRAIL_ENABLED));
+        ghostModeSwitch.setChecked(prefs.getBoolean(PREF_GHOST_MODE_ENABLED, DEFAULT_GHOST_MODE_ENABLED));
+        randomPipeColorsSwitch.setChecked(prefs.getBoolean(PREF_RANDOM_PIPE_COLORS_ENABLED, DEFAULT_RANDOM_PIPE_COLORS_ENABLED));
+        infiniteFlapSwitch.setChecked(prefs.getBoolean(PREF_INFINITE_FLAP_ENABLED, DEFAULT_INFINITE_FLAP_ENABLED));
+
+        int pipeColor = prefs.getInt(PREF_PIPE_COLOR, DEFAULT_PIPE_COLOR);
+        switch (pipeColor) {
+            case 1: pipeColorGroup.check(R.id.rb_pipe_red); break;
+            case 2: pipeColorGroup.check(R.id.rb_pipe_blue); break;
+            case 3: pipeColorGroup.check(R.id.rb_pipe_yellow); break;
+            case 4: pipeColorGroup.check(R.id.rb_pipe_white); break;
+            case 5: pipeColorGroup.check(R.id.rb_pipe_pink); break;
+            case 6: pipeColorGroup.check(R.id.rb_pipe_black); break;
+            case 7: pipeColorGroup.check(R.id.rb_pipe_purple); break;
+            case 8: pipeColorGroup.check(R.id.rb_pipe_orange); break;
+            default: pipeColorGroup.check(R.id.rb_pipe_default); break;
+        }
+
+        opacityEditText.setText(String.valueOf(prefs.getInt(PREF_GAMEOVER_OPACITY, DEFAULT_GAMEOVER_OPACITY)));
+        float gameSpeed = prefs.getFloat(PREF_GAME_SPEED, DEFAULT_GAME_SPEED);
+        speedEditText.setText(String.valueOf(gameSpeed));
+        if (backgroundView != null) {
+            backgroundView.setSpeedMultiplier(gameSpeed);
+        }
+
+        gravityEditText.setText(String.valueOf(prefs.getFloat(PREF_GRAVITY, DEFAULT_GRAVITY)));
+        jumpEditText.setText(String.valueOf(prefs.getFloat(PREF_JUMP_STRENGTH, DEFAULT_JUMP_STRENGTH)));
+        hangDelayEditText.setText(String.valueOf(prefs.getFloat(PREF_BIRD_HANG_DELAY, DEFAULT_BIRD_HANG_DELAY)));
+        pipeGapEditText.setText(String.valueOf(prefs.getFloat(PREF_PIPE_GAP, DEFAULT_PIPE_GAP)));
+        pipeSpacingEditText.setText(String.valueOf(prefs.getFloat(PREF_PIPE_SPACING, DEFAULT_PIPE_SPACING)));
+        birdHitboxEditText.setText(String.valueOf(prefs.getFloat(PREF_BIRD_HITBOX, DEFAULT_BIRD_HITBOX)));
+        pipeVariationEditText.setText(String.valueOf(prefs.getFloat(PREF_PIPE_VARIATION, DEFAULT_PIPE_VARIATION)));
+        scoreMultiplierEditText.setText(String.valueOf(prefs.getInt(PREF_SCORE_MULTIPLIER, DEFAULT_SCORE_MULTIPLIER)));
+
+        pipeMoveTier1EditText.setText(String.valueOf(prefs.getInt(PREF_PIPE_MOVE_TIER_1_SCORE, DEFAULT_PIPE_MOVE_TIER_1_SCORE)));
+        pipeMoveTier2EditText.setText(String.valueOf(prefs.getInt(PREF_PIPE_MOVE_TIER_2_SCORE, DEFAULT_PIPE_MOVE_TIER_2_SCORE)));
+
+        pipeSpeedVariationEditText.setText(String.valueOf(prefs.getFloat(PREF_PIPE_SPEED_VARIATION, DEFAULT_PIPE_SPEED_VARIATION)));
+        birdSizeEditText.setText(String.valueOf(prefs.getFloat(PREF_BIRD_SIZE, DEFAULT_BIRD_SIZE)));
+        pipeWidthEditText.setText(String.valueOf(prefs.getFloat(PREF_PIPE_WIDTH, DEFAULT_PIPE_WIDTH)));
+        bgScrollEditText.setText(String.valueOf(prefs.getFloat(PREF_BG_SCROLL_SPEED, DEFAULT_BG_SCROLL_SPEED)));
+        groundScrollEditText.setText(String.valueOf(prefs.getFloat(PREF_GROUND_SCROLL_SPEED, DEFAULT_GROUND_SCROLL_SPEED)));
+    }
+
+    private void setupListeners() {
+        backButton.setOnClickListener(v -> finish());
+        resetButton.setOnClickListener(v -> {
+            editor.putInt(PREF_BIRD_COLOR, DEFAULT_BIRD_COLOR);
+            editor.putInt(PREF_BACKGROUND, DEFAULT_BACKGROUND);
+            editor.putBoolean(PREF_SOUND_ENABLED, DEFAULT_SOUND_ENABLED);
+            editor.putBoolean(PREF_WING_ANIMATION_ENABLED, DEFAULT_WING_ANIMATION_ENABLED);
+            editor.putInt(PREF_PIPE_COLOR, DEFAULT_PIPE_COLOR);
+            editor.putBoolean(PREF_HIDE_SETTINGS_ICON, DEFAULT_HIDE_SETTINGS_ICON);
+       
+            editor.putBoolean(PREF_RAINBOW_BIRD_ENABLED, DEFAULT_RAINBOW_BIRD_ENABLED);
+            editor.putInt(PREF_GAMEOVER_OPACITY, DEFAULT_GAMEOVER_OPACITY);
+            editor.putFloat(PREF_GAME_SPEED, DEFAULT_GAME_SPEED);
+            editor.putFloat(PREF_GRAVITY, DEFAULT_GRAVITY);
+            editor.putFloat(PREF_JUMP_STRENGTH, DEFAULT_JUMP_STRENGTH);
+            editor.putFloat(PREF_BIRD_HANG_DELAY, DEFAULT_BIRD_HANG_DELAY);
+            editor.putFloat(PREF_PIPE_GAP, DEFAULT_PIPE_GAP);
+            editor.putFloat(PREF_PIPE_SPACING, DEFAULT_PIPE_SPACING);
+            editor.putFloat(PREF_BIRD_HITBOX, DEFAULT_BIRD_HITBOX);
+            editor.putFloat(PREF_PIPE_VARIATION, DEFAULT_PIPE_VARIATION);
+            editor.putInt(PREF_SCORE_MULTIPLIER, DEFAULT_SCORE_MULTIPLIER);
+            editor.putBoolean(PREF_MOVING_PIPES_ENABLED, DEFAULT_MOVING_PIPES_ENABLED);
+            editor.putInt(PREF_PIPE_MOVE_TIER_1_SCORE, DEFAULT_PIPE_MOVE_TIER_1_SCORE);
+            editor.putInt(PREF_PIPE_MOVE_TIER_2_SCORE, DEFAULT_PIPE_MOVE_TIER_2_SCORE);
+            editor.putBoolean(PREF_NO_CLIP_ENABLED, DEFAULT_NO_CLIP_ENABLED);
+            editor.putBoolean(PREF_UPSIDE_DOWN_ENABLED, DEFAULT_UPSIDE_DOWN_ENABLED);
+            editor.putBoolean(PREF_REVERSE_PIPES_ENABLED, DEFAULT_REVERSE_PIPES_ENABLED);
+            editor.putBoolean(PREF_HAPTIC_FEEDBACK_ENABLED, DEFAULT_HAPTIC_FEEDBACK_ENABLED);
+            editor.putBoolean(PREF_BIRD_TRAIL_ENABLED, DEFAULT_BIRD_TRAIL_ENABLED);
+            editor.putBoolean(PREF_GHOST_MODE_ENABLED, DEFAULT_GHOST_MODE_ENABLED);
+            editor.putFloat(PREF_PIPE_SPEED_VARIATION, DEFAULT_PIPE_SPEED_VARIATION);
+            editor.putFloat(PREF_BIRD_SIZE, DEFAULT_BIRD_SIZE);
+            editor.putFloat(PREF_PIPE_WIDTH, DEFAULT_PIPE_WIDTH);
+            editor.putFloat(PREF_BG_SCROLL_SPEED, DEFAULT_BG_SCROLL_SPEED);
+            editor.putFloat(PREF_GROUND_SCROLL_SPEED, DEFAULT_GROUND_SCROLL_SPEED);
+            editor.putBoolean(PREF_RANDOM_PIPE_COLORS_ENABLED, DEFAULT_RANDOM_PIPE_COLORS_ENABLED);
+            editor.putBoolean(PREF_INFINITE_FLAP_ENABLED, DEFAULT_INFINITE_FLAP_ENABLED);
+
             editor.apply();
-            load();
-        }
-    }
+            loadSettings();
+        });
 
-    private class SliderSetting extends BaseSetting<Number> {
-        private Slider slider;
-        private EditText editText;
-        private Consumer<Float> onUpdate;
-        private TextWatcher textWatcher;
-        private boolean isUpdatingFromSlider = false;
-
-        SliderSetting(String key, @IdRes int sliderId, @IdRes int editTextId, @Nullable Consumer<Float> onUpdate) {
-            super(key);
-            this.slider = findViewById(sliderId);
-            this.editText = findViewById(editTextId);
-            this.onUpdate = onUpdate;
-            if (defaultValue instanceof Integer) {
-                 this.editText.setFilters(new InputFilter[]{});
+        birdColorGroup.setOnCheckedChangeListener((group, checkedId) -> {
+            int selection;
+            if (checkedId == R.id.rb_bird_yellow) {
+                selection = 0;
+            } else if (checkedId == R.id.rb_bird_blue) {
+                selection = 1;
+       
+            } else if (checkedId == R.id.rb_bird_red) {
+                selection = 2;
             } else {
-                 this.editText.setFilters(new InputFilter[]{new DecimalDigitsInputFilter()});
+                selection = -1;
             }
-        }
-        
-        @Override
-        public void load() {
-            Number value;
-            if (defaultValue instanceof Float) {
-                value = prefs.getFloat(key, (Float) defaultValue);
-                editText.setText(String.format(Locale.US, "%.2f", value.floatValue()));
-            } else {
-                value = prefs.getInt(key, (Integer) defaultValue);
-                editText.setText(String.valueOf(value.intValue()));
+            editor.putInt(PREF_BIRD_COLOR, selection).apply();
+        });
+        backgroundGroup.setOnCheckedChangeListener((group, checkedId) -> {
+            int selection;
+            if (checkedId == R.id.rb_bg_day) {
+                selection = 0;
+            } else if (checkedId == R.id.rb_bg_night) {
+                selection = 1;
+            } else 
+            {
+                selection = -1;
             }
-
-            float min = slider.getValueFrom();
-            float max = slider.getValueTo();
-            float valF = value.floatValue();
-
-            float clampedValue = Math.max(min, Math.min(valF, max));
-            float stepSize = slider.getStepSize();
-            float snappedValue = min + (Math.round((clampedValue - min) / stepSize) * stepSize);
-
-            slider.setValue(snappedValue);
-            slider.setEnabled(valF >= min && valF <= max);
-
-            if (onUpdate != null) {
-                onUpdate.accept(valF);
+            editor.putInt(PREF_BACKGROUND, selection).apply();
+            if (backgroundView != null) {
+                backgroundView.setBackgroundStyle(selection);
             }
+        });
+        pipeColorGroup.setOnCheckedChangeListener((group, checkedId) -> {
+            int selection;
+            if (checkedId == R.id.rb_pipe_red) selection = 1;
+            else if (checkedId == R.id.rb_pipe_blue) selection = 2;
+            else if (checkedId == R.id.rb_pipe_yellow) selection = 3;
+            else if (checkedId == R.id.rb_pipe_white) selection = 4;
+         
+            else if (checkedId == R.id.rb_pipe_pink) selection = 5;
+            else if (checkedId == R.id.rb_pipe_black) selection = 6;
+            else if (checkedId == R.id.rb_pipe_purple) selection = 7;
+            else if (checkedId == R.id.rb_pipe_orange) selection = 8;
+            else selection = 0;
+            editor.putInt(PREF_PIPE_COLOR, selection).apply();
+   
+        });
 
-            attachListeners();
-        }
-        
-        private void attachListeners() {
-            slider.clearOnChangeListeners();
-            slider.addOnChangeListener((s, sliderValue, fromUser) -> {
-                if (fromUser) {
-                    isUpdatingFromSlider = true;
-                    if (defaultValue instanceof Float) {
-                        float roundedValue = Math.round(sliderValue * 100.0f) / 100.0f;
-                        editText.setText(String.format(Locale.US, "%.2f", roundedValue));
-                        editor.putFloat(key, roundedValue).apply();
-                        if (onUpdate != null) onUpdate.accept(roundedValue);
-                    } else {
-                        int intValue = Math.round(sliderValue);
-                        editText.setText(String.valueOf(intValue));
-                        editor.putInt(key, intValue).apply();
-                        if (onUpdate != null) onUpdate.accept((float)intValue);
+        soundSwitch.setOnCheckedChangeListener((buttonView, isChecked) -> editor.putBoolean(PREF_SOUND_ENABLED, isChecked).apply());
+        noClipSwitch.setOnCheckedChangeListener((buttonView, isChecked) -> editor.putBoolean(PREF_NO_CLIP_ENABLED, isChecked).apply());
+        wingAnimationSwitch.setOnCheckedChangeListener((buttonView, isChecked) -> editor.putBoolean(PREF_WING_ANIMATION_ENABLED, isChecked).apply());
+        movingPipesSwitch.setOnCheckedChangeListener((buttonView, isChecked) -> editor.putBoolean(PREF_MOVING_PIPES_ENABLED, isChecked).apply());
+        hideSettingsIconSwitch.setOnCheckedChangeListener((buttonView, isChecked) -> editor.putBoolean(PREF_HIDE_SETTINGS_ICON, isChecked).apply());
+        rainbowBirdSwitch.setOnCheckedChangeListener((buttonView, isChecked) -> editor.putBoolean(PREF_RAINBOW_BIRD_ENABLED, isChecked).apply());
+        upsideDownSwitch.setOnCheckedChangeListener((buttonView, isChecked) -> editor.putBoolean(PREF_UPSIDE_DOWN_ENABLED, isChecked).apply());
+        reversePipesSwitch.setOnCheckedChangeListener((buttonView, isChecked) -> editor.putBoolean(PREF_REVERSE_PIPES_ENABLED, isChecked).apply());
+        hapticFeedbackSwitch.setOnCheckedChangeListener((buttonView, isChecked) -> editor.putBoolean(PREF_HAPTIC_FEEDBACK_ENABLED, isChecked).apply());
+        birdTrailSwitch.setOnCheckedChangeListener((buttonView, isChecked) -> editor.putBoolean(PREF_BIRD_TRAIL_ENABLED, isChecked).apply());
+        ghostModeSwitch.setOnCheckedChangeListener((buttonView, isChecked) -> editor.putBoolean(PREF_GHOST_MODE_ENABLED, isChecked).apply());
+        randomPipeColorsSwitch.setOnCheckedChangeListener((buttonView, isChecked) -> editor.putBoolean(PREF_RANDOM_PIPE_COLORS_ENABLED, isChecked).apply());
+        infiniteFlapSwitch.setOnCheckedChangeListener((buttonView, isChecked) -> editor.putBoolean(PREF_INFINITE_FLAP_ENABLED, isChecked).apply());
+
+        speedEditText.addTextChangedListener(new TextWatcher() {
+            @Override public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
+            @Override public void onTextChanged(CharSequence s, int start, int before, int count) {}
+            @Override public void afterTextChanged(Editable s) {
+                try 
+                {
+                    String valueStr = s.toString();
+                    if (valueStr.isEmpty() || valueStr.equals(".")) {
+                        return;
                     }
-                    isUpdatingFromSlider = false;
-                }
-            });
-
-            if (textWatcher != null) editText.removeTextChangedListener(textWatcher);
-            textWatcher = new TextWatcher() {
-                @Override public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
-                @Override public void onTextChanged(CharSequence s, int start, int before, int count) {}
-                @Override public void afterTextChanged(Editable s) {
-                    if (isUpdatingFromSlider) return;
-
-                    try {
-                        String valStr = s.toString().trim();
-                        if (valStr.isEmpty() || valStr.equals(".") || valStr.equals("-")) {
-                            slider.setEnabled(false);
-                            return;
-                        }
-                        
-                        if (defaultValue instanceof Float) {
-                            float newValue = Float.parseFloat(valStr);
-                            editor.putFloat(key, newValue).apply();
-                            slider.setEnabled(newValue >= slider.getValueFrom() && newValue <= slider.getValueTo());
-                            if (onUpdate != null) onUpdate.accept(newValue);
-                        } else {
-                            int newValue = Integer.parseInt(valStr);
-                            editor.putInt(key, newValue).apply();
-                            slider.setEnabled(newValue >= slider.getValueFrom() && newValue <= slider.getValueTo());
-                            if (onUpdate != null) onUpdate.accept((float)newValue);
-                        }
-                    } catch (NumberFormatException e) {
-                        slider.setEnabled(false);
-                    }
-                }
-            };
-            editText.addTextChangedListener(textWatcher);
-        }
-    }
     
-    private class SwitchSetting extends BaseSetting<Boolean> {
-        private MaterialSwitch mSwitch;
-        private Consumer<Boolean> onUpdate;
-
-        SwitchSetting(String key, @IdRes int switchId, @Nullable Consumer<Boolean> onUpdate) {
-            super(key);
-            this.mSwitch = findViewById(switchId);
-            this.onUpdate = onUpdate;
-        }
-
-        @Override
-        public void load() {
-            boolean isChecked = prefs.getBoolean(key, defaultValue);
-            mSwitch.setChecked(isChecked);
-            if (onUpdate != null) onUpdate.accept(isChecked);
-
-            mSwitch.setOnCheckedChangeListener((button, checked) -> {
-                editor.putBoolean(key, checked).apply();
-                if (onUpdate != null) onUpdate.accept(checked);
-            });
-        }
-    }
-
-    private class RadioSetting extends BaseSetting<Integer> {
-        private RadioGroup radioGroup;
-        private int[] idMap;
-        private Consumer<Integer> onUpdate;
-        private boolean hasOffset;
-
-        RadioSetting(String key, @IdRes int groupId, @NonNull int[] idMap) {
-            this(key, groupId, idMap, null);
-        }
-
-        RadioSetting(String key, @IdRes int groupId, @NonNull int[] idMap, @Nullable Consumer<Integer> onUpdate) {
-            super(key);
-            this.radioGroup = findViewById(groupId);
-            this.idMap = idMap;
-            this.onUpdate = onUpdate;
-            this.hasOffset = PREF_BIRD_COLOR.equals(key) || PREF_BACKGROUND.equals(key);
-        }
-
-        @Override
-        public void load() {
-            int selection = prefs.getInt(key, defaultValue);
-            int mappedIndex = hasOffset ? selection + 1 : selection;
+                    float value = Float.parseFloat(valueStr);
+                    editor.putFloat(PREF_GAME_SPEED, value).apply();
+                    if (backgroundView != null) {
+                        backgroundView.setSpeedMultiplier(value);
             
-            if (mappedIndex >= 0 && mappedIndex < idMap.length) {
-                radioGroup.check(idMap[mappedIndex]);
-            } else {
-                radioGroup.clearCheck();
-            }
-            if (onUpdate != null) onUpdate.accept(selection);
-
-            radioGroup.setOnCheckedChangeListener((group, checkedId) -> {
-                int newSelection = defaultValue;
-                for (int i = 0; i < idMap.length; i++) {
-                    if (idMap[i] == checkedId) {
-                        newSelection = hasOffset ? i - 1 : i;
-                        break;
                     }
+                } catch (NumberFormatException e) {
                 }
-                editor.putInt(key, newSelection).apply();
-                if (onUpdate != null) onUpdate.accept(newSelection);
-            });
-        }
-        
-        public void setEnabled(boolean enabled) {
-            for (int i = 0; i < radioGroup.getChildCount(); i++) {
-                View child = radioGroup.getChildAt(i);
-                child.setEnabled(enabled);
-                child.setAlpha(enabled ? 1.0f : 0.5f);
             }
-        }
+        });
+        setupIntEditTextListener(opacityEditText, PREF_GAMEOVER_OPACITY, 100);
+        setupFloatEditTextListener(gravityEditText, PREF_GRAVITY);
+        setupFloatEditTextListener(jumpEditText, PREF_JUMP_STRENGTH);
+        setupFloatEditTextListener(hangDelayEditText, PREF_BIRD_HANG_DELAY);
+        setupFloatEditTextListener(pipeGapEditText, PREF_PIPE_GAP);
+        setupFloatEditTextListener(pipeSpacingEditText, PREF_PIPE_SPACING);
+        setupFloatEditTextListener(birdHitboxEditText, PREF_BIRD_HITBOX);
+        setupIntEditTextListener(pipeMoveTier1EditText, PREF_PIPE_MOVE_TIER_1_SCORE, 99999);
+        setupIntEditTextListener(pipeMoveTier2EditText, PREF_PIPE_MOVE_TIER_2_SCORE, 99999);
+        setupFloatEditTextListener(pipeVariationEditText, PREF_PIPE_VARIATION);
+        setupIntEditTextListener(scoreMultiplierEditText, PREF_SCORE_MULTIPLIER, 999);
+        setupFloatEditTextListener(pipeSpeedVariationEditText, PREF_PIPE_SPEED_VARIATION);
+        setupFloatEditTextListener(birdSizeEditText, PREF_BIRD_SIZE);
+        setupFloatEditTextListener(pipeWidthEditText, PREF_PIPE_WIDTH);
+        setupFloatEditTextListener(bgScrollEditText, PREF_BG_SCROLL_SPEED);
+        setupFloatEditTextListener(groundScrollEditText, PREF_GROUND_SCROLL_SPEED);
     }
 
-    private class EditTextSetting extends BaseSetting<Integer> {
-        private EditText editText;
-        private TextWatcher textWatcher;
-        
-        EditTextSetting(String key, @IdRes int editTextId) {
-            super(key);
-            this.editText = findViewById(editTextId);
-        }
+    private void setupIntEditTextListener(EditText editText, String prefKey, int maxValue) {
+        editText.addTextChangedListener(new TextWatcher() {
+            @Override public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
+            @Override public void onTextChanged(CharSequence s, int start, int before, int count) {}
+            @Override public void afterTextChanged(Editable s) {
+            
+                try {
+                    String valueStr = s.toString();
+                    if (valueStr.isEmpty()) return;
+                    int value = Integer.parseInt(valueStr);
+                    if (value >= 0 && value <= 
+                        maxValue) {
+                        editor.putInt(prefKey, value).apply();
+                        editText.setError(null);
+                    } else {
+                        editText.setError("Value must be 0-" 
+                        + maxValue);
+                    }
+                } catch (NumberFormatException e) {
+                }
+            }
+        });
+    }
 
-        @Override
-        public void load() {
-            editText.setText(String.valueOf(prefs.getInt(key, defaultValue)));
-
-            if (textWatcher != null) editText.removeTextChangedListener(textWatcher);
-            textWatcher = new TextWatcher() {
-                 @Override public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
-                 @Override public void onTextChanged(CharSequence s, int start, int before, int count) {}
-                 @Override public void afterTextChanged(Editable s) {
-                     try {
-                         String valStr = s.toString().trim();
-                         if (valStr.isEmpty() || valStr.equals("-")) return;
-                         editor.putInt(key, Integer.parseInt(valStr)).apply();
-                     } catch (NumberFormatException e) { /* Ignore */ }
-                 }
-            };
-            editText.addTextChangedListener(textWatcher);
-        }
+    private void setupFloatEditTextListener(EditText editText, String prefKey) {
+        editText.addTextChangedListener(new TextWatcher() {
+            @Override public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
+            @Override public void onTextChanged(CharSequence s, int start, int before, int count) {}
+            @Override public void afterTextChanged(Editable s) {
+                try 
+                {
+                    String valueStr = s.toString();
+                    if (valueStr.isEmpty() || valueStr.equals(".")) return;
+                    float value = Float.parseFloat(valueStr);
+                    editor.putFloat(prefKey, value).apply();
+         
+                } catch (NumberFormatException e) {
+                }
+            }
+        });
     }
 
     @Override
     protected void onResume() {
         super.onResume();
-        if (backgroundView != null) backgroundView.resume();
+        if (backgroundView != null) {
+            backgroundView.resume();
+        }
     }
 
     @Override
     protected void onPause() {
         super.onPause();
-        if (backgroundView != null) backgroundView.pause();
-        editor.apply();
-    }
-    
-    private void populateDefaultValues() {
-        defaultValues.put(PREF_BIRD_COLOR, DEFAULT_BIRD_COLOR);
-        defaultValues.put(PREF_BACKGROUND, DEFAULT_BACKGROUND);
-        defaultValues.put(PREF_SOUND_ENABLED, DEFAULT_SOUND_ENABLED);
-        defaultValues.put(PREF_WING_ANIMATION_ENABLED, DEFAULT_WING_ANIMATION_ENABLED);
-        defaultValues.put(PREF_PIPE_COLOR, DEFAULT_PIPE_COLOR);
-        defaultValues.put(PREF_HIDE_SETTINGS_ICON, DEFAULT_HIDE_SETTINGS_ICON);
-        defaultValues.put(PREF_RAINBOW_BIRD_ENABLED, DEFAULT_RAINBOW_BIRD_ENABLED);
-        defaultValues.put(PREF_GAMEOVER_OPACITY, DEFAULT_GAMEOVER_OPACITY);
-        defaultValues.put(PREF_GAME_SPEED, DEFAULT_GAME_SPEED);
-        defaultValues.put(PREF_GRAVITY, DEFAULT_GRAVITY);
-        defaultValues.put(PREF_JUMP_STRENGTH, DEFAULT_JUMP_STRENGTH);
-        defaultValues.put(PREF_BIRD_HANG_DELAY, DEFAULT_BIRD_HANG_DELAY);
-        defaultValues.put(PREF_PIPE_GAP, DEFAULT_PIPE_GAP);
-        defaultValues.put(PREF_PIPE_SPACING, DEFAULT_PIPE_SPACING);
-        defaultValues.put(PREF_BIRD_HITBOX, DEFAULT_BIRD_HITBOX);
-        defaultValues.put(PREF_PIPE_VARIATION, DEFAULT_PIPE_VARIATION);
-        defaultValues.put(PREF_SCORE_MULTIPLIER, DEFAULT_SCORE_MULTIPLIER);
-        defaultValues.put(PREF_MOVING_PIPES_ENABLED, DEFAULT_MOVING_PIPES_ENABLED);
-        defaultValues.put(PREF_PIPE_MOVE_TIER_1_SCORE, DEFAULT_PIPE_MOVE_TIER_1_SCORE);
-        defaultValues.put(PREF_PIPE_MOVE_TIER_2_SCORE, DEFAULT_PIPE_MOVE_TIER_2_SCORE);
-        defaultValues.put(PREF_NO_CLIP_ENABLED, DEFAULT_NO_CLIP_ENABLED);
-        defaultValues.put(PREF_UPSIDE_DOWN_ENABLED, DEFAULT_UPSIDE_DOWN_ENABLED);
-        defaultValues.put(PREF_REVERSE_PIPES_ENABLED, DEFAULT_REVERSE_PIPES_ENABLED);
-        defaultValues.put(PREF_HAPTIC_FEEDBACK_ENABLED, DEFAULT_HAPTIC_FEEDBACK_ENABLED);
-        defaultValues.put(PREF_BIRD_TRAIL_ENABLED, DEFAULT_BIRD_TRAIL_ENABLED);
-        defaultValues.put(PREF_GHOST_MODE_ENABLED, DEFAULT_GHOST_MODE_ENABLED);
-        defaultValues.put(PREF_PIPE_SPEED_VARIATION, DEFAULT_PIPE_SPEED_VARIATION);
-        defaultValues.put(PREF_BIRD_SIZE, DEFAULT_BIRD_SIZE);
-        defaultValues.put(PREF_PIPE_WIDTH, DEFAULT_PIPE_WIDTH);
-        defaultValues.put(PREF_BG_SCROLL_SPEED, DEFAULT_BG_SCROLL_SPEED);
-        defaultValues.put(PREF_GROUND_SCROLL_SPEED, DEFAULT_GROUND_SCROLL_SPEED);
-        defaultValues.put(PREF_RANDOM_PIPE_COLORS_ENABLED, DEFAULT_RANDOM_PIPE_COLORS_ENABLED);
-        defaultValues.put(PREF_INFINITE_FLAP_ENABLED, DEFAULT_INFINITE_FLAP_ENABLED);
-    }
-    
-    public static class DecimalDigitsInputFilter implements InputFilter {
-        @Override
-        public CharSequence filter(CharSequence source, int start, int end, Spanned dest, int dstart, int dend) {
-            StringBuilder builder = new StringBuilder(dest);
-            builder.replace(dstart, dend, source.subSequence(start, end).toString());
-            String text = builder.toString();
-
-            int dotIndex = text.indexOf(".");
-            if (dotIndex > 0) {
-                if (text.length() - dotIndex - 1 > 2) {
-                    return "";
-                }
-            }
-            return null;
+        if (backgroundView != null) {
+            backgroundView.pause();
         }
     }
-    
+
     static class SettingsBackgroundView extends View implements Choreographer.FrameCallback {
 
         private Choreographer choreographer;
         private boolean isRunning = false;
-        private boolean isReady = false;
         private long lastFrameTimeNanos = 0;
+
         private int screenWidth, screenHeight;
-        private Bitmap bgDayBitmap, bgNightBitmap, groundBitmap, currentBgBitmap, unscaledBgDay;
+
+        private Bitmap bgDayBitmap, bgNightBitmap, groundBitmap, currentBgBitmap;
         private float groundX = 0, backgroundX = 0;
         private int groundHeight;
-        private float scale, baseSpeed;
+
+        private float basePipeSpeed;
         private float speedMultiplier = 1.0f;
-        private float bgScrollMultiplier = 0.5f;
-        private float groundScrollMultiplier = 1.0f;
-        private final Paint pixelPaint = new Paint();
+        private Paint pixelPaint = new Paint();
+        private RectF groundDestRect = new RectF();
         private int backgroundStyle = -2;
-        private static final float TARGET_FPS = 120.0f;
+        private boolean isReady = false;
 
-
-        public SettingsBackgroundView(Context context, SharedPreferences prefs) {
+        public SettingsBackgroundView(Context context) {
             super(context);
-            this.speedMultiplier = prefs.getFloat(PREF_GAME_SPEED, DEFAULT_GAME_SPEED);
-            this.bgScrollMultiplier = prefs.getFloat(PREF_BG_SCROLL_SPEED, DEFAULT_BG_SCROLL_SPEED);
-            this.groundScrollMultiplier = prefs.getFloat(PREF_GROUND_SCROLL_SPEED, DEFAULT_GROUND_SCROLL_SPEED);
             init();
         }
 
@@ -524,133 +495,119 @@ public class SettingsActivity extends AppCompatActivity {
             choreographer = Choreographer.getInstance();
         }
 
+
         @Override
         protected void onSizeChanged(int w, int h, int oldw, int oldh) {
             super.onSizeChanged(w, h, oldw, oldh);
-            if (w == 0 || h == 0 || isReady) return;
+            if (w == 0 || h == 0) return;
 
-            try {
-                screenWidth = w;
-                screenHeight = h;
-                BitmapFactory.Options options = new BitmapFactory.Options();
-                options.inScaled = false;
-                Bitmap atlas = BitmapFactory.decodeResource(getContext().getResources(), R.drawable.atlas, options);
-                if (atlas == null) {
-                    isReady = false;
-                    return;
-                }
+            screenWidth = w;
+            screenHeight = h;
+            BitmapFactory.Options options = new BitmapFactory.Options();
+            options.inScaled = false;
+            Bitmap atlas = BitmapFactory.decodeResource(getContext().getResources(), R.drawable.atlas, options);
+            Bitmap unscaledBgDay = Bitmap.createBitmap(atlas, 0, 0, 288, 512);
+            Bitmap unscaledBgNight = Bitmap.createBitmap(atlas, (int)(0.28515625 * 1024), 0, 288, 512);
+            Bitmap unscaledLand = Bitmap.createBitmap(atlas, (int)(0.5703125 * 1024), 0, 336, 112);
+            atlas.recycle();
 
-                unscaledBgDay = Bitmap.createBitmap(atlas, 0, 0, 288, 512);
-                Bitmap unscaledBgNight = Bitmap.createBitmap(atlas, 292, 0, 288, 512);
-                Bitmap unscaledLand = Bitmap.createBitmap(atlas, 584, 0, 336, 112);
-                atlas.recycle();
-                
-                scale = (float) screenHeight / unscaledBgDay.getHeight();
-                baseSpeed = (1.1f * scale) * TARGET_FPS;
+            float scale = (float) screenHeight / unscaledBgDay.getHeight();
+            int bgWidth = (int) (unscaledBgDay.getWidth() * scale);
 
-                float heightScale = (float) screenHeight / unscaledBgDay.getHeight();
-                int bgWidth = (int) (unscaledBgDay.getWidth() * heightScale);
-
-                bgDayBitmap = Bitmap.createScaledBitmap(unscaledBgDay, bgWidth, screenHeight, false);
-                bgNightBitmap = Bitmap.createScaledBitmap(unscaledBgNight, bgWidth, screenHeight, false);
-                groundBitmap = Bitmap.createScaledBitmap(unscaledLand, (int)(unscaledLand.getWidth() * heightScale), (int)(unscaledLand.getHeight() * heightScale), false);
-
-                unscaledBgNight.recycle();
-                unscaledLand.recycle();
-
-                groundHeight = groundBitmap.getHeight();
-                isReady = true;
-
-                applyBackgroundStyle();
-                resume();
-            } catch (Throwable t) {
-                isReady = false;
-            }
+            bgDayBitmap = Bitmap.createScaledBitmap(unscaledBgDay, bgWidth, screenHeight, false);
+            bgNightBitmap = Bitmap.createScaledBitmap(unscaledBgNight, bgWidth, screenHeight, false);
+            groundBitmap = Bitmap.createScaledBitmap(unscaledLand, (int)(unscaledLand.getWidth() * scale), (int)(unscaledLand.getHeight() * scale), false);
+            groundHeight = groundBitmap.getHeight();
+            basePipeSpeed = (1.1f * scale) * 120.0f;
+            isReady = true;
+            applyBackgroundStyle();
+            resume();
         }
 
         public void setBackgroundStyle(int style) {
             this.backgroundStyle = style;
-            if (isReady) {
-                applyBackgroundStyle();
-            }
+            applyBackgroundStyle();
         }
 
         private void applyBackgroundStyle() {
-            try {
-                switch (this.backgroundStyle) {
-                    case 0:
-                        currentBgBitmap = bgDayBitmap;
-                        break;
-                    case 1:
-                        currentBgBitmap = bgNightBitmap;
-                        break;
-                    default:
-                        if (currentBgBitmap == null) {
-                            currentBgBitmap = Math.random() > 0.5 ? bgDayBitmap : bgNightBitmap;
-                        }
-                        break;
-                }
-                invalidate();
-            } catch (Exception e) { /* Failsafe */ }
-        }
-
-        public void setSpeedMultiplier(float multiplier) { this.speedMultiplier = Math.max(0, multiplier); }
-        public void setBgScrollMultiplier(float multiplier) { this.bgScrollMultiplier = Math.max(0, multiplier); }
-        public void setGroundScrollMultiplier(float multiplier) { this.groundScrollMultiplier = Math.max(0, multiplier); }
-        public void resetPositions() { this.backgroundX = 0; this.groundX = 0; }
-
-        @Override
-        public void doFrame(long frameTimeNanos) {
-            if (!isRunning || !isReady) {
-                if(!isRunning) choreographer.removeFrameCallback(this);
+            if (!isReady) {
                 return;
             }
 
-            try {
-                if (lastFrameTimeNanos == 0) {
-                    lastFrameTimeNanos = frameTimeNanos;
-                    choreographer.postFrameCallback(this);
-                    return;
-                }
+            switch (this.backgroundStyle) {
+                case 0:
+                    currentBgBitmap = bgDayBitmap;
+                    break;
+                case 1:
+                    currentBgBitmap = bgNightBitmap;
+                    break;
+                case -1:
+                default:
+                    if (currentBgBitmap == null) {
+                        currentBgBitmap = Math.random() > 0.5 ?
+                        bgDayBitmap : bgNightBitmap;
+                    }
+                    break;
+            }
+            invalidate();
+        }
 
-                float deltaTime = (frameTimeNanos - lastFrameTimeNanos) / 1_000_000_000.0f;
-                lastFrameTimeNanos = frameTimeNanos;
-                if (deltaTime > 0.1f) deltaTime = 0.016f;
-
-                if (currentBgBitmap == null || groundBitmap == null || currentBgBitmap.isRecycled() || groundBitmap.isRecycled()) {
-                    choreographer.postFrameCallback(this);
-                    return;
-                }
-
-                float effectivePipeSpeed = baseSpeed * speedMultiplier;
-                float bgDelta = (effectivePipeSpeed * bgScrollMultiplier) * deltaTime;
-                backgroundX = (backgroundX - bgDelta) % currentBgBitmap.getWidth();
-                float groundDelta = (effectivePipeSpeed * groundScrollMultiplier) * deltaTime;
-                groundX = (groundX - groundDelta) % groundBitmap.getWidth();
-
-                invalidate();
-                choreographer.postFrameCallback(this);
-            } catch (Exception e) { /* Failsafe */ }
+        public void setSpeedMultiplier(float multiplier) {
+            this.speedMultiplier = Math.max(0, multiplier);
         }
 
         @Override
-        protected void onDraw(@NonNull Canvas canvas) {
-            super.onDraw(canvas);
-            if (!isReady || currentBgBitmap == null || groundBitmap == null || currentBgBitmap.isRecycled() || groundBitmap.isRecycled()) return;
+        public void doFrame(long frameTimeNanos) {
+            if (!isRunning) return;
+            if (lastFrameTimeNanos == 0) {
+                lastFrameTimeNanos = frameTimeNanos;
+                choreographer.postFrameCallback(this);
+                return;
+            }
 
-            try {
-                for (float x = backgroundX; x < screenWidth; x += currentBgBitmap.getWidth()) {
-                    canvas.drawBitmap(currentBgBitmap, x, 0, pixelPaint);
-                }
-                float groundTopY = screenHeight - groundHeight;
-                for (float x = groundX; x < screenWidth; x += groundBitmap.getWidth()) {
-                    canvas.drawBitmap(groundBitmap, x, groundTopY, pixelPaint);
-                }
-            } catch (Exception e) { /* Failsafe */ }
+            float deltaTime = (frameTimeNanos - lastFrameTimeNanos) / 1_000_000_000.0f;
+            lastFrameTimeNanos = frameTimeNanos;
+
+            if (deltaTime > (1.0f / 30.0f)) {
+                deltaTime = (1.0f / 30.0f);
+            }
+
+            if (currentBgBitmap == null) {
+                choreographer.postFrameCallback(this);
+                return;
+            }
+
+            float effectiveSpeed = basePipeSpeed * speedMultiplier;
+            backgroundX -= (effectiveSpeed / 2) * deltaTime;
+            if (backgroundX <= -currentBgBitmap.getWidth()) {
+                backgroundX += currentBgBitmap.getWidth();
+            }
+            groundX -= effectiveSpeed * deltaTime;
+            if (groundX <= -groundBitmap.getWidth()) {
+                groundX += groundBitmap.getWidth();
+            }
+
+            invalidate();
+            choreographer.postFrameCallback(this);
+        }
+
+        @Override
+        protected void onDraw(Canvas canvas) {
+            super.onDraw(canvas);
+            if (canvas == null || currentBgBitmap == null || groundBitmap == null) return;
+            for (float x = backgroundX % currentBgBitmap.getWidth(); x < screenWidth; x += currentBgBitmap.getWidth()) {
+                canvas.drawBitmap(currentBgBitmap, x, 0, pixelPaint);
+            }
+
+            float groundTopY = screenHeight - groundHeight;
+            for (float x = groundX % groundBitmap.getWidth(); x < screenWidth; x += groundBitmap.getWidth()) {
+                groundDestRect.set(x, groundTopY, x + groundBitmap.getWidth(), screenHeight);
+                canvas.drawBitmap(groundBitmap, null, groundDestRect, pixelPaint);
+            }
         }
 
         public void resume() {
-            if (!isRunning && isReady) {
+            if (!isRunning) {
                 isRunning = true;
                 lastFrameTimeNanos = 0;
                 choreographer.postFrameCallback(this);
@@ -666,16 +623,7 @@ public class SettingsActivity extends AppCompatActivity {
         protected void onDetachedFromWindow() {
             super.onDetachedFromWindow();
             pause();
-            try {
-                if(unscaledBgDay != null && !unscaledBgDay.isRecycled()) unscaledBgDay.recycle();
-                if(bgDayBitmap != null && !bgDayBitmap.isRecycled()) bgDayBitmap.recycle();
-                if(bgNightBitmap != null && !bgNightBitmap.isRecycled()) bgNightBitmap.recycle();
-                if(groundBitmap != null && !groundBitmap.isRecycled()) groundBitmap.recycle();
-            } catch (Exception e) { /* Failsafe */ } 
-            finally {
-                unscaledBgDay = null; bgDayBitmap = null; bgNightBitmap = null;
-                groundBitmap = null; currentBgBitmap = null; isReady = false;
-            }
+            isReady = false;
         }
     }
 }
