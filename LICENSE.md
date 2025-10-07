@@ -14,7 +14,7 @@ By accessing, downloading, or using any part of this repository, you agree to th
 - **Personal Use Only**: This code is provided for **personal learning, study, or experimentation only**. Public distribution (outside of forks or pull requests to this repository) is **not allowed**.
 - **No Claim of Ownership**: You **may not** claim authorship or ownership of any part of the visual, audio, or gameplay assets that are similar to or derived from the original *Flappy Bird*.
 - **Source-Available, Not Open Source**: This repository is **not** licensed under any recognized open-source license. It is **source-available**: you may view, fork, and help contribute under these usage terms, but redistribution outside GitHub or derivative publication is **prohibited** due to this being a remake of something that may be copyrighted.
-- **At Your Own Risk**: You assume all responsibility for your use of this code. The maintainers accept **no liability** for any outcomes, legal or otherwise, resulting from its use or misuse.
+- **At Your Own Risk**: You assume all responsibility for your use of this code. The maintainers accept **no liability** for any outcomes, legal or otherwise, resulting from its use or misuse. This project was made purely for educational purposes and the intent to keep the popular Flappy Bird game alive.
 
 ---
 
