@@ -9,7 +9,7 @@ android {
 	
 	defaultConfig {
 		applicationId "com.flappybird.recreation"
-		namespace "com.flappybird.recreation"
+		namespace = "com.flappybird.recreation"
 		minSdkVersion 21
 		targetSdkVersion 36
 		versionCode 15
@@ -23,7 +23,7 @@ android {
 		}
 	}
 	buildFeatures {
-		 viewBinding true
+		 viewBinding = true
 	}
 }
 
