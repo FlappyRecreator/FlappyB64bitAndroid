@@ -3,7 +3,7 @@ plugins {
 }
 
 android {
-	compileSdk 34
+	compileSdk 36
 	
 	useLibrary 'org.apache.http.legacy'
 	
@@ -11,9 +11,9 @@ android {
 		applicationId "com.flappybird.recreation"
 		namespace "com.flappybird.recreation"
 		minSdkVersion 21
-		targetSdkVersion 35
-		versionCode 14
-		versionName "1.4"
+		targetSdkVersion 36
+		versionCode 15
+		versionName "1.5"
 	}
 	
 	buildTypes {
@@ -41,7 +41,7 @@ dependencies {
 	implementation 'androidx.profileinstaller:profileinstaller:1.4.1'
 	implementation 'androidx.webkit:webkit:1.13.0'
 	implementation 'androidx.transition:transition:1.6.0'
-	implementation 'com.google.android.material:material:1.14.0-alpha01'
+	implementation 'com.google.android.material:material:1.13.0'
 	implementation 'androidx.dynamicanimation:dynamicanimation:1.1.0'
 	implementation 'androidx.graphics:graphics-shapes:1.0.1'
 	implementation 'com.google.code.gson:gson:2.13.1'
