@@ -41,8 +41,9 @@ dependencies {
 	implementation 'androidx.profileinstaller:profileinstaller:1.4.1'
 	implementation 'androidx.webkit:webkit:1.13.0'
 	implementation 'androidx.transition:transition:1.6.0'
-	implementation 'com.google.android.material:material:1.13.0'
+	implementation 'com.google.android.material:material:1.14.0-alpha08'
 	implementation 'androidx.dynamicanimation:dynamicanimation:1.1.0'
 	implementation 'androidx.graphics:graphics-shapes:1.0.1'
 	implementation 'com.google.code.gson:gson:2.13.1'
 }
+
