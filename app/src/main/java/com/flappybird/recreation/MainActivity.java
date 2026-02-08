@@ -1,11 +1,12 @@
 package com.flappybird.recreation;
 
+import android.animation.TimeInterpolator;
 import android.content.Context;
-import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
+import android.graphics.BlurMaskFilter;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.ColorFilter;
@@ -14,9 +15,11 @@ import android.graphics.ColorMatrixColorFilter;
 import android.graphics.LinearGradient;
 import android.graphics.Matrix;
 import android.graphics.Paint;
+import android.graphics.Path;
 import android.graphics.PorterDuff;
 import android.graphics.PorterDuffColorFilter;
 import android.graphics.PorterDuffXfermode;
+import android.graphics.RadialGradient;
 import android.graphics.Rect;
 import android.graphics.RectF;
 import android.graphics.Shader;
@@ -32,12 +35,10 @@ import android.view.Choreographer;
 import android.view.HapticFeedbackConstants;
 import android.view.MotionEvent;
 import android.view.View;
-import android.view.Window;
+import android.view.animation.DecelerateInterpolator;
 import androidx.activity.EdgeToEdge;
-
 import androidx.annotation.Nullable;
 import androidx.appcompat.app.AppCompatActivity;
-import androidx.core.content.res.ResourcesCompat;
 import androidx.core.graphics.Insets;
 import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowCompat;
@@ -50,29 +51,29 @@ import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Deque;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Random;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.function.BiFunction;
 
 import static com.flappybird.recreation.SettingsActivity.*;
 
 public class MainActivity extends AppCompatActivity {
 
     private GameView gameView;
+
     @Override
     protected void onCreate(@Nullable Bundle savedInstanceState) {
         EdgeToEdge.enable(this);
-
         super.onCreate(savedInstanceState);
+        
         WindowInsetsControllerCompat windowInsetsController =
                 WindowCompat.getInsetsController(getWindow(), getWindow().getDecorView());
         windowInsetsController.setSystemBarsBehavior(
                 WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
         );
         windowInsetsController.hide(WindowInsetsCompat.Type.systemBars());
-
 
         setContentView(R.layout.main);
         FrameLayout gameContainer = findViewById(R.id.game_container);
@@ -98,6 +99,16 @@ public class MainActivity extends AppCompatActivity {
 
 class GameView extends View implements Choreographer.FrameCallback {
 
+    // --- MEDAL ADJUSTMENTS (Change these if position is off) ---
+    // Negative X = Left, Positive X = Right
+    // Negative Y = Up,   Positive Y = Down
+    // These values are multiplied by the screen scale, so they remain consistent across devices.
+    private final float PLATINUM_OFFSET_X = -1.0f;
+    private final float PLATINUM_OFFSET_Y = 1.0f;
+    
+    private final float GOLD_OFFSET_X = -1.0f;
+    private final float GOLD_OFFSET_Y = 1.0f;
+
     private enum GameState { HOME, TRANSITION_TO_WAITING, WAITING, PLAYING, GAME_OVER, PANEL_SLIDING }
     private GameState gameState = GameState.HOME;
     private Choreographer choreographer;
@@ -108,8 +119,10 @@ class GameView extends View implements Choreographer.FrameCallback {
     private float scale;
     private int systemBarTop = -1, systemBarBottom = -1;
 
+    // Graphics & Object Pooling
     private Paint pixelPaint, birdPaint;
     private Matrix birdMatrix = new Matrix();
+    private Matrix gradientMatrix = new Matrix();
 
     private Bitmap unscaledBgDay, unscaledBgNight, unscaledLand;
     private Bitmap unscaledPipeGreen;
@@ -117,6 +130,7 @@ class GameView extends View implements Choreographer.FrameCallback {
     private Bitmap unscaledTextReady, unscaledTextGameOver, unscaledScorePanel, unscaledButtonPlay, unscaledButtonScore, unscaledTitle, unscaledCopyright, unscaledButtonSettings;
     private Bitmap[] unscaledMedalsBitmaps = new Bitmap[4];
     private Bitmap[] unscaledNumberBitmaps = new Bitmap[10];
+    
     private Bitmap bgDayBitmap, bgNightBitmap, groundBitmap;
     private Bitmap pipeUpBitmap, pipeDownBitmap;
     private Bitmap backgroundBitmap, currentPipeTopBitmap, currentPipeBottomBitmap;
@@ -128,10 +142,12 @@ class GameView extends View implements Choreographer.FrameCallback {
     private Bitmap[] numberBitmaps = new Bitmap[10];
     private Bitmap[] smallNumberBitmaps = new Bitmap[10];
 
+    // Physics variables
     private int birdFrame = 0;
     private float birdX, birdY, birdVelocityY, birdRotation;
     private long lastFlapTimeMillis = 0;
-    private Rect birdRect = new Rect(), playButtonRect = new Rect(), scoreButtonRect = new Rect(), settingsButtonRect = new Rect();
+    private Rect birdRect = new Rect();
+    private Rect playButtonRect = new Rect(), scoreButtonRect = new Rect(), settingsButtonRect = new Rect();
     private int currentBirdColor;
 
     private List<Pipe> pipes;
@@ -143,20 +159,26 @@ class GameView extends View implements Choreographer.FrameCallback {
     private int score = 0, highScore = 0;
     private SharedPreferences prefs;
 
+    // Audio & Haptics
     private SoundPool soundPool;
     private int soundWing, soundPoint, soundHit, soundDie, soundSwooshing, soundThunder;
     private ExecutorService soundExecutor;
     private MediaPlayer rainSoundPlayer, stormSoundPlayer;
     private Vibrator vibrator;
+
+    // Game Logic Triggers
     private boolean hasTier1Triggered = false, hasTier2Triggered = false;
+    
+    // Physics Constants
     private float BASE_GRAVITY_PER_SEC, BASE_FLAP_VELOCITY_PER_SEC, BASE_PIPE_SPEED_PER_SEC, JETPACK_THRUST_PER_SEC;
     private float BASE_ROTATION_DELAY_THRESHOLD_PER_SEC, BASE_ROTATION_DOWN_SPEED_PER_SEC;
     private float GRAVITY_PER_SEC, FLAP_VELOCITY_PER_SEC, PIPE_SPEED_PER_SEC;
     private float ROTATION_DELAY_THRESHOLD_PER_SEC, ROTATION_DOWN_SPEED_PER_SEC;
+    private float TRANSITION_FADE_SPEED_PER_SEC;
+    
     private Random random = new Random();
-    private int flashAlpha = 0;
-    private Paint flashPaint;
-
+    
+    // UI Constants
     private final float UI_MARGIN_HORIZONTAL_PERCENT = 0.025f;
     private final float HOME_BUTTON_GAP_PERCENT = 0.05f;
     private final float SETTINGS_BUTTON_SCALE_MULTIPLIER = 0.75f;
@@ -164,16 +186,24 @@ class GameView extends View implements Choreographer.FrameCallback {
     private final float SCORE_PANEL_NUMBER_SCALE_MULTIPLIER = 0.6f;
     private final int SCORE_PANEL_CURRENT_SCORE_Y_OFFSET = 55;
     private final int SCORE_PANEL_HIGH_SCORE_Y_OFFSET = 98;
-    private final int SCORE_PANEL_MEDAL_X_OFFSET = 31;
-    private final int SCORE_PANEL_MEDAL_Y_OFFSET = 45;
+    private final int SCORE_PANEL_MEDAL_X_OFFSET = 32;
+    // UPDATED: Changed from 45 to 41 to fix "positioned too low"
+    private final int SCORE_PANEL_MEDAL_Y_OFFSET = 43;
     private static final String PREF_KEY_WARNING_SHOWN = "hasSeenAspectRatioWarning";
     private final float BIRD_HITBOX_PADDING_X = 0.10f;
     private final float BIRD_HITBOX_PADDING_Y = 0.10f;
     private long FLAP_ANIMATION_TIMEOUT_MS = 480;
+
+    // Animation & State Variables
     private float gameOverElementsY;
     private int gameOverElementsTargetY;
     private Rect pressedButtonRect = null;
+    
+    // Settings Button Animation
+    private float settingsButtonScale = 1.0f;
+    private float settingsButtonTargetScale = 1.0f;
     private float pressOffsetY = 0;
+    
     private boolean pipesAreMoving = false;
     private boolean pipesAreStopping = false;
     private float pipeAnimationCounter = 0f;
@@ -187,8 +217,7 @@ class GameView extends View implements Choreographer.FrameCallback {
     private final float PANEL_SLIDE_EASING_BASE = 0.95f;
     private final long GAMEOVER_ICON_SLIDE_DELAY_MS = 25;
     private final float GAMEOVER_ICON_EASING_BASE = 0.92f;
-    private final float FLASH_FADE_BASE = 0.94f;
-
+    
     private long birdHitGroundTime = 0;
     private float gameOverSettingsIconY = -1;
     private float gameOverSettingsIconTargetY;
@@ -198,60 +227,33 @@ class GameView extends View implements Choreographer.FrameCallback {
     private Paint transitionPaint;
     private float transitionAlpha = 0;
     private boolean isFadingOut = false;
-    private float TRANSITION_FADE_SPEED_PER_SEC;
     private boolean isRestarting = false;
+
+    // Flash Effect Logic
+    private Paint flashPaint;
+    private float flashAlpha = 0;
 
     private Paint darkenPaint;
     private float uiScaleCorrection = 1.0f;
 
-    private int settingBirdColor;
-    private int settingBackground;
-    private boolean settingSoundEnabled;
-    private int settingGameOverOpacity;
-    private float settingGameSpeed;
-    private float settingGravity;
-    private float settingJumpStrength;
-    private float settingPipeGap;
-    private boolean settingNoClipEnabled;
-    private boolean settingWingAnimationEnabled;
-    private int settingPipeColor;
-    private boolean settingMovingPipesEnabled;
-    private int settingPipeMoveTier1;
-    private int settingPipeMoveTier2;
-    private float settingBirdHangDelay;
-    private boolean settingHideSettingsIcon;
-    private float settingPipeSpacing;
-    private float settingBirdHitbox;
-    private boolean settingRainbowBirdEnabled;
-    private boolean settingUpsideDownEnabled;
-    private boolean settingReversePipesEnabled;
-    private float settingPipeVariation;
-    private int settingScoreMultiplier;
-    private boolean settingHapticFeedbackEnabled;
-    private boolean settingBirdTrailEnabled;
-    private boolean settingGhostModeEnabled;
-    private float settingPipeSpeedVariation;
-    private float settingBirdSize;
-    private float settingPipeWidth;
-    private float settingBgScrollSpeed;
-    private float settingGroundScrollSpeed;
-    private boolean settingRandomPipeColorsEnabled;
-    private boolean settingInfiniteFlapEnabled;
-    private boolean settingJetpackModeEnabled;
-    private boolean settingDrunkModeEnabled;
-    private float settingDrunkModeStrength;
-    private int settingWeatherEffect;
-    private boolean settingDynamicDayNightEnabled;
-    private boolean settingScreenShakeEnabled;
-    private float settingScreenShakeStrength;
-    private boolean settingGoldenPipeEnabled;
-    private int settingGoldenPipeChance;
-    private int settingGoldenPipeBonus;
+    // Settings Cache
+    private int settingBirdColor, settingBackground, settingPipeColor, settingGameOverOpacity;
+    private int settingPipeMoveTier1, settingPipeMoveTier2, settingScoreMultiplier;
+    private int settingWeatherEffect, settingGoldenPipeChance, settingGoldenPipeBonus;
+    private float settingGameSpeed, settingGravity, settingJumpStrength, settingPipeGap;
+    private float settingBirdHangDelay, settingPipeSpacing, settingBirdHitbox, settingPipeVariation;
+    private float settingPipeSpeedVariation, settingBirdSize, settingPipeWidth;
+    private float settingBgScrollSpeed, settingGroundScrollSpeed, settingDrunkModeStrength;
+    private float settingScreenShakeStrength, settingMotionBlurStrength;
+    private boolean settingSoundEnabled, settingNoClipEnabled, settingWingAnimationEnabled;
+    private boolean settingMovingPipesEnabled, settingHideSettingsIcon, settingRainbowBirdEnabled;
+    private boolean settingUpsideDownEnabled, settingReversePipesEnabled, settingHapticFeedbackEnabled;
+    private boolean settingBirdTrailEnabled, settingGhostModeEnabled, settingRandomPipeColorsEnabled;
+    private boolean settingInfiniteFlapEnabled, settingJetpackModeEnabled, settingDrunkModeEnabled;
+    private boolean settingDynamicDayNightEnabled, settingScreenShakeEnabled, settingGoldenPipeEnabled;
     private boolean settingMotionBlurEnabled;
-    private float settingMotionBlurStrength;
 
     private float rainbowHue = 0f;
-
     private Deque<TrailParticle> birdTrail;
     private Paint trailPaint;
     private static final int MAX_TRAIL_PARTICLES = 15;
@@ -260,6 +262,8 @@ class GameView extends View implements Choreographer.FrameCallback {
     private long lastScoreTickTime = 0;
     private final long SCORE_ANIMATION_INTERVAL_MS_FAST = 8;
     private final long SCORE_ANIMATION_INTERVAL_MS_SLOW = 45;
+    
+    // Allocations moved out of draw
     private RectF groundDestRect = new RectF();
     private RectF playButtonDestRect = new RectF();
     private RectF scoreButtonDestRect = new RectF();
@@ -271,18 +275,50 @@ class GameView extends View implements Choreographer.FrameCallback {
     private RectF centeredBitmapDestRect = new RectF();
     private RectF settingsButtonDestRect = new RectF();
     private RectF pipeDestRect = new RectF();
+
     private static final float TARGET_FPS = 120.0f;
     private boolean isScreenPressed = false;
     private float baseBirdX;
     private float drunkModePhase = 0f;
-    private List<WeatherParticle> weatherParticles;
-    private Paint weatherPaint, nightBgPaint, goldenPipePaint, motionBlurPaint, snowAccumulationPaint;
+    
+    // Weather System
+    private WeatherSystem weatherSystem;
+    private Paint nightBgPaint, goldenPipePaint, motionBlurPaint;
+    private Shader goldenPipeShader;
     private float dayNightCycleProgress = 0f;
     private float shakeTimer = 0f;
     private float currentShakeMagnitude = 0f;
     private float goldenPipeHue = 0f;
-    private float groundSnowHeight = 0;
 
+    // --- BURNT BIRD & CINEMATIC VARIABLES ---
+    private boolean isBirdBurnt = false;
+    private float burntTimer = 0f;
+    private boolean hasTriggeredStrikeForScore = false;
+    private boolean hasTriggeredMegaStrike = false;
+    private float pipeElectrificationTimer = 0f;
+    
+    private List<SmokeParticle> smokeParticles = new ArrayList<>();
+    private List<SparkParticle> sparkParticles = new ArrayList<>();
+    private Paint sparkPaint;
+    private ColorFilter burntColorFilter;
+    private Paint electricityPipePaint;
+
+    // Cinematic Engine Variables
+    private float timeDilation = 1.0f; // 1.0 = Normal, < 1.0 = Slow Motion
+    private float cameraZoom = 1.0f;
+    private float cinematicTimer = 0f;
+    private int cinematicPhase = 0; // 0: None, 1: Zoom In, 2: Strike, 3: Zoom Out
+    
+    // --- MEDAL SHINE VARIABLES ---
+    private Bitmap sparkleBitmap;
+    private float sparkleTimer = 0f;
+    private float sparkleXOffset = 0f;
+    private float sparkleYOffset = 0f;
+    private float sparkleScaleCurrent = 0f;
+    private boolean isSparkleAnimating = false;
+    private final float SPARKLE_DURATION = 0.6f; 
+    private final float SPARKLE_INTERVAL = 2.0f; // Seconds between shines
+    
     public GameView(Context context) {
         super(context);
         init(context);
@@ -315,12 +351,13 @@ class GameView extends View implements Choreographer.FrameCallback {
         soundExecutor = Executors.newSingleThreadExecutor();
         vibrator = (Vibrator) context.getSystemService(Context.VIBRATOR_SERVICE);
 
-        flashPaint = new Paint();
-        flashPaint.setARGB(0, 255, 255, 255);
-
         transitionPaint = new Paint();
         transitionPaint.setColor(Color.BLACK);
         transitionPaint.setAlpha(0);
+
+        flashPaint = new Paint();
+        flashPaint.setColor(Color.WHITE);
+        flashPaint.setAlpha(0);
 
         darkenPaint = new Paint();
         darkenPaint.setColor(Color.BLACK);
@@ -334,20 +371,67 @@ class GameView extends View implements Choreographer.FrameCallback {
         goldenPipePaint.setFilterBitmap(false);
         goldenPipePaint.setAntiAlias(false);
         goldenPipePaint.setXfermode(new PorterDuffXfermode(PorterDuff.Mode.SRC_ATOP));
+        // Pre-create shader for golden pipe
+        int[] colors = {Color.argb(0, 255, 215, 0), Color.argb(150, 255, 255, 100), Color.argb(0, 255, 215, 0)};
+        float[] positions = {0, 0.5f, 1};
+        goldenPipeShader = new LinearGradient(0, 0, 100, 0, colors, positions, Shader.TileMode.MIRROR);
+        goldenPipePaint.setShader(goldenPipeShader);
 
         motionBlurPaint = new Paint();
-        motionBlurPaint.setColor(Color.BLACK);
+        motionBlurPaint.setXfermode(new PorterDuffXfermode(PorterDuff.Mode.SRC_OVER));
 
         birdTrail = new ArrayDeque<>(MAX_TRAIL_PARTICLES);
         trailPaint = new Paint();
+        
+        // --- SMOKE & SPARKS INIT ---
+        sparkPaint = new Paint();
+        sparkPaint.setStrokeWidth(4);
+        sparkPaint.setStyle(Paint.Style.STROKE);
+        sparkPaint.setStrokeCap(Paint.Cap.ROUND);
+        sparkPaint.setAntiAlias(true);
+        // Apply a blur to sparks to make them glow
+        sparkPaint.setMaskFilter(new BlurMaskFilter(3, BlurMaskFilter.Blur.NORMAL));
+        
+        electricityPipePaint = new Paint();
+        electricityPipePaint.setColor(Color.CYAN);
+        electricityPipePaint.setStyle(Paint.Style.STROKE);
+        electricityPipePaint.setStrokeWidth(3);
+        electricityPipePaint.setAntiAlias(true);
+        electricityPipePaint.setMaskFilter(new BlurMaskFilter(5, BlurMaskFilter.Blur.NORMAL));
+        
+        // Darken the bird for burnt effect
+        burntColorFilter = new PorterDuffColorFilter(Color.rgb(40, 40, 40), PorterDuff.Mode.MULTIPLY);
 
-        weatherParticles = new ArrayList<>();
-        weatherPaint = new Paint();
-        weatherPaint.setColor(Color.WHITE);
-
-        snowAccumulationPaint = new Paint();
-        snowAccumulationPaint.setColor(Color.WHITE);
-        snowAccumulationPaint.setStyle(Paint.Style.FILL);
+        weatherSystem = new WeatherSystem();
+        
+        sparkleBitmap = createSparkleBitmap();
+    }
+    
+    private Bitmap createSparkleBitmap() {
+        int size = 64; // Base size
+        Bitmap bmp = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888);
+        Canvas c = new Canvas(bmp);
+        Paint p = new Paint();
+        p.setColor(Color.WHITE);
+        p.setAntiAlias(true);
+        
+        // Draw a glow
+        p.setMaskFilter(new BlurMaskFilter(size / 4f, BlurMaskFilter.Blur.NORMAL));
+        c.drawCircle(size / 2f, size / 2f, size / 6f, p);
+        
+        // Draw the cross/star shape
+        p.setMaskFilter(null);
+        float cx = size / 2f;
+        float cy = size / 2f;
+        float halfLen = size / 2.5f;
+        float thickness = size / 12f;
+        
+        // Horizontal bar
+        c.drawRect(cx - halfLen, cy - thickness/2, cx + halfLen, cy + thickness/2, p);
+        // Vertical bar
+        c.drawRect(cx - thickness/2, cy - halfLen, cx + thickness/2, cy + halfLen, p);
+        
+        return bmp;
     }
 
     private void loadSettings() {
@@ -444,14 +528,8 @@ class GameView extends View implements Choreographer.FrameCallback {
             uiScaleCorrection = 1.0f;
         }
 
-        weatherParticles.clear();
-        int particleCount = (settingWeatherEffect == 3) ? 250 : 100;
-        float wind = settingReversePipesEnabled ? -120f * scale : 120f * scale;
-        for(int i = 0; i < particleCount; i++) {
-            weatherParticles.add(new WeatherParticle(screenWidth, screenHeight, settingWeatherEffect, wind));
-        }
-        weatherPaint.setStrokeWidth(2f * scale);
-
+        weatherSystem.init(screenWidth, screenHeight, scale);
+        
         resetGame();
         gameState = GameState.HOME;
 
@@ -459,12 +537,13 @@ class GameView extends View implements Choreographer.FrameCallback {
         resume();
     }
 
-    private int getPlayableHeight() { return screenHeight - systemBarTop - systemBarBottom;
-    }
+    private int getPlayableHeight() { return screenHeight - systemBarTop - systemBarBottom; }
 
     private void resetGame() {
         loadSettings();
         updateWeatherSounds();
+        weatherSystem.setWeatherType(settingWeatherEffect);
+        weatherSystem.setHeavyRain(false); // Reset heavy rain
 
         float speedVariation = 1.0f + (random.nextFloat() - 0.5f) * 2 * settingPipeSpeedVariation;
         GRAVITY_PER_SEC = BASE_GRAVITY_PER_SEC * settingGravity * (settingUpsideDownEnabled ? -1 : 1);
@@ -496,8 +575,24 @@ class GameView extends View implements Choreographer.FrameCallback {
         drunkModePhase = 0f;
         dayNightCycleProgress = 0f;
         shakeTimer = 0f;
+        flashAlpha = 0f; // Reset flash
         birdTrail.clear();
-        groundSnowHeight = 0;
+        
+        // Reset Burnt State & Cinematic
+        isBirdBurnt = false;
+        burntTimer = 0f;
+        pipeElectrificationTimer = 0f;
+        hasTriggeredStrikeForScore = false;
+        hasTriggeredMegaStrike = false;
+        smokeParticles.clear();
+        sparkParticles.clear();
+        timeDilation = 1.0f;
+        cameraZoom = 1.0f;
+        cinematicPhase = 0;
+        
+        // Reset Shine
+        sparkleTimer = 0f;
+        isSparkleAnimating = false;
 
         if (!settingDynamicDayNightEnabled) {
             if (settingBackground == 0) backgroundBitmap = bgDayBitmap;
@@ -550,7 +645,6 @@ class GameView extends View implements Choreographer.FrameCallback {
 
         score = 0;
         displayedScore = 0;
-        flashAlpha = 0;
         currentMedalBitmap = null;
         if (darkenPaint != null) darkenPaint.setAlpha(0);
     }
@@ -573,6 +667,21 @@ class GameView extends View implements Choreographer.FrameCallback {
     }
 
     private void update(float deltaTime) {
+        // --- Time Management ---
+        float realDeltaTime = deltaTime; 
+        float gameDeltaTime = deltaTime * timeDilation;
+
+        // Flash decay logic (Real Time)
+        if (flashAlpha > 0) {
+            float decaySpeed = 1500f;
+            flashAlpha -= decaySpeed * realDeltaTime;
+            if (flashAlpha < 0) flashAlpha = 0;
+        }
+
+        // --- Cinematic Engine Update ---
+        updateCinematicSequence(realDeltaTime);
+
+        // Background Scrolling (Game Time)
         if (gameState != GameState.GAME_OVER && gameState != GameState.PANEL_SLIDING) {
             float effectivePipeSpeed = PIPE_SPEED_PER_SEC;
             float bgScrollSpeed = effectivePipeSpeed * settingBgScrollSpeed;
@@ -581,7 +690,7 @@ class GameView extends View implements Choreographer.FrameCallback {
             Bitmap bg = (backgroundBitmap != null) ? backgroundBitmap : bgDayBitmap;
             float bgWidth = bg.getWidth();
 
-            backgroundX -= bgScrollSpeed * deltaTime;
+            backgroundX -= bgScrollSpeed * gameDeltaTime;
             if (bgScrollSpeed > 0 && backgroundX <= -bgWidth) {
                 backgroundX += bgWidth;
             } else if (bgScrollSpeed < 0 && backgroundX >= bgWidth) {
@@ -589,17 +698,30 @@ class GameView extends View implements Choreographer.FrameCallback {
             }
 
             float groundWidth = groundBitmap.getWidth();
-            groundX -= groundScrollSpeed * deltaTime;
+            groundX -= groundScrollSpeed * gameDeltaTime;
             if (groundScrollSpeed > 0 && groundX <= -groundWidth) {
                 groundX += groundWidth;
             } else if (groundScrollSpeed < 0 && groundX >= groundWidth) {
                 groundX -= groundWidth;
             }
         }
+        
+        // Settings Button Animation Logic (Real Time)
+        if (settingsButtonScale != settingsButtonTargetScale) {
+            float diff = settingsButtonTargetScale - settingsButtonScale;
+            if (Math.abs(diff) < 0.01f) {
+                settingsButtonScale = settingsButtonTargetScale;
+            } else {
+                settingsButtonScale += diff * (10f * realDeltaTime);
+            }
+        }
 
         boolean wingAnimation = settingWingAnimationEnabled && (settingInfiniteFlapEnabled || System.currentTimeMillis() - lastFlapTimeMillis < FLAP_ANIMATION_TIMEOUT_MS);
         if (gameState == GameState.PLAYING) {
-            if (wingAnimation || (settingJetpackModeEnabled && isScreenPressed)) birdFrame = (int) ((System.currentTimeMillis() / 75) % birdBitmaps.length);
+            if (wingAnimation || (settingJetpackModeEnabled && isScreenPressed)) {
+               long scaledTime = (long)(System.currentTimeMillis() * timeDilation); 
+               birdFrame = (int) ((System.currentTimeMillis() / 75) % birdBitmaps.length);
+            }
             else birdFrame = 1;
         } else if (gameState == GameState.HOME || gameState == GameState.TRANSITION_TO_WAITING || gameState == GameState.WAITING) {
             if (settingWingAnimationEnabled) birdFrame = (int) ((System.currentTimeMillis() / 150) % birdBitmaps.length);
@@ -607,10 +729,10 @@ class GameView extends View implements Choreographer.FrameCallback {
         }
 
         if (settingRainbowBirdEnabled) {
-            rainbowHue = (rainbowHue + 150 * deltaTime) % 360;
+            rainbowHue = (rainbowHue + 150 * gameDeltaTime) % 360;
         }
 
-        goldenPipeHue = (goldenPipeHue + 200 * deltaTime);
+        goldenPipeHue = (goldenPipeHue + 200 * gameDeltaTime);
 
         if (settingBirdTrailEnabled && (gameState == GameState.PLAYING || gameState == GameState.GAME_OVER)) {
             if (birdTrail.size() >= MAX_TRAIL_PARTICLES) {
@@ -619,50 +741,85 @@ class GameView extends View implements Choreographer.FrameCallback {
             birdTrail.add(new TrailParticle(birdX, birdY, birdRotation, currentBirdColor, birdFrame, settingRainbowBirdEnabled ? rainbowHue : -1));
         }
         for (TrailParticle p : birdTrail) {
-            p.update(deltaTime);
+            p.update(gameDeltaTime);
         }
 
         if (shakeTimer > 0) {
-            shakeTimer -= deltaTime;
+            shakeTimer -= realDeltaTime; // Shake runs in real time
+        }
+        
+        // --- PIPE ELECTRIFICATION ---
+        if (pipeElectrificationTimer > 0) {
+            pipeElectrificationTimer -= gameDeltaTime;
+            if (pipeElectrificationTimer < 0) pipeElectrificationTimer = 0;
+        }
+        
+        // --- APOCALYPSE MODE CHECK ---
+        boolean isApocalypse = (score >= 600 && settingWeatherEffect == 2);
+        
+        if (isApocalypse) {
+            weatherSystem.setHeavyRain(true);
         }
 
-        if (settingWeatherEffect > 0) {
-            float groundTopY = screenHeight - systemBarBottom - groundHeight;
-            float wind = settingReversePipesEnabled ? -120f * scale : 120f * scale;
-
-            for(WeatherParticle p : weatherParticles) {
-                p.update(deltaTime, screenWidth, screenHeight, settingWeatherEffect, wind);
-
-                if (settingWeatherEffect == 3) {
-                    if (birdRect.contains((int)p.x, (int)p.y)) {
-                        p.y = birdRect.top - 1;
-                        p.ySpeed *= -0.5f;
-                        p.xDrift += (random.nextFloat() - 0.5f) * 80f * scale;
-                    }
-
-                    if (p.y >= groundTopY + groundSnowHeight) {
-                        groundSnowHeight += 0.02f;
-                        groundSnowHeight = Math.min(groundSnowHeight, 25 * scale);
-                        p.respawn(screenWidth, screenHeight, settingWeatherEffect, wind);
-                    }
-
-                    for (Pipe pipe : pipes) {
-                        RectF pipeTopSurface = new RectF(pipe.x, pipe.getTopPipeY() + pipe.snowHeight, pipe.x + pipe.width, pipe.getTopPipeY() + pipe.snowHeight + 5);
-                        if (pipeTopSurface.contains(p.x, p.y)) {
-                            pipe.snowHeight += 0.1f;
-                            pipe.snowHeight = Math.min(pipe.snowHeight, 25 * scale);
-                            p.respawn(screenWidth, screenHeight, settingWeatherEffect, wind);
-                            break;
-                        }
-                    }
+        // --- UPDATE BURNT & SMOKE EFFECTS (Game Time) ---
+        if (isBirdBurnt) {
+            burntTimer -= gameDeltaTime;
+            if (burntTimer <= 0) {
+                isBirdBurnt = false;
+                sparkParticles.clear();
+            } else {
+                // Add Smoke - Frequent
+                if (random.nextInt(100) < 50) { 
+                   smokeParticles.add(new SmokeParticle(birdX, birdY, scale));
+                }
+                
+                // Add Sparks - Falling and Zapping
+                if (random.nextInt(100) < 40) { // 40% chance per frame
+                    // Type 0: Zap (Static relative to bird)
+                    // Type 1: Fall (Gravity)
+                    int type = random.nextBoolean() ? 0 : 1;
+                    sparkParticles.add(new SparkParticle(birdX, birdY, scale, type));
                 }
             }
         }
+        
+        // --- AMBIENT APOCALYPSE EFFECTS ---
+        if (isApocalypse) {
+            // Random Ambient Sparks falling from sky (matches bird spark visual)
+            if (random.nextInt(100) < 30) {
+                float sparkX = random.nextFloat() * screenWidth;
+                float sparkY = -50;
+                // Type 1 = Falling
+                sparkParticles.add(new SparkParticle(sparkX, sparkY, scale, 1));
+            }
+        }
 
+        // Update existing particles
+        Iterator<SmokeParticle> smokeIter = smokeParticles.iterator();
+        while (smokeIter.hasNext()) {
+            SmokeParticle p = smokeIter.next();
+            p.update(gameDeltaTime, PIPE_SPEED_PER_SEC * 0.5f); 
+            if (p.isDead()) smokeIter.remove();
+        }
+        
+        Iterator<SparkParticle> sparkIter = sparkParticles.iterator();
+        while(sparkIter.hasNext()) {
+            SparkParticle sp = sparkIter.next();
+            // Move sparks relative to world (wind) if they are falling
+            float wind = (sp.type == 1) ? PIPE_SPEED_PER_SEC * 0.8f : 0;
+            sp.update(gameDeltaTime, wind);
+            if (sp.isDead()) sparkIter.remove();
+        }
+
+        updateBirdRect();
+
+        if (settingWeatherEffect > 0) {
+            weatherSystem.update(gameDeltaTime, PIPE_SPEED_PER_SEC * 0.1f, birdVelocityY, birdRect);
+        }
 
         if (settingDynamicDayNightEnabled && (gameState == GameState.PLAYING || gameState == GameState.WAITING)) {
             float cycleDuration = 120.0f;
-            dayNightCycleProgress += deltaTime / cycleDuration;
+            dayNightCycleProgress += gameDeltaTime / cycleDuration;
             if (dayNightCycleProgress > 1.0f) {
                 dayNightCycleProgress -= 1.0f;
             }
@@ -673,53 +830,78 @@ class GameView extends View implements Choreographer.FrameCallback {
                 if (settingJetpackModeEnabled) {
                     if (isScreenPressed) {
                         float thrust = JETPACK_THRUST_PER_SEC * settingJumpStrength * (settingUpsideDownEnabled ? -1 : 1);
-                        birdVelocityY -= thrust * deltaTime;
+                        birdVelocityY -= thrust * gameDeltaTime;
                     }
                 }
 
-                birdVelocityY += GRAVITY_PER_SEC * deltaTime;
-                birdY += birdVelocityY * deltaTime;
+                birdVelocityY += GRAVITY_PER_SEC * gameDeltaTime;
+                birdY += birdVelocityY * gameDeltaTime;
+                
+                if (!settingNoClipEnabled) {
+                    float birdHalfHeight = (birdBitmaps[birdFrame].getHeight() * settingBirdSize) / 2f;
+                    float ceilingThreshold = systemBarTop - birdHalfHeight - (birdHalfHeight * 0.8f); 
+                    
+                    if (settingUpsideDownEnabled) {
+                        float upsideDownCeiling = screenHeight + birdHalfHeight + (birdHalfHeight * 0.8f);
+                        if (birdY > upsideDownCeiling) {
+                            birdY = upsideDownCeiling;
+                            if (birdVelocityY > 0) birdVelocityY = 0;
+                        }
+                    } else {
+                        if (birdY < ceilingThreshold) {
+                            birdY = ceilingThreshold;
+                            if (birdVelocityY < 0) birdVelocityY = 0;
+                        }
+                    }
+                }
 
                 if(settingDrunkModeEnabled) {
-                    drunkModePhase += deltaTime * 2.0f;
+                    drunkModePhase += gameDeltaTime * 2.0f;
                     float maxDrift = screenWidth * 0.15f * settingDrunkModeStrength;
                     float drift = (float)Math.sin(drunkModePhase) * maxDrift;
                     birdX = baseBirdX + drift;
                 }
 
                 if (settingWeatherEffect == 2) {
-                    if (random.nextInt(1800) == 0) {
-                        flashAlpha = 200;
-                        playSound(soundThunder);
-                        triggerThunderHaptic();
-                        if (settingScreenShakeEnabled) {
-                            triggerShake(2.0f, 0.2f);
-                        }
-                    }
-                } else if (settingWeatherEffect == 3) {
-                    if (random.nextInt(3600) == 0) {
-                        flashAlpha = 200;
-                        playSound(soundThunder);
-                        triggerThunderHaptic();
-                        if (settingScreenShakeEnabled) {
-                            triggerShake(2.0f, 0.2f);
-                        }
+                    // Increase lightning frequency in Apocalypse Mode (Score >= 600)
+                    // 100 vs 300 -> 3x more frequent
+                    int lightningChance = (score >= 600) ? 100 : 300;
+                    if (random.nextInt(lightningChance) == 0) {
+                        triggerLightning();
                     }
                 }
-
+                
+                // --- DYNAMIC LIGHTNING STRIKE LOGIC ---
+                if (settingWeatherEffect == 2) {
+                    // Regular Strike Scores
+                    if (score == 11 || score == 34 || score == 79 || score == 210) {
+                        if (!hasTriggeredStrikeForScore) {
+                            startCinematicStrikeSequence(false); // Normal single bolt
+                            hasTriggeredStrikeForScore = true;
+                        }
+                    } else if (score == 350) {
+                        // MEGA STRIKE
+                        if (!hasTriggeredMegaStrike) {
+                            startCinematicStrikeSequence(true); // Mega Multi-bolt
+                            hasTriggeredMegaStrike = true;
+                        }
+                    } else {
+                        hasTriggeredStrikeForScore = false;
+                    }
+                }
 
                 final float ROTATION_UP_SPEED = 6.0f * TARGET_FPS;
                 if (settingUpsideDownEnabled) {
                     if (birdVelocityY > 0) {
-                        birdRotation = Math.min(25f, birdRotation + ROTATION_UP_SPEED * deltaTime);
+                        birdRotation = Math.min(25f, birdRotation + ROTATION_UP_SPEED * gameDeltaTime);
                     } else if (birdVelocityY < -ROTATION_DELAY_THRESHOLD_PER_SEC) {
-                        birdRotation = Math.max(-90f, birdRotation - ROTATION_DOWN_SPEED_PER_SEC * deltaTime);
+                        birdRotation = Math.max(-90f, birdRotation - ROTATION_DOWN_SPEED_PER_SEC * gameDeltaTime);
                     }
                 } else {
                     if (birdVelocityY < 0) {
-                        birdRotation = Math.max(-25f, birdRotation - ROTATION_UP_SPEED * deltaTime);
+                        birdRotation = Math.max(-25f, birdRotation - ROTATION_UP_SPEED * gameDeltaTime);
                     } else if (birdVelocityY > ROTATION_DELAY_THRESHOLD_PER_SEC) {
-                        birdRotation = Math.min(90f, birdRotation + ROTATION_DOWN_SPEED_PER_SEC * deltaTime);
+                        birdRotation = Math.min(90f, birdRotation + ROTATION_DOWN_SPEED_PER_SEC * gameDeltaTime);
                     }
                 }
                 break;
@@ -738,7 +920,7 @@ class GameView extends View implements Choreographer.FrameCallback {
                 if (settingUpsideDownEnabled) birdY = screenHeight - birdY;
                 birdRotation = 0;
                 if (isFadingOut) {
-                    transitionAlpha += TRANSITION_FADE_SPEED_PER_SEC * deltaTime;
+                    transitionAlpha += TRANSITION_FADE_SPEED_PER_SEC * gameDeltaTime;
                     if (transitionAlpha >= 255) {
                         transitionAlpha = 255;
                         isFadingOut = false;
@@ -746,7 +928,7 @@ class GameView extends View implements Choreographer.FrameCallback {
                         birdX = baseBirdX;
                     }
                 } else {
-                    transitionAlpha -= TRANSITION_FADE_SPEED_PER_SEC * deltaTime;
+                    transitionAlpha -= TRANSITION_FADE_SPEED_PER_SEC * gameDeltaTime;
                     if (transitionAlpha <= 0) {
                         transitionAlpha = 0;
                         gameState = GameState.WAITING;
@@ -769,13 +951,13 @@ class GameView extends View implements Choreographer.FrameCallback {
                 }
 
                 if (!isOnGround) {
-                    birdVelocityY += (GRAVITY_PER_SEC * 1.5f) * deltaTime;
-                    birdY += birdVelocityY * deltaTime;
+                    birdVelocityY += (GRAVITY_PER_SEC * 1.5f) * gameDeltaTime;
+                    birdY += birdVelocityY * gameDeltaTime;
                     final float DEATH_ROTATION_SPEED = 2.8f * TARGET_FPS;
                     if(settingUpsideDownEnabled) {
-                        if (birdRotation > -90) birdRotation -= DEATH_ROTATION_SPEED * deltaTime;
+                        if (birdRotation > -90) birdRotation -= DEATH_ROTATION_SPEED * gameDeltaTime;
                     } else {
-                        if (birdRotation < 90) birdRotation += DEATH_ROTATION_SPEED * deltaTime;
+                        if (birdRotation < 90) birdRotation += DEATH_ROTATION_SPEED * gameDeltaTime;
                     }
                     birdHitGroundTime = 0;
                 } else {
@@ -806,7 +988,7 @@ class GameView extends View implements Choreographer.FrameCallback {
                 }
                 break;
             case PANEL_SLIDING:
-                float deltaMultiplier = TARGET_FPS * deltaTime;
+                float deltaMultiplier = TARGET_FPS * realDeltaTime;
                 if (gameOverElementsY > gameOverElementsTargetY) {
                     float portionToMove = 1.0f - (float)Math.pow(PANEL_SLIDE_EASING_BASE, deltaMultiplier);
                     gameOverElementsY -= (gameOverElementsY - gameOverElementsTargetY) * portionToMove;
@@ -815,6 +997,34 @@ class GameView extends View implements Choreographer.FrameCallback {
                     }
                 } else {
                     gameOverElementsY = gameOverElementsTargetY;
+                    
+                    // --- MEDAL SHINE LOGIC ---
+                    if (currentMedalBitmap != null && displayedScore == score) {
+                        sparkleTimer += realDeltaTime;
+
+                        if (!isSparkleAnimating) {
+                            // Waiting to shine
+                            if (sparkleTimer >= SPARKLE_INTERVAL) {
+                                isSparkleAnimating = true;
+                                sparkleTimer = 0;
+                                // Pick a random spot on the medal (relative range 0.2 to 0.8)
+                                sparkleXOffset = 0.2f + random.nextFloat() * 0.6f;
+                                sparkleYOffset = 0.2f + random.nextFloat() * 0.6f;
+                            }
+                        } else {
+                            // Currently shining (Scale up then down)
+                            float progress = sparkleTimer / SPARKLE_DURATION;
+                            if (progress >= 1.0f) {
+                                isSparkleAnimating = false;
+                                sparkleTimer = 0;
+                                sparkleScaleCurrent = 0;
+                            } else {
+                                // Sine wave for smooth pop-in/pop-out
+                                sparkleScaleCurrent = (float) Math.sin(progress * Math.PI);
+                            }
+                        }
+                    }
+
                     if (lastScoreTickTime == 0) lastScoreTickTime = System.currentTimeMillis();
 
                     if (displayedScore < score) {
@@ -863,7 +1073,7 @@ class GameView extends View implements Choreographer.FrameCallback {
                 }
 
                 if (isRestarting) {
-                    transitionAlpha += TRANSITION_FADE_SPEED_PER_SEC * deltaTime;
+                    transitionAlpha += TRANSITION_FADE_SPEED_PER_SEC * realDeltaTime;
                     if (transitionAlpha >= 255) {
                         transitionAlpha = 255;
                         resetGame();
@@ -898,17 +1108,17 @@ class GameView extends View implements Choreographer.FrameCallback {
                         pipesAreStopping = false; }
                 }
                 if (pipesAreMoving || pipesAreStopping) {
-                    pipeAnimationCounter += (pipeAnimationSpeed * TARGET_FPS) * deltaTime;
+                    pipeAnimationCounter += (pipeAnimationSpeed * TARGET_FPS) * gameDeltaTime;
                     if (currentPipeMoveRange < maxPipeMoveRange && !pipesAreStopping) {
                         float moveRangeSpeed = (0.15f * scale * TARGET_FPS);
-                        currentPipeMoveRange += moveRangeSpeed * deltaTime;
+                        currentPipeMoveRange += moveRangeSpeed * gameDeltaTime;
                         currentPipeMoveRange = Math.min(currentPipeMoveRange, maxPipeMoveRange);
                     }
                 }
             }
             int playableAreaHeight = getPlayableHeight() - groundHeight;
             for (Pipe pipe : pipes) {
-                pipe.x -= PIPE_SPEED_PER_SEC * deltaTime;
+                pipe.x -= PIPE_SPEED_PER_SEC * gameDeltaTime;
                 if (settingMovingPipesEnabled) {
                     pipe.updateAnimation(pipesAreMoving, pipeAnimationCounter, currentPipeMoveRange, pipesAreStopping);
                 }
@@ -938,7 +1148,6 @@ class GameView extends View implements Choreographer.FrameCallback {
                     pipe.x += (pipes.size() * pipeSpacing * (settingReversePipesEnabled ? -1 : 1));
                     pipe.resetHeight(pipeGap, playableAreaHeight, systemBarTop, settingPipeVariation);
                     pipe.isScored = false;
-                    pipe.snowHeight = 0;
                     if (settingRandomPipeColorsEnabled) {
                         pipe.setColorFilter(createPipeColorFilter(random.nextInt(9)));
                     } else {
@@ -953,39 +1162,146 @@ class GameView extends View implements Choreographer.FrameCallback {
                 }
             }
         }
-
-        if (flashAlpha > 0) {
-            float deltaMultiplier = TARGET_FPS * deltaTime;
-            flashAlpha = (int)(flashAlpha * Math.pow(FLASH_FADE_BASE, deltaMultiplier));
-        }
-        updateBirdRect();
+        
         if (gameState == GameState.PLAYING) { checkCollisions(); }
+    }
+    
+    // --- CINEMATIC ENGINE LOGIC ---
+    
+    private boolean isMegaStrike = false;
+    
+    private void startCinematicStrikeSequence(boolean mega) {
+        cinematicPhase = 1; // Start Zoom In
+        cinematicTimer = 0f;
+        timeDilation = 1.0f;
+        cameraZoom = 1.0f;
+        isMegaStrike = mega;
+    }
+    
+    private void updateCinematicSequence(float realDeltaTime) {
+        if (cinematicPhase == 0) return;
+        
+        cinematicTimer += realDeltaTime;
+        
+        if (cinematicPhase == 1) { // PHASE 1: ZOOM IN & SLOW MO
+            // Duration: 0.2s
+            float progress = Math.min(1.0f, cinematicTimer / 0.2f);
+            
+            // Zoom to 1.5x (Normal) or 1.8x (Mega)
+            float targetZoom = isMegaStrike ? 1.8f : 1.5f;
+            cameraZoom = 1.0f + ((targetZoom - 1.0f) * progress);
+            
+            // Slow time to 0.1x (Normal) or 0.05x (Mega)
+            float targetTime = isMegaStrike ? 0.05f : 0.1f;
+            timeDilation = 1.0f - ((1.0f - targetTime) * progress);
+            
+            if (progress >= 1.0f) {
+                cinematicPhase = 2;
+                cinematicTimer = 0f;
+                
+                if (isMegaStrike) {
+                    triggerMegaStrike();
+                } else {
+                    triggerDirectLightningOnBird(); // Normal Strike
+                }
+            }
+        } 
+        else if (cinematicPhase == 2) { // PHASE 2: HOLD THE IMPACT
+            // Duration: 0.5s (Stay slow, Stay zoomed)
+            timeDilation = isMegaStrike ? 0.05f : 0.1f;
+            cameraZoom = isMegaStrike ? 1.8f : 1.5f;
+            
+            if (cinematicTimer >= (isMegaStrike ? 0.8f : 0.5f)) { // Hold longer for mega
+                cinematicPhase = 3;
+                cinematicTimer = 0f;
+            }
+        } 
+        else if (cinematicPhase == 3) { // PHASE 3: ZOOM OUT & RESTORE SPEED
+            // Duration: 0.3s
+            float progress = Math.min(1.0f, cinematicTimer / 0.3f);
+            
+            float startZoom = isMegaStrike ? 1.8f : 1.5f;
+            float startTime = isMegaStrike ? 0.05f : 0.1f;
+            
+            // Zoom back to 1.0
+            cameraZoom = startZoom - ((startZoom - 1.0f) * progress);
+            
+            // Speed back to 1.0
+            timeDilation = startTime + ((1.0f - startTime) * progress);
+            
+            if (progress >= 1.0f) {
+                cinematicPhase = 0; // Done
+                timeDilation = 1.0f;
+                cameraZoom = 1.0f;
+                isMegaStrike = false;
+            }
+        }
+    }
+
+    private void triggerLightning() {
+        // Random background lightning
+        weatherSystem.triggerLightning(screenWidth, getPlayableHeight() + systemBarTop);
+        playSound(soundThunder);
+        triggerThunderHaptic();
+        if (settingScreenShakeEnabled) {
+            triggerShake(7.0f, 0.5f); 
+        }
+    }
+    
+    private void triggerDirectLightningOnBird() {
+        // Strike specifically on the bird
+        weatherSystem.triggerTargetedLightning(birdX, birdY, screenWidth, getPlayableHeight() + systemBarTop);
+        playSound(soundThunder);
+        triggerThunderHaptic();
+        if (settingScreenShakeEnabled) {
+            triggerShake(15.0f, 0.8f); // Massive shake
+        }
+        
+        // Ignite the bird (Standard Duration)
+        isBirdBurnt = true;
+        burntTimer = 10.0f; 
+        
+        // Trigger white flash for screen
+        flashAlpha = 255;
+    }
+    
+    private void triggerMegaStrike() {
+        // Multiple bolts from multiple angles
+        weatherSystem.triggerMultiDirectionalBolts(birdX, birdY, screenWidth, getPlayableHeight() + systemBarTop);
+        
+        playSound(soundThunder);
+        // Play it twice for volume
+        playSound(soundThunder); 
+        
+        triggerThunderHaptic();
+        
+        if (settingScreenShakeEnabled) {
+            triggerShake(25.0f, 1.5f); // Extreme shake
+        }
+        
+        // Ignite the bird (Long Duration)
+        isBirdBurnt = true;
+        burntTimer = 20.0f; 
+        
+        // Electrify Pipes
+        pipeElectrificationTimer = 20.0f;
+        
+        // Trigger white flash for screen
+        flashAlpha = 255;
     }
 
     private void checkCollisions() {
         if (settingNoClipEnabled) return;
-
         float birdHalfHeight = (birdBitmaps[birdFrame].getHeight() * settingBirdSize) / 2f;
-        float groundCollisionY = screenHeight - systemBarBottom - groundHeight;
-        if (settingWeatherEffect == 3) {
-            groundCollisionY += groundSnowHeight;
-        }
-
+        
+        // Collision check with GROUND
         if (settingUpsideDownEnabled) {
-            if (birdY - birdHalfHeight <= systemBarTop) {
-                gameOver();
-                return;
-            }
-            if (birdRect.bottom >= groundCollisionY) {
+            if (birdRect.bottom >= screenHeight - systemBarBottom - groundHeight) {
                 gameOver();
                 return;
             }
         } else {
-            if (birdY + birdHalfHeight >= groundCollisionY) {
-                gameOver();
-                return;
-            }
-            if (birdRect.top <= systemBarTop) {
+            if (birdY + birdHalfHeight >= screenHeight - systemBarBottom - groundHeight) {
                 gameOver();
                 return;
             }
@@ -993,21 +1309,14 @@ class GameView extends View implements Choreographer.FrameCallback {
 
         for (Pipe pipe : pipes) {
             if (Rect.intersects(birdRect, pipe.getTopHeadRect(settingPipeWidth)) ||
-                Rect.intersects(birdRect, pipe.getTopBodyRect(settingPipeWidth)) ||
-                Rect.intersects(birdRect, pipe.getBottomHeadRect(pipeGap, settingPipeWidth)) ||
-                Rect.intersects(birdRect, pipe.getBottomBodyRect(pipeGap, settingPipeWidth))) {
-                gameOver();
-                return;
-            }
-            if (settingWeatherEffect == 3 && pipe.snowHeight > 0) {
-                if (Rect.intersects(birdRect, pipe.getSnowRect(settingPipeWidth))) {
-                    gameOver();
-                    return;
-                }
+                    Rect.intersects(birdRect, pipe.getTopBodyRect(settingPipeWidth)) ||
+                    Rect.intersects(birdRect, pipe.getBottomHeadRect(pipeGap, settingPipeWidth)) ||
+                    Rect.intersects(birdRect, pipe.getBottomBodyRect(pipeGap, settingPipeWidth))) {
+
+                gameOver(); return;
             }
         }
     }
-
 
     private void triggerShake(float magnitude, float duration) {
         if (!settingScreenShakeEnabled) return;
@@ -1029,17 +1338,30 @@ class GameView extends View implements Choreographer.FrameCallback {
     private void gameOver() {
         if (gameState == GameState.PLAYING) {
             gameState = GameState.GAME_OVER;
+            
+            // Reset Cinematic State instantly on death
+            cinematicPhase = 0;
+            cameraZoom = 1.0f;
+            timeDilation = 1.0f;
+            
+            flashAlpha = 255f; // Trigger white flash
             stopWeatherSounds();
-            flashAlpha = 255;
             playSound(soundHit);
             triggerShake(5.0f, 0.4f);
             postDelayed(() -> playSound(soundDie), 300);
             if (score > highScore) { highScore = score; prefs.edit().putInt("highScore", highScore).apply();
             }
-            if (score >= 40) currentMedalBitmap = medalBitmaps[3];
-            else if (score >= 30) currentMedalBitmap = medalBitmaps[2];
-            else if (score >= 20) currentMedalBitmap = medalBitmaps[1];
-            else if (score >= 10) currentMedalBitmap = medalBitmaps[0];
+            
+            // UPDATED MEDAL LOGIC (Correct Mapping)
+            // Platinum (40+): medals_0
+            // Gold (30+): medals_1
+            // Silver (20+): medals_2
+            // Bronze (10+): medals_3
+            if (score >= 40) currentMedalBitmap = medalBitmaps[0]; 
+            else if (score >= 30) currentMedalBitmap = medalBitmaps[1];
+            else if (score >= 20) currentMedalBitmap = medalBitmaps[2];
+            else if (score >= 10) currentMedalBitmap = medalBitmaps[3];
+            else currentMedalBitmap = null;
 
             displayedScore = 0;
             lastScoreTickTime = 0;
@@ -1052,27 +1374,34 @@ class GameView extends View implements Choreographer.FrameCallback {
         if (canvas == null || !isReady) return;
 
         if (settingMotionBlurEnabled) {
-            float strength = Math.max(0.1f, settingMotionBlurStrength);
-            int alpha = 255 - (int) Math.min(250, strength * 25);
-            motionBlurPaint.setAlpha(alpha);
-            canvas.drawRect(0, 0, screenWidth, screenHeight, motionBlurPaint);
+            motionBlurPaint.setAlpha((int) (255 / (Math.max(1f, settingMotionBlurStrength) * 1.5f)));
+            canvas.drawPaint(motionBlurPaint);
         } else {
             canvas.drawColor(Color.TRANSPARENT, PorterDuff.Mode.CLEAR);
         }
 
         canvas.save();
 
+        // --- CAMERA TRANSFORM (Zoom & Shake) ---
+        
+        // 1. Apply Shake Offset
         if (shakeTimer > 0) {
-            float
-                    magnitude = currentShakeMagnitude * (shakeTimer / 0.5f);
+            float magnitude = currentShakeMagnitude * (shakeTimer / 0.5f);
             float xOffset = (random.nextFloat() - 0.5f) * 2 * magnitude;
             float yOffset = (random.nextFloat() - 0.5f) * 2 * magnitude;
             canvas.translate(xOffset, yOffset);
+        }
+        
+        // 2. Apply Cinematic Zoom (Centered on Bird)
+        if (cameraZoom > 1.0f) {
+            canvas.scale(cameraZoom, cameraZoom, birdX, birdY);
         }
 
         if (settingUpsideDownEnabled) {
             canvas.scale(1, -1, screenWidth / 2f, screenHeight / 2f);
         }
+
+        // --- DRAWING GAME WORLD ---
 
         Bitmap bgToDraw;
         if(settingDynamicDayNightEnabled) {
@@ -1100,6 +1429,12 @@ class GameView extends View implements Choreographer.FrameCallback {
             }
         }
 
+        // Draw Background Parallax Weather (Depth Layer)
+        if (settingWeatherEffect > 0) {
+             weatherSystem.drawBack(canvas);
+        }
+
+        // Draw Pipes
         if (gameState != GameState.HOME && !(gameState == GameState.TRANSITION_TO_WAITING && isFadingOut)) {
             for (Pipe pipe : pipes) {
                 float visualPipeWidth = pipe.width * settingPipeWidth;
@@ -1107,38 +1442,32 @@ class GameView extends View implements Choreographer.FrameCallback {
 
                 pipeDestRect.set(xPos, pipe.getTopPipeY(), xPos + visualPipeWidth, pipe.getTopPipeY() + pipe.height);
                 canvas.drawBitmap(currentPipeTopBitmap, null, pipeDestRect, pipe.pipePaint);
+                
+                // Draw Electricity on top pipe if active
+                if (pipeElectrificationTimer > 0) {
+                     drawPipeElectricity(canvas, xPos, pipe.getTopPipeY(), visualPipeWidth, pipe.height);
+                }
 
                 pipeDestRect.set(xPos, pipe.getBottomPipeY(pipeGap), xPos + visualPipeWidth, pipe.getBottomPipeY(pipeGap) + pipe.height);
                 canvas.drawBitmap(currentPipeBottomBitmap, null, pipeDestRect, pipe.pipePaint);
 
-                if (pipe.isGolden) {
-                    int[] colors = {Color.argb(0, 255, 215, 0), Color.argb(150, 255, 255, 100), Color.argb(0, 255, 215, 0)};
-                    float[] positions = {0, 0.5f, 1};
-                    Shader shader = new LinearGradient(xPos, 0, xPos + visualPipeWidth, 0, colors, positions, Shader.TileMode.MIRROR);
-                    goldenPipePaint.setShader(shader);
+                // Draw Electricity on bottom pipe if active
+                if (pipeElectrificationTimer > 0) {
+                     drawPipeElectricity(canvas, xPos, pipe.getBottomPipeY(pipeGap), visualPipeWidth, pipe.height);
+                }
 
-                    Matrix m = new Matrix();
-                    m.setTranslate(goldenPipeHue, 0);
-                    shader.setLocalMatrix(m);
+                if (pipe.isGolden) {
+                    gradientMatrix.setTranslate(goldenPipeHue, 0);
+                    goldenPipeShader.setLocalMatrix(gradientMatrix);
 
                     pipeDestRect.set(xPos, pipe.getTopPipeY(), xPos + visualPipeWidth, pipe.getTopPipeY() + pipe.height);
                     canvas.drawRect(pipeDestRect, goldenPipePaint);
                     pipeDestRect.set(xPos, pipe.getBottomPipeY(pipeGap), xPos + visualPipeWidth, pipe.getBottomPipeY(pipeGap) + pipe.height);
                     canvas.drawRect(pipeDestRect, goldenPipePaint);
                 }
-                if (settingWeatherEffect == 3 && pipe.snowHeight > 0) {
-                     canvas.drawRect(xPos, pipe.getTopPipeY(), xPos + visualPipeWidth, pipe.getTopPipeY() + pipe.snowHeight, snowAccumulationPaint);
-                }
             }
         }
-
-        if (settingWeatherEffect > 0) {
-            weatherPaint.setAlpha(settingWeatherEffect == 3 ? 220 : 150);
-            for(WeatherParticle p : weatherParticles) {
-                p.draw(canvas, weatherPaint, settingWeatherEffect);
-            }
-        }
-
+        
         float groundDrawWidth = groundBitmap.getWidth();
         float groundTopY = screenHeight - systemBarBottom - groundHeight;
         startX = groundX % groundDrawWidth;
@@ -1150,8 +1479,9 @@ class GameView extends View implements Choreographer.FrameCallback {
             canvas.drawBitmap(groundBitmap, null, groundDestRect, pixelPaint);
         }
 
-        if (settingWeatherEffect == 3 && groundSnowHeight > 0) {
-            canvas.drawRect(0, groundTopY, screenWidth, groundTopY + groundSnowHeight, snowAccumulationPaint);
+        // Draw Smoke Particles (Behind bird)
+        for (SmokeParticle p : smokeParticles) {
+            p.draw(canvas);
         }
 
         drawBirdTrail(canvas);
@@ -1164,6 +1494,12 @@ class GameView extends View implements Choreographer.FrameCallback {
             colorMatrix.setRotate(2, rainbowHue);
             birdPaint.setColorFilter(new ColorMatrixColorFilter(colorMatrix));
         }
+        
+        // Apply Burnt Filter if active
+        if (isBirdBurnt) {
+            birdPaint.setColorFilter(burntColorFilter);
+        }
+        
         if (settingGhostModeEnabled) {
             birdPaint.setAlpha(128);
         }
@@ -1176,6 +1512,23 @@ class GameView extends View implements Choreographer.FrameCallback {
         birdMatrix.postTranslate(birdX, birdY);
         canvas.drawBitmap(currentBirdBitmap, birdMatrix, birdPaint);
         birdPaint.setAlpha(255);
+        birdPaint.setColorFilter(null); // Reset filter
+
+        // Draw Sparks (Over bird)
+        for (SparkParticle sp : sparkParticles) {
+            sp.draw(canvas, sparkPaint);
+        }
+
+        // Draw Foreground Weather and Lighting
+        if (settingWeatherEffect > 0) {
+             weatherSystem.drawFront(canvas);
+             weatherSystem.drawLightingOverlay(canvas, screenWidth, screenHeight);
+        }
+
+        // --- END CAMERA TRANSFORM ---
+        canvas.restore();
+        
+        // --- UI (DRAWN IN SCREEN SPACE - NO ZOOM) ---
 
         if (gameState == GameState.HOME) {
             drawHomeScreen(canvas);
@@ -1193,15 +1546,41 @@ class GameView extends View implements Choreographer.FrameCallback {
             drawGameOverScreen(canvas);
         }
 
-        canvas.restore();
-
-        if (flashAlpha > 0) {
-            flashPaint.setAlpha(flashAlpha);
-            canvas.drawRect(0, 0, screenWidth, screenHeight, flashPaint);
-        }
         if (transitionAlpha > 0) {
             transitionPaint.setAlpha((int) transitionAlpha);
             canvas.drawRect(0, 0, screenWidth, screenHeight, transitionPaint);
+        }
+        
+        // Draw White Flash on top of everything
+        if (flashAlpha > 0) {
+            flashPaint.setAlpha((int) flashAlpha);
+            canvas.drawRect(0, 0, screenWidth, screenHeight, flashPaint);
+        }
+    }
+    
+    private void drawPipeElectricity(Canvas canvas, float x, float y, float w, float h) {
+        Path path = new Path();
+        float currentY = y;
+        float endY = y + h;
+        
+        // Draw jagged lines running up/down the pipe
+        for(int i=0; i<3; i++) { // 3 Bolts per pipe segment
+            path.reset();
+            float startX = x + (random.nextFloat() * w);
+            path.moveTo(startX, currentY);
+            
+            float cy = currentY;
+            float cx = startX;
+            
+            while(cy < endY) {
+                 cy += random.nextInt(40) + 10;
+                 cx += (random.nextInt(30) - 15);
+                 // Constrain to pipe width
+                 if(cx < x) cx = x;
+                 if(cx > x + w) cx = x + w;
+                 path.lineTo(cx, cy);
+            }
+            canvas.drawPath(path, electricityPipePaint);
         }
     }
 
@@ -1217,10 +1596,15 @@ class GameView extends View implements Choreographer.FrameCallback {
             case MotionEvent.ACTION_DOWN:
                 isScreenPressed = true;
                 pressedButtonRect = null;
+                settingsButtonTargetScale = 1.0f; // Default reset
+                
                 if (gameState == GameState.HOME) {
                     if (playButtonRect.contains(touchX, touchY)) pressedButtonRect = playButtonRect;
                     else if (scoreButtonRect.contains(touchX, touchY)) pressedButtonRect = scoreButtonRect;
-                    else if (settingsButtonRect.contains(touchX, touchY)) pressedButtonRect = settingsButtonRect;
+                    else if (settingsButtonRect.contains(touchX, touchY)) {
+                        pressedButtonRect = settingsButtonRect;
+                        settingsButtonTargetScale = 0.85f; // Shrink on press
+                    }
                 } else if (gameState == GameState.WAITING) {
                     gameState = GameState.PLAYING;
                     updateWeatherSounds();
@@ -1233,16 +1617,18 @@ class GameView extends View implements Choreographer.FrameCallback {
                     }
                     if (isGameOverIconAnimationDone && settingsButtonRect.contains(touchX, touchY)) {
                         pressedButtonRect = settingsButtonRect;
+                        settingsButtonTargetScale = 0.85f; // Shrink on press
                     }
                 }
                 if (pressedButtonRect != null) invalidate();
                 break;
             case MotionEvent.ACTION_UP:
                 isScreenPressed = false;
+                settingsButtonTargetScale = 1.0f; // Bounce back
+                
                 if (pressedButtonRect != null && pressedButtonRect.contains(touchX, touchY)) {
                     if (gameState == GameState.HOME) {
                         if (pressedButtonRect == playButtonRect) {
-
                             gameState = GameState.TRANSITION_TO_WAITING; isFadingOut = true; playSound(soundSwooshing);
                         } else if (pressedButtonRect == settingsButtonRect) {
                             playSound(soundSwooshing);
@@ -1260,17 +1646,19 @@ class GameView extends View implements Choreographer.FrameCallback {
                         }
                     }
                 }
-                if (pressedButtonRect != null) { pressedButtonRect = null;
-                    invalidate(); }
+                if (pressedButtonRect != null) { pressedButtonRect = null; invalidate(); }
                 break;
             case MotionEvent.ACTION_MOVE:
-                if (pressedButtonRect != null && !pressedButtonRect.contains(touchX, touchY)) { pressedButtonRect = null;
-                    invalidate(); }
+                if (pressedButtonRect != null && !pressedButtonRect.contains(touchX, touchY)) { 
+                    pressedButtonRect = null;
+                    settingsButtonTargetScale = 1.0f;
+                    invalidate(); 
+                }
                 break;
             case MotionEvent.ACTION_CANCEL:
                 isScreenPressed = false;
-                if (pressedButtonRect != null) { pressedButtonRect = null;
-                    invalidate(); }
+                settingsButtonTargetScale = 1.0f;
+                if (pressedButtonRect != null) { pressedButtonRect = null; invalidate(); }
                 break;
         }
         return true;
@@ -1336,11 +1724,31 @@ class GameView extends View implements Choreographer.FrameCallback {
         if (settingsButtonBitmap != null) {
             float settingsBtnX = screenWidth - settingsButtonBitmap.getWidth() - margin;
             float settingsBtnY = systemBarTop + margin;
-            settingsButtonRect.set((int) settingsBtnX, (int) settingsBtnY, (int) (settingsBtnX + settingsButtonBitmap.getWidth()), (int) (settingsBtnY + settingsButtonBitmap.getHeight()));
+            
+            // Update rect for hit detection
+            settingsButtonRect.set((int) settingsBtnX, (int) settingsBtnY, 
+                (int) (settingsBtnX + settingsButtonBitmap.getWidth()), 
+                (int) (settingsBtnY + settingsButtonBitmap.getHeight()));
+                
             if (!settingHideSettingsIcon) {
-                settingsButtonDestRect.set(settingsButtonRect);
-                if (pressedButtonRect == settingsButtonRect) settingsButtonDestRect.offset(0, pressOffsetY);
-                canvas.drawBitmap(settingsButtonBitmap, null, settingsButtonDestRect, pixelPaint);
+                // Scale Animation
+                float centerX = settingsButtonRect.centerX();
+                float centerY = settingsButtonRect.centerY();
+                canvas.save();
+                canvas.scale(settingsButtonScale, settingsButtonScale, centerX, centerY);
+                
+                // Tint when pressed
+                if (pressedButtonRect == settingsButtonRect) {
+                    pixelPaint.setColorFilter(new PorterDuffColorFilter(Color.GRAY, PorterDuff.Mode.MULTIPLY));
+                } else {
+                    pixelPaint.setColorFilter(null);
+                }
+                
+                canvas.drawBitmap(settingsButtonBitmap, settingsBtnX, settingsBtnY, pixelPaint);
+                canvas.restore();
+                
+                // Reset paint
+                pixelPaint.setColorFilter(null);
             }
         }
 
@@ -1403,13 +1811,55 @@ class GameView extends View implements Choreographer.FrameCallback {
             float highScoreY = panelY + (SCORE_PANEL_HIGH_SCORE_Y_OFFSET * scale * scaleCorrection);
             drawScoreWithImagesRightAligned(canvas, displayedScore, panelRightEdge, scoreY, smallNumberBitmaps, scaleCorrection);
             drawScoreWithImagesRightAligned(canvas, highScore, panelRightEdge, highScoreY, smallNumberBitmaps, scaleCorrection);
+            
             if (currentMedalBitmap != null && displayedScore == score) {
                 float medalWidth = currentMedalBitmap.getWidth() * scaleCorrection;
                 float medalHeight = currentMedalBitmap.getHeight() * scaleCorrection;
                 float medalX = panelX + (SCORE_PANEL_MEDAL_X_OFFSET * scale * scaleCorrection);
                 float medalY = panelY + (SCORE_PANEL_MEDAL_Y_OFFSET * scale * scaleCorrection);
                 medalDestRect.set(medalX, medalY, medalX + medalWidth, medalY + medalHeight);
+                
+                // --- APPLY MEDAL OFFSETS (Fix for Platinum/Gold positioning) ---
+                float xOffset = 0;
+                float yOffset = 0;
+
+                if (currentMedalBitmap == medalBitmaps[0]) { // Platinum
+                    xOffset = PLATINUM_OFFSET_X * scale * scaleCorrection;
+                    yOffset = PLATINUM_OFFSET_Y * scale * scaleCorrection;
+                } else if (currentMedalBitmap == medalBitmaps[1]) { // Gold
+                    xOffset = GOLD_OFFSET_X * scale * scaleCorrection;
+                    yOffset = GOLD_OFFSET_Y * scale * scaleCorrection;
+                }
+                
+                medalDestRect.offset(xOffset, yOffset);
+                // Also update medalX/Y variables so the sparkle follows the offset
+                medalX += xOffset;
+                medalY += yOffset;
+
                 canvas.drawBitmap(currentMedalBitmap, null, medalDestRect, pixelPaint);
+                
+                if (isSparkleAnimating && sparkleBitmap != null) {
+                    float shineSize = 30 * scale * scaleCorrection * sparkleScaleCurrent; // 30 is base visual size
+                    
+                    // Calculate center position based on random offsets
+                    float centerX = medalX + (medalWidth * sparkleXOffset);
+                    float centerY = medalY + (medalHeight * sparkleYOffset);
+                    
+                    float left = centerX - (shineSize / 2f);
+                    float top = centerY - (shineSize / 2f);
+                    
+                    RectF sparkleDest = new RectF(left, top, left + shineSize, top + shineSize);
+                    
+                    // Use a smooth paint for the glow effect
+                    Paint smoothPaint = new Paint(); 
+                    smoothPaint.setFilterBitmap(true);
+                    
+                    // Rotate the sparkle slightly over time for effect
+                    canvas.save();
+                    canvas.rotate(sparkleTimer * 100, centerX, centerY);
+                    canvas.drawBitmap(sparkleBitmap, null, sparkleDest, smoothPaint);
+                    canvas.restore();
+                }
             }
 
             if (displayedScore == score) {
@@ -1431,12 +1881,23 @@ class GameView extends View implements Choreographer.FrameCallback {
                 float settingsBtnX = screenWidth - settingsButtonBitmap.getWidth() - margin;
                 float settingsBtnY = gameOverSettingsIconY;
                 settingsButtonRect.set((int) settingsBtnX, (int) settingsBtnY, (int) (settingsBtnX + settingsButtonBitmap.getWidth()), (int) (settingsBtnY + settingsButtonBitmap.getHeight()));
+                
                 if (!settingHideSettingsIcon) {
-                    settingsButtonDestRect.set(settingsButtonRect);
+                    // Animation logic for settings button on game over screen
+                    float centerX = settingsButtonRect.centerX();
+                    float centerY = settingsButtonRect.centerY();
+                    canvas.save();
+                    canvas.scale(settingsButtonScale, settingsButtonScale, centerX, centerY);
+                    
                     if (pressedButtonRect == settingsButtonRect) {
-                        settingsButtonDestRect.offset(0, pressOffsetY);
+                        pixelPaint.setColorFilter(new PorterDuffColorFilter(Color.GRAY, PorterDuff.Mode.MULTIPLY));
+                    } else {
+                        pixelPaint.setColorFilter(null);
                     }
-                    canvas.drawBitmap(settingsButtonBitmap, null, settingsButtonDestRect, pixelPaint);
+                    
+                    canvas.drawBitmap(settingsButtonBitmap, settingsBtnX, settingsBtnY, pixelPaint);
+                    canvas.restore();
+                    pixelPaint.setColorFilter(null);
                 }
             }
         }
@@ -1545,10 +2006,14 @@ class GameView extends View implements Choreographer.FrameCallback {
         int settingsResId = getResources().getIdentifier("settingsbutton", "drawable", getContext().getPackageName());
         if (settingsResId != 0) unscaledButtonSettings = BitmapFactory.decodeResource(getResources(), settingsResId, options);
         if (unscaledButtonSettings == null) Log.w("GameView", "Could not load 'settingsbutton.png'.");
-        unscaledMedalsBitmaps[0] = extract(atlas, loc(0.23632812, ATLAS_WIDTH), loc(0.50390625, ATLAS_HEIGHT), 44, 44);
-        unscaledMedalsBitmaps[1] = extract(atlas, loc(0.23632812, ATLAS_WIDTH), loc(0.55078125, ATLAS_HEIGHT), 44, 44);
-        unscaledMedalsBitmaps[2] = extract(atlas, loc(0.21875, ATLAS_WIDTH), loc(0.8847656, ATLAS_HEIGHT), 44, 44);
-        unscaledMedalsBitmaps[3] = extract(atlas, loc(0.21875, ATLAS_WIDTH), loc(0.9316406, ATLAS_HEIGHT), 44, 44);
+        
+        // UPDATED: Changed extraction height from 44 to 48 to prevent cut-off for Platinum/Gold
+        unscaledMedalsBitmaps[0] = extract(atlas, loc(0.23632812, ATLAS_WIDTH), loc(0.50390625, ATLAS_HEIGHT), 48, 48);
+        unscaledMedalsBitmaps[1] = extract(atlas, loc(0.23632812, ATLAS_WIDTH), loc(0.55078125, ATLAS_HEIGHT), 48, 48);
+        // Silver and Bronze remain 44 width
+        unscaledMedalsBitmaps[2] = extract(atlas, loc(0.21875, ATLAS_WIDTH), loc(0.8847656, ATLAS_HEIGHT), 44, 48);
+        unscaledMedalsBitmaps[3] = extract(atlas, loc(0.21875, ATLAS_WIDTH), loc(0.9316406, ATLAS_HEIGHT), 44, 48);
+        
         atlas.recycle();
         for (int i = 0; i < 10; i++) {
             int resId = getResources().getIdentifier("number_" + i, "drawable", getContext().getPackageName());
@@ -1600,7 +2065,7 @@ class GameView extends View implements Choreographer.FrameCallback {
     }
     private void loadSounds() {
         AudioAttributes aa = new AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_GAME).setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION).build();
-        soundPool = new SoundPool.Builder().setMaxStreams(5).setAudioAttributes(aa).build();
+        soundPool = new SoundPool.Builder().setMaxStreams(10).setAudioAttributes(aa).build();
         soundWing = soundPool.load(getContext(), R.raw.wing, 1);
         soundPoint = soundPool.load(getContext(), R.raw.point, 1);
         soundHit = soundPool.load(getContext(), R.raw.hit, 1);
@@ -1713,6 +2178,8 @@ class GameView extends View implements Choreographer.FrameCallback {
         update(deltaTime); invalidate(); choreographer.postFrameCallback(this);
     }
 
+    // --- INNER CLASSES FOR EFFECTS ---
+
     static class TrailParticle {
         float x, y, rotation, rainbowHue;
         int colorIndex, frameIndex;
@@ -1728,45 +2195,447 @@ class GameView extends View implements Choreographer.FrameCallback {
         }
     }
 
+    static class SmokeParticle {
+        float x, y, radius, alpha;
+        float speedX, speedY;
+        float expansionRate;
+        float maxLife, life;
+        Paint particlePaint;
+
+        SmokeParticle(float startX, float startY, float scale) {
+            Random r = new Random();
+            x = startX + (r.nextFloat() - 0.5f) * 40 * scale;
+            y = startY + (r.nextFloat() - 0.5f) * 40 * scale;
+            radius = (10 + r.nextFloat() * 10) * scale;
+            alpha = 0.8f; 
+            
+            speedY = -(30 + r.nextFloat() * 40) * scale; 
+            speedX = -(50 + r.nextFloat() * 30) * scale; 
+            
+            expansionRate = 25 * scale;
+            maxLife = 1.0f + r.nextFloat() * 0.5f;
+            life = maxLife;
+            
+            particlePaint = new Paint();
+            particlePaint.setAntiAlias(true);
+            
+            updateShader();
+        }
+        
+        private void updateShader() {
+            RadialGradient gradient = new RadialGradient(x, y, radius,
+                new int[] { Color.argb((int)(alpha * 255), 60, 60, 60), Color.TRANSPARENT },
+                null, Shader.TileMode.CLAMP);
+            particlePaint.setShader(gradient);
+        }
+
+        void update(float dt, float windSpeed) {
+            life -= dt;
+            x -= windSpeed * dt; 
+            x += speedX * dt;
+            y += speedY * dt;
+            radius += expansionRate * dt;
+            alpha = Math.max(0, life / maxLife);
+            updateShader();
+        }
+        
+        void draw(Canvas canvas) {
+             canvas.drawCircle(x, y, radius, particlePaint);
+        }
+        
+        boolean isDead() { return life <= 0; }
+    }
+    
+    static class SparkParticle {
+        float x, y;
+        float vx, vy;
+        float life, maxLife;
+        int color;
+        int type; 
+        
+        SparkParticle(float startX, float startY, float scale, int type) {
+            Random r = new Random();
+            this.type = type;
+            this.x = startX + (r.nextFloat() - 0.5f) * 60 * scale;
+            this.y = startY + (r.nextFloat() - 0.5f) * 60 * scale;
+            
+            if (type == 0) { // Zap
+                this.vx = (r.nextFloat() - 0.5f) * 50 * scale;
+                this.vy = (r.nextFloat() - 0.5f) * 50 * scale;
+                this.maxLife = 0.1f + r.nextFloat() * 0.1f;
+            } else { // Fall
+                this.vx = (r.nextFloat() - 0.5f) * 200 * scale;
+                this.vy = -(100 + r.nextFloat() * 100) * scale; // Pop up then fall
+                this.maxLife = 0.5f + r.nextFloat() * 0.5f;
+            }
+            
+            this.life = maxLife;
+            this.color = r.nextBoolean() ? Color.WHITE : Color.CYAN;
+        }
+        
+        void update(float dt, float wind) {
+            life -= dt;
+            x += vx * dt;
+            y += vy * dt;
+            x -= wind * dt;
+            
+            if (type == 1) {
+                vy += 800f * dt; // Gravity
+            }
+        }
+        
+        void draw(Canvas c, Paint p) {
+            int alpha = (int)((life / maxLife) * 255);
+            p.setColor(color);
+            p.setAlpha(alpha);
+            c.drawPoint(x, y, p);
+        }
+        
+        boolean isDead() { return life <= 0; }
+    }
+
+    /**
+     * Advanced Weather System 2.0
+     */
+    class WeatherSystem {
+        private WeatherParticle[] frontParticles;
+        private WeatherParticle[] backParticles;
+        private List<LightningBolt> bolts = new ArrayList<>();
+        private Random random = new Random();
+        
+        private Paint frontPaint, backPaint;
+        private Paint lightningPaint, lightningGlowPaint;
+        private Paint stormVignettePaint; 
+        private Paint flashTintPaint; 
+        private Paint vignettePaint;  
+        
+        private int currentWeatherType = 0;
+        private float lightningIntensity = 0f;
+        private float lightningDecay = 4.0f; 
+        
+        // Apocalypse Mode
+        private boolean heavyRain = false;
+        
+        // Screen specs
+        private int width, height;
+
+        public WeatherSystem() {
+            frontPaint = new Paint();
+            frontPaint.setColor(Color.WHITE);
+            frontPaint.setAntiAlias(true);
+            
+            backPaint = new Paint();
+            backPaint.setColor(Color.WHITE);
+            backPaint.setAlpha(100);
+            backPaint.setAntiAlias(true);
+            
+            lightningPaint = new Paint();
+            lightningPaint.setColor(Color.WHITE);
+            lightningPaint.setStyle(Paint.Style.STROKE);
+            lightningPaint.setStrokeCap(Paint.Cap.ROUND);
+            lightningPaint.setStrokeJoin(Paint.Join.ROUND);
+            lightningPaint.setAntiAlias(true);
+
+            lightningGlowPaint = new Paint(lightningPaint);
+            lightningGlowPaint.setColor(Color.argb(255, 200, 230, 255)); // Brighter glow
+            lightningGlowPaint.setMaskFilter(new BlurMaskFilter(30, BlurMaskFilter.Blur.NORMAL));
+            
+            stormVignettePaint = new Paint();
+            stormVignettePaint.setXfermode(new PorterDuffXfermode(PorterDuff.Mode.SRC_OVER));
+            
+            flashTintPaint = new Paint();
+            flashTintPaint.setColor(Color.WHITE);
+            flashTintPaint.setXfermode(new PorterDuffXfermode(PorterDuff.Mode.ADD));
+            
+            vignettePaint = new Paint();
+            vignettePaint.setXfermode(new PorterDuffXfermode(PorterDuff.Mode.SRC_OVER));
+        }
+
+        public void init(int width, int height, float scale) {
+            this.width = width;
+            this.height = height;
+            
+            lightningPaint.setStrokeWidth(4 * scale);
+            lightningGlowPaint.setStrokeWidth(20 * scale);
+            
+            int frontCount = 150;
+            int backCount = 150;
+            
+            frontParticles = new WeatherParticle[frontCount];
+            backParticles = new WeatherParticle[backCount];
+            
+            for(int i=0; i<frontCount; i++) frontParticles[i] = new WeatherParticle(width, height, true);
+            for(int i=0; i<backCount; i++) backParticles[i] = new WeatherParticle(width, height, false);
+
+            RadialGradient snowVignette = new RadialGradient(
+                width / 2f, height / 2f, width * 1.3f,
+                new int[]{Color.TRANSPARENT, Color.argb(200, 230, 230, 250)},
+                new float[]{0.3f, 1.0f},
+                Shader.TileMode.CLAMP
+            );
+            vignettePaint.setShader(snowVignette);
+
+            RadialGradient stormVignette = new RadialGradient(
+                width / 2f, height / 2f, width * 1.3f,
+                new int[]{Color.TRANSPARENT, Color.argb(200, 0, 0, 20)},
+                new float[]{0.3f, 1.0f},
+                Shader.TileMode.CLAMP
+            );
+            stormVignettePaint.setShader(stormVignette);
+        }
+        
+        public void setHeavyRain(boolean enable) {
+            this.heavyRain = enable;
+        }
+        
+        public void setWeatherType(int type) {
+            this.currentWeatherType = type;
+            for(WeatherParticle p : frontParticles) p.respawn(width, height, type);
+            for(WeatherParticle p : backParticles) p.respawn(width, height, type);
+        }
+
+        public void triggerLightning(int width, int height) {
+            bolts.add(new LightningBolt(random.nextFloat() * width, -50, width, height * 0.8f, -1, -1));
+            lightningIntensity = 1.0f; // Full flash
+        }
+        
+        public void triggerTargetedLightning(float targetX, float targetY, int width, int height) {
+            bolts.add(new LightningBolt(targetX, -50, width, height, targetX, targetY));
+            lightningIntensity = 1.0f;
+        }
+        
+        public void triggerMultiDirectionalBolts(float targetX, float targetY, int width, int height) {
+            // Top Center
+            bolts.add(new LightningBolt(targetX, -50, width, height, targetX, targetY));
+            // Top Left
+            bolts.add(new LightningBolt(0, -50, width, height, targetX, targetY));
+            // Top Right
+            bolts.add(new LightningBolt(width, -50, width, height, targetX, targetY));
+            // Side High
+            bolts.add(new LightningBolt(-50, height * 0.2f, width, height, targetX, targetY));
+            bolts.add(new LightningBolt(width + 50, height * 0.2f, width, height, targetX, targetY));
+            
+            lightningIntensity = 1.0f;
+        }
+
+        public void update(float deltaTime, float windSpeed, float birdVelocity, Rect birdRect) {
+            float backWind = windSpeed * 0.5f; 
+            for(WeatherParticle p : frontParticles) p.update(deltaTime, width, height, currentWeatherType, windSpeed, birdRect, heavyRain);
+            for(WeatherParticle p : backParticles) p.update(deltaTime, width, height, currentWeatherType, backWind, birdRect, heavyRain);
+            
+            Iterator<LightningBolt> iter = bolts.iterator();
+            while(iter.hasNext()) {
+                LightningBolt bolt = iter.next();
+                bolt.update(deltaTime);
+                if(bolt.isDead()) iter.remove();
+            }
+            
+            if (lightningIntensity > 0) {
+                lightningIntensity -= lightningDecay * deltaTime;
+                if (lightningIntensity < 0) lightningIntensity = 0;
+            }
+        }
+
+        public void drawBack(Canvas canvas) {
+            for(WeatherParticle p : backParticles) p.draw(canvas, backPaint, currentWeatherType, heavyRain);
+        }
+        
+        public void drawFront(Canvas canvas) {
+            for(WeatherParticle p : frontParticles) p.draw(canvas, frontPaint, currentWeatherType, heavyRain);
+        }
+        
+        public void drawLightingOverlay(Canvas canvas, int width, int height) {
+            int overscan = 100; 
+            if (currentWeatherType == 2) {
+                canvas.drawRect(-overscan, -overscan, width + overscan, height + overscan, stormVignettePaint);
+            } else if (currentWeatherType == 3) {
+                 canvas.drawRect(-overscan, -overscan, width + overscan, height + overscan, vignettePaint);
+            }
+            
+            for(LightningBolt bolt : bolts) {
+                bolt.draw(canvas, lightningPaint, lightningGlowPaint);
+            }
+            
+            if (lightningIntensity > 0) {
+                int alpha = (int)(lightningIntensity * 100); 
+                flashTintPaint.setAlpha(alpha);
+                canvas.drawRect(-overscan, -overscan, width + overscan, height + overscan, flashTintPaint);
+            }
+        }
+    }
+
+    class LightningBolt {
+        private Path path = new Path();
+        private float life = 0.25f; // Total duration
+        private float maxLife = 0.25f;
+        private float alpha = 1.0f;
+
+        public LightningBolt(float startX, float startY, float width, float height, float targetX, float targetY) {
+            if (targetX != -1) {
+                generateTargeted(startX, startY, targetX, targetY);
+            } else {
+                generate(startX, startY, height);
+            }
+        }
+
+        private void generate(float x, float y, float targetHeight) {
+            path.reset();
+            path.moveTo(x, y);
+            float currentX = x;
+            float currentY = y;
+            Random r = new Random();
+            
+            while(currentY < targetHeight) {
+                float segmentLen = 30 + r.nextFloat() * 50;
+                currentY += segmentLen;
+                currentX += (r.nextFloat() - 0.5f) * 80;
+                path.lineTo(currentX, currentY);
+                if (r.nextBoolean()) {
+                    float branchX = currentX + (r.nextFloat() - 0.5f) * 100;
+                    float branchY = currentY + (50 + r.nextFloat() * 50);
+                    path.lineTo(branchX, branchY);
+                    path.moveTo(currentX, currentY);
+                }
+            }
+        }
+        
+        private void generateTargeted(float startX, float startY, float endX, float endY) {
+            path.reset();
+            path.moveTo(startX, startY);
+            
+            float currentX = startX;
+            float currentY = startY;
+            float distX = endX - startX;
+            float distY = endY - startY;
+            int segments = 8;
+            float stepX = distX / segments;
+            float stepY = distY / segments;
+            
+            Random r = new Random();
+            
+            for(int i=0; i<segments; i++) {
+                currentX += stepX;
+                currentY += stepY;
+                
+                // Add jitter
+                float jitterX = (r.nextFloat() - 0.5f) * 100;
+                float jitterY = (r.nextFloat() - 0.5f) * 50;
+                
+                // Lock last point to target
+                if (i == segments -1) {
+                    currentX = endX;
+                    currentY = endY;
+                } else {
+                    currentX += jitterX;
+                    currentY += jitterY;
+                }
+                
+                path.lineTo(currentX, currentY);
+            }
+        }
+
+        public void update(float dt) {
+            life -= dt;
+            alpha = life / maxLife;
+        }
+
+        public boolean isDead() { return life <= 0; }
+
+        public void draw(Canvas c, Paint core, Paint glow) {
+            int a = (int)(alpha * 255);
+            if (a > 255) a = 255; if (a < 0) a = 0;
+            
+            glow.setAlpha(a);
+            core.setAlpha(a);
+            c.drawPath(path, glow);
+            c.drawPath(path, core);
+        }
+    }
+
     static class WeatherParticle {
-        float x, y, ySpeed, size, xDrift;
+        float x, y, z; 
+        float ySpeed, size, length;
+        float offset; 
+        float bounceX = 0, bounceY = 0;
         private static Random random = new Random();
 
-        WeatherParticle(int screenWidth, int screenHeight, int weatherType, float wind) {
-            respawn(screenWidth, screenHeight, weatherType, wind);
+        WeatherParticle(int screenWidth, int screenHeight, boolean isFront) {
+            if (isFront) z = 1.0f + random.nextFloat() * 0.5f;
+            else z = 0.5f + random.nextFloat() * 0.5f;
+            respawn(screenWidth, screenHeight, 0);
+            y = random.nextFloat() * screenHeight;
         }
 
-        void respawn(int screenWidth, int screenHeight, int weatherType, float wind) {
+        void respawn(int screenWidth, int screenHeight, int weatherType) {
             x = random.nextFloat() * screenWidth;
-            y = -random.nextFloat() * screenHeight;
-
-            if (weatherType == 3) {
-                size = (2.0f + random.nextFloat() * 3.5f);
-                ySpeed = (0.5f + random.nextFloat() * 0.5f) * screenHeight * 0.2f;
-                xDrift = wind + (random.nextFloat() - 0.5f) * 60f;
-            } else {
-                size = (1.5f + random.nextFloat() * 2.5f);
-                ySpeed = (0.8f + random.nextFloat()) * screenHeight * 0.8f;
-                xDrift = 0;
+            y = -50 - random.nextFloat() * 50;
+            bounceX = 0;
+            bounceY = 0;
+            offset = random.nextFloat() * 100f;
+            
+            if (weatherType == 3) { // Snow
+                size = (2f + random.nextFloat() * 4f) * z;
+                ySpeed = (30f + random.nextFloat() * 40f) * z;
+            } else { // Rain
+                size = (2.0f + random.nextFloat()) * z; 
+                length = (30f + random.nextFloat() * 40f) * z; 
+                ySpeed = (700f + random.nextFloat() * 300f) * z;
             }
         }
 
-        void update(float deltaTime, int screenWidth, int screenHeight, int weatherType, float wind) {
-            y += ySpeed * deltaTime;
-            x += xDrift * deltaTime;
+        void update(float deltaTime, int screenWidth, int screenHeight, int weatherType, float windSpeed, Rect birdRect, boolean heavy) {
+            float speedMult = heavy ? 2.5f : 1.0f;
+            y += ySpeed * speedMult * deltaTime;
+            x += bounceX * deltaTime;
+            y += bounceY * deltaTime;
+            bounceX *= 0.90f; 
+            bounceY *= 0.90f; 
 
-            if (y > screenHeight + 20) {
-                respawn(screenWidth, screenHeight, weatherType, wind);
+            if (weatherType == 3) { // Snow Physics
+                float drift = (float)Math.sin(y * 0.01f + offset) * 50f * z;
+                x += (windSpeed * 0.1f * z + drift) * deltaTime;
+                
+                if (birdRect.contains((int)x, (int)y)) {
+                    float dx = x - birdRect.centerX();
+                    float dy = y - birdRect.centerY();
+                    float dist = (float)Math.sqrt(dx*dx + dy*dy);
+                    if (dist < 1) dist = 1;
+                    bounceX = (dx / dist) * 200f;
+                    bounceY = -Math.abs(ySpeed) * 0.8f; 
+                    x += (dx/dist) * 5f;
+                    y += (dy/dist) * 5f;
+                }
+                
+            } else { // Rain Physics
+                x -= windSpeed * z * deltaTime;
             }
-            if (x < -20) x = screenWidth + 20;
-            if (x > screenWidth + 20) x = -20;
+
+            if (y > screenHeight + length || x < -100 || x > screenWidth + 100) {
+                respawn(screenWidth, screenHeight, weatherType);
+            }
         }
 
-        void draw(Canvas canvas, Paint paint, int weatherType) {
-            if (weatherType == 3) {
+        void draw(Canvas canvas, Paint paint, int weatherType, boolean heavy) {
+            if (weatherType == 3) { // Snow
+                int alpha = (int)(180 * z); 
+                if (alpha > 255) alpha = 255;
+                paint.setAlpha(alpha);
                 canvas.drawCircle(x, y, size, paint);
-            } else {
-                canvas.drawLine(x, y, x, y + size * 5, paint);
+            } else { // Rain
+                int alpha = (int)(160 * z); 
+                if (alpha > 255) alpha = 255;
+                paint.setAlpha(alpha);
+                paint.setStrokeWidth(size);
+                float run = -20f * z; 
+                float rise = length * (heavy ? 1.5f : 1.0f);
+                
+                canvas.drawLine(x, y, x + run, y + rise, paint);
+                
+                if (heavy) {
+                    // Cheap density hack: Draw duplicate lines offset slightly
+                    canvas.drawLine(x + 50, y + 50, x + 50 + run, y + 50 + rise, paint);
+                    canvas.drawLine(x - 30, y - 70, x - 30 + run, y - 70 + rise, paint);
+                }
             }
         }
     }
@@ -1777,11 +2646,9 @@ class Pipe {
     private static Random random = new Random();
     public Paint pipePaint;
     public boolean isGolden;
-    public float snowHeight;
 
     private Rect topHeadRect = new Rect(), topBodyRect = new Rect();
     private Rect bottomHeadRect = new Rect(), bottomBodyRect = new Rect();
-    private Rect snowRect = new Rect();
 
     private static float pipeHeadWidth, pipeHeadHeight;
     private static float pipeBodyWidth, pipeBodyOffsetX;
@@ -1790,7 +2657,6 @@ class Pipe {
         this.x = x; this.width = width;
         this.height = height; this.isScored = false;
         this.isGolden = false;
-        this.snowHeight = 0;
         this.pipePaint = new Paint();
         this.pipePaint.setFilterBitmap(false);
         this.pipePaint.setAntiAlias(false);
@@ -1855,7 +2721,9 @@ class Pipe {
     }
 
     public Rect getTopBodyRect(float widthMultiplier) {
-        float top = getTopPipeY();
+        // Extend collision box infinitely upwards (negative Y)
+        // to prevent flying over the pipes.
+        float top = -20000f; 
         float bottom = getCurrentTopPipeY() - pipeHeadHeight;
         float visualWidth = pipeBodyWidth * widthMultiplier;
         float xPos = x + pipeBodyOffsetX + (pipeBodyWidth - visualWidth) / 2.0f;
@@ -1889,14 +2757,5 @@ class Pipe {
                 (int) bottom
         );
         return bottomBodyRect;
-    }
-
-    public Rect getSnowRect(float widthMultiplier) {
-        float visualWidth = this.width * widthMultiplier;
-        float xPos = x + (this.width - visualWidth) / 2.0f;
-        float top = getCurrentTopPipeY();
-        float bottom = top + this.snowHeight;
-        snowRect.set((int)xPos, (int)top, (int)(xPos + visualWidth), (int)bottom);
-        return snowRect;
     }
 }
