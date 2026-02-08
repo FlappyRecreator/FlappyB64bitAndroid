@@ -10,7 +10,7 @@ This project is an open-source, 64-bit Android Java recreation of the original *
 
 The motivation behind this project is a deep appreciation for the original game and a desire to preserve it for future generations. This is a non-commercial, educational, and entertainment-driven initiative. Please don't steal the code, if you want to help, contribute to this project. Contributions will help keep this project alive! I strive (and hopefully with help from other people) to make this the absolute best Flappy Bird game for Android, keeping the original feel intact, while also incorporating enhancements.
 
-_Note: This recreation was based off of V1.3 of the original Flappy Bird. Designed to give the same look as feel!_
+_Note: This recreation was based off of V1.3 of the original Flappy Bird._
 
 ---
 
