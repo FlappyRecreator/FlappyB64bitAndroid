@@ -1028,9 +1028,6 @@ public class SettingsActivity extends AppCompatActivity {
         }
 
         private ColorFilter createPipeColorFilter(int pipeColorSetting) {
-            if(isReversePipes && pipeColorSetting == 0) {
-                return new PorterDuffColorFilter(0xFFD05050, PorterDuff.Mode.MULTIPLY);
-            }
             switch (pipeColorSetting) {
                 case 1: return new PorterDuffColorFilter(0xFFD05050, PorterDuff.Mode.MULTIPLY);
                 case 2: return new PorterDuffColorFilter(0xFF6080E0, PorterDuff.Mode.MULTIPLY);
