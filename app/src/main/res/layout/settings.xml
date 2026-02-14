@@ -6,7 +6,7 @@
 	android:layout_width="match_parent"
 	android:layout_height="match_parent"
 	tools:context=".SettingsActivity"
-	android:background="#333333">
+	android:background="#121212">
 	<LinearLayout
 		android:id="@+id/linear67"
 		android:layout_width="match_parent"
@@ -17,2103 +17,2103 @@
 			android:id="@+id/header_layout"
 			android:layout_width="match_parent"
 			android:layout_height="wrap_content"
-			android:padding="16dp">
+			android:background="#1E1E1E"
+			android:paddingHorizontal="16dp"
+			android:paddingVertical="20dp"
+			android:elevation="4dp">
 			<Button
 				android:id="@+id/button_back"
 				android:layout_width="wrap_content"
 				android:layout_height="wrap_content"
 				android:text="Back"
-				android:textSize="24sp"
+				android:textSize="18sp"
 				android:textColor="#FFFFFF"
-				style="@style/Widget.Material3Expressive.Button.TextButton"
+				style="@style/Widget.Material3.Button.TextButton.Icon"
+				app:icon="@android:drawable/ic_menu_revert"
+				app:iconTint="#FFFFFF"
 				android:fontFamily="@font/flappy_font"
-				android:shadowColor="#000000"
-				android:shadowDx="2"
-				android:shadowDy="2"
-				android:shadowRadius="1.5"
 				android:layout_alignParentStart="true"
 				android:layout_centerVertical="true" />
 			<TextView
 				android:id="@+id/tv_settings_title"
 				android:layout_width="wrap_content"
 				android:layout_height="wrap_content"
-				android:text="Settings"
-				android:textSize="30sp"
-				android:textColor="#FFFFFF"
+				android:text="SETTINGS"
+				android:textSize="28sp"
+				android:textColor="#FFC107"
+				android:letterSpacing="0.05"
 				android:fontFamily="@font/flappy_bold"
 				android:shadowColor="#000000"
-				android:shadowDx="3"
-				android:shadowDy="3"
-				android:shadowRadius="1.5"
+				android:shadowDx="4"
+				android:shadowDy="4"
+				android:shadowRadius="2"
 				android:layout_centerInParent="true" />
 		</RelativeLayout>
-		<FrameLayout
-			android:id="@+id/live_preview_container"
-			android:layout_width="match_parent"
-			android:layout_height="150dp"
-			android:layout_marginBottom="16dp"
-			android:background="@drawable/settings_card_background"
-			android:layout_marginStart="16dp"
-			android:layout_marginEnd="16dp" />
-		<ScrollView
+		<androidx.core.widget.NestedScrollView
 			android:id="@+id/settings_scrollview"
 			android:layout_width="match_parent"
-			android:layout_height="0dp"
-			android:paddingBottom="24dp"
-			android:layout_weight="1"
+			android:layout_height="match_parent"
+			android:paddingBottom="32dp"
 			android:clipToPadding="false">
 			<LinearLayout
 				android:id="@+id/settings_content_layout"
 				android:layout_width="match_parent"
 				android:layout_height="wrap_content"
-				android:orientation="vertical"
-				android:paddingStart="16dp"
-				android:paddingEnd="16dp">
-				<LinearLayout
-					android:id="@+id/card_profiles"
+				android:padding="16dp"
+				android:orientation="vertical">
+				<TextView
+					android:id="@+id/textview628"
+					android:layout_width="wrap_content"
+					android:layout_height="wrap_content"
+					android:layout_marginBottom="8dp"
+					android:text="Live Preview"
+					android:textSize="14sp"
+					android:textColor="#AAAAAA"
+					android:fontFamily="@font/flappy_bold"
+					android:layout_marginStart="4dp" />
+				<com.google.android.material.card.MaterialCardView
+					android:id="@+id/cardview89"
+					android:layout_width="match_parent"
+					android:layout_height="180dp"
+					android:layout_marginBottom="24dp"
+					app:cardBackgroundColor="#000000"
+					app:cardCornerRadius="16dp"
+					app:cardElevation="6dp"
+					app:strokeWidth="2dp"
+					app:strokeColor="#444444">
+					<FrameLayout
+						android:id="@+id/live_preview_container"
+						android:layout_width="match_parent"
+						android:layout_height="match_parent" />
+					<TextView
+						android:id="@+id/textview629"
+						android:layout_width="wrap_content"
+						android:layout_height="wrap_content"
+						android:layout_margin="12dp"
+						android:background="#FF0000"
+						android:text="LIVE"
+						android:textSize="10sp"
+						android:textColor="#FFFFFF"
+						android:layout_gravity="top|end"
+						android:paddingHorizontal="8dp"
+						android:paddingVertical="2dp"
+						android:fontFamily="@font/flappy_bold" />
+				</com.google.android.material.card.MaterialCardView>
+				<com.google.android.material.card.MaterialCardView
+					android:id="@+id/cardview90"
 					android:layout_width="match_parent"
 					android:layout_height="wrap_content"
-					android:layout_marginBottom="16dp"
-					android:padding="16dp"
-					android:background="@drawable/settings_card_background"
-					android:orientation="vertical">
-					<TextView
-						android:id="@+id/textview222"
-						android:layout_width="wrap_content"
-						android:layout_height="wrap_content"
-						android:layout_marginBottom="16dp"
-						android:text="Profiles &amp; Global Actions"
-						android:textSize="22sp"
-						android:textColor="#FFFFFF"
-						android:fontFamily="@font/flappy_bold"
-						android:shadowColor="#000000"
-						android:shadowDx="2"
-						android:shadowDy="2"
-						android:shadowRadius="1.5" />
-					<TextView
-						android:id="@+id/textview223"
-						android:layout_width="wrap_content"
-						android:layout_height="wrap_content"
-						android:layout_marginBottom="8dp"
-						android:text="Settings Profiles"
-						android:textSize="20sp"
-						android:textColor="#FFFFFF"
-						android:fontFamily="@font/flappy_font"
-						android:shadowColor="#000000"
-						android:shadowDx="2"
-						android:shadowDy="2"
-						android:shadowRadius="1.5" />
+					android:layout_marginBottom="20dp"
+					app:contentPadding="20dp"
+					app:cardBackgroundColor="#252525"
+					app:cardCornerRadius="20dp"
+					app:cardElevation="2dp">
 					<LinearLayout
-						android:id="@+id/linear68"
-						android:layout_width="match_parent"
-						android:layout_height="wrap_content"
-						android:layout_marginBottom="8dp"
-						android:gravity="center_vertical"
-						android:orientation="horizontal">
-						<TextView
-							android:id="@+id/textview224"
-							android:layout_width="0dp"
-							android:layout_height="wrap_content"
-							android:text="Profile 1"
-							android:textSize="18sp"
-							android:textColor="#FFFFFF"
-							android:layout_weight="1"
-							android:fontFamily="@font/flappy_font" />
-						<Button
-							android:id="@+id/button_save_profile_1"
-							android:layout_width="wrap_content"
-							android:layout_height="wrap_content"
-							android:text="Save"
-							android:textSize="16sp"
-							android:textColor="#2196F3"
-							android:minWidth="64dp"
-							style="@style/Widget.Material3Expressive.Button.TextButton"
-							android:fontFamily="@font/flappy_font" />
-						<Button
-							android:id="@+id/button_load_profile_1"
-							android:layout_width="wrap_content"
-							android:layout_height="wrap_content"
-							android:text="Load"
-							android:textSize="16sp"
-							android:textColor="#2196F3"
-							android:minWidth="64dp"
-							style="@style/Widget.Material3Expressive.Button.TextButton"
-							android:fontFamily="@font/flappy_font" />
-						<Button
-							android:id="@+id/button_reset_profile_1"
-							android:layout_width="wrap_content"
-							android:layout_height="wrap_content"
-							android:text="Reset"
-							android:textSize="16sp"
-							android:textColor="#F44336"
-							android:minWidth="64dp"
-							style="@style/Widget.Material3Expressive.Button.TextButton"
-							android:fontFamily="@font/flappy_font" />
-					</LinearLayout>
-					<LinearLayout
-						android:id="@+id/linear69"
-						android:layout_width="match_parent"
-						android:layout_height="wrap_content"
-						android:layout_marginBottom="8dp"
-						android:gravity="center_vertical"
-						android:orientation="horizontal">
-						<TextView
-							android:id="@+id/textview225"
-							android:layout_width="0dp"
-							android:layout_height="wrap_content"
-							android:text="Profile 2"
-							android:textSize="18sp"
-							android:textColor="#FFFFFF"
-							android:layout_weight="1"
-							android:fontFamily="@font/flappy_font" />
-						<Button
-							android:id="@+id/button_save_profile_2"
-							android:layout_width="wrap_content"
-							android:layout_height="wrap_content"
-							android:text="Save"
-							android:textSize="16sp"
-							android:textColor="#2196F3"
-							android:minWidth="64dp"
-							style="@style/Widget.Material3Expressive.Button.TextButton"
-							android:fontFamily="@font/flappy_font" />
-						<Button
-							android:id="@+id/button_load_profile_2"
-							android:layout_width="wrap_content"
-							android:layout_height="wrap_content"
-							android:text="Load"
-							android:textSize="16sp"
-							android:textColor="#2196F3"
-							android:minWidth="64dp"
-							style="@style/Widget.Material3Expressive.Button.TextButton"
-							android:fontFamily="@font/flappy_font" />
-						<Button
-							android:id="@+id/button_reset_profile_2"
-							android:layout_width="wrap_content"
-							android:layout_height="wrap_content"
-							android:text="Reset"
-							android:textSize="16sp"
-							android:textColor="#F44336"
-							android:minWidth="64dp"
-							style="@style/Widget.Material3Expressive.Button.TextButton"
-							android:fontFamily="@font/flappy_font" />
-					</LinearLayout>
-					<LinearLayout
-						android:id="@+id/linear70"
-						android:layout_width="match_parent"
-						android:layout_height="wrap_content"
-						android:layout_marginBottom="16dp"
-						android:gravity="center_vertical"
-						android:orientation="horizontal">
-						<TextView
-							android:id="@+id/textview226"
-							android:layout_width="0dp"
-							android:layout_height="wrap_content"
-							android:text="Profile 3"
-							android:textSize="18sp"
-							android:textColor="#FFFFFF"
-							android:layout_weight="1"
-							android:fontFamily="@font/flappy_font" />
-						<Button
-							android:id="@+id/button_save_profile_3"
-							android:layout_width="wrap_content"
-							android:layout_height="wrap_content"
-							android:text="Save"
-							android:textSize="16sp"
-							android:textColor="#2196F3"
-							android:minWidth="64dp"
-							style="@style/Widget.Material3Expressive.Button.TextButton"
-							android:fontFamily="@font/flappy_font" />
-						<Button
-							android:id="@+id/button_load_profile_3"
-							android:layout_width="wrap_content"
-							android:layout_height="wrap_content"
-							android:text="Load"
-							android:textSize="16sp"
-							android:textColor="#2196F3"
-							android:minWidth="64dp"
-							style="@style/Widget.Material3Expressive.Button.TextButton"
-							android:fontFamily="@font/flappy_font" />
-						<Button
-							android:id="@+id/button_reset_profile_3"
-							android:layout_width="wrap_content"
-							android:layout_height="wrap_content"
-							android:text="Reset"
-							android:textSize="16sp"
-							android:textColor="#F44336"
-							android:minWidth="64dp"
-							style="@style/Widget.Material3Expressive.Button.TextButton"
-							android:fontFamily="@font/flappy_font" />
-					</LinearLayout>
-					<Button
-						android:id="@+id/button_reset_profiles"
-						android:layout_width="match_parent"
-						android:layout_height="wrap_content"
-						android:layout_marginBottom="8dp"
-						android:text="Reset All Profiles"
-						android:textSize="20sp"
-						android:textColor="#E91E63"
-						style="@style/Widget.Material3Expressive.Button.OutlinedButton"
-						app:strokeColor="#E91E63"
-						android:fontFamily="@font/flappy_font" />
-					<LinearLayout
-						android:id="@+id/linear71"
-						android:layout_width="match_parent"
-						android:layout_height="wrap_content"
-						android:layout_marginTop="8dp"
-						android:orientation="horizontal">
-						<Button
-							android:id="@+id/button_randomize_all"
-							android:layout_width="0dp"
-							android:layout_height="wrap_content"
-							android:layout_margin="5dp"
-							android:text="Randomize"
-							android:textSize="20sp"
-							android:textColor="#FFC107"
-							android:layout_weight="1"
-							style="@style/Widget.Material3Expressive.Button.OutlinedButton"
-							android:fontFamily="@font/flappy_font" />
-						<Button
-							android:id="@+id/button_reset_all"
-							android:layout_width="0dp"
-							android:layout_height="wrap_content"
-							android:layout_margin="5dp"
-							android:text="Reset Settings"
-							android:textSize="20sp"
-							android:textColor="#F44336"
-							android:layout_weight="1"
-							style="@style/Widget.Material3Expressive.Button.OutlinedButton"
-							android:fontFamily="@font/flappy_font" />
-					</LinearLayout>
-				</LinearLayout>
-				<LinearLayout
-					android:id="@+id/card_atmosphere"
-					android:layout_width="match_parent"
-					android:layout_height="wrap_content"
-					android:layout_marginBottom="16dp"
-					android:padding="16dp"
-					android:background="@drawable/settings_card_background"
-					android:orientation="vertical">
-					<TextView
-						android:id="@+id/textview48"
-						android:layout_width="wrap_content"
-						android:layout_height="wrap_content"
-						android:layout_marginBottom="16dp"
-						android:text="Atmosphere &amp; Environment"
-						android:textSize="22sp"
-						android:textColor="#FFFFFF"
-						android:fontFamily="@font/flappy_bold"
-						android:shadowColor="#000000"
-						android:shadowDx="2"
-						android:shadowDy="2"
-						android:shadowRadius="1.5" />
-					<RelativeLayout
-						android:id="@+id/relativelayout42"
-						android:layout_width="match_parent"
-						android:layout_height="wrap_content"
-						android:layout_marginBottom="16dp">
-						<TextView
-							android:id="@+id/textview49"
-							android:layout_width="wrap_content"
-							android:layout_height="wrap_content"
-							android:text="Dynamic Day/Night Cycle"
-							android:textSize="20sp"
-							android:textColor="#FFFFFF"
-							android:fontFamily="@font/flappy_font"
-							android:shadowColor="#000000"
-							android:shadowDx="2"
-							android:shadowDy="2"
-							android:shadowRadius="1.5"
-							android:layout_toStartOf="@id/switch_day_night_cycle"
-							android:layout_alignParentStart="true"
-							android:layout_centerVertical="true" />
-						<com.google.android.material.materialswitch.MaterialSwitch
-							android:id="@+id/switch_day_night_cycle"
-							android:layout_width="wrap_content"
-							android:layout_height="wrap_content"
-							android:textSize="12sp"
-							android:textColor="#000000"
-							android:layout_alignParentEnd="true"
-							android:layout_centerVertical="true" />
-					</RelativeLayout>
-					<TextView
-						android:id="@+id/textview50"
-						android:layout_width="wrap_content"
-						android:layout_height="wrap_content"
-						android:layout_marginBottom="8dp"
-						android:text="Background Theme"
-						android:textSize="20sp"
-						android:textColor="#FFFFFF"
-						android:fontFamily="@font/flappy_font"
-						android:shadowColor="#000000"
-						android:shadowDx="2"
-						android:shadowDy="2"
-						android:shadowRadius="1.5" />
-					<RadioGroup
-						android:id="@+id/rg_background"
-						android:layout_width="match_parent"
-						android:layout_height="wrap_content"
-						android:layout_marginBottom="16dp"
-						android:orientation="vertical">
-						<RadioButton
-							android:id="@+id/rb_bg_random"
-							android:layout_width="match_parent"
-							android:layout_height="wrap_content"
-							android:text="Random"
-							android:textSize="18sp"
-							android:textColor="#FFFFFF"
-							android:buttonTint="#FFFFFF"
-							android:fontFamily="@font/flappy_font" />
-						<RadioButton
-							android:id="@+id/rb_bg_day"
-							android:layout_width="match_parent"
-							android:layout_height="wrap_content"
-							android:text="Day"
-							android:textSize="18sp"
-							android:textColor="#FFFFFF"
-							android:buttonTint="#FFFFFF"
-							android:fontFamily="@font/flappy_font" />
-						<RadioButton
-							android:id="@+id/rb_bg_night"
-							android:layout_width="match_parent"
-							android:layout_height="wrap_content"
-							android:text="Night"
-							android:textSize="18sp"
-							android:textColor="#FFFFFF"
-							android:buttonTint="#FFFFFF"
-							android:fontFamily="@font/flappy_font" />
-					</RadioGroup>
-					<TextView
-						android:id="@+id/textview51"
-						android:layout_width="wrap_content"
-						android:layout_height="wrap_content"
-						android:layout_marginBottom="8dp"
-						android:text="Weather"
-						android:textSize="20sp"
-						android:textColor="#FFFFFF"
-						android:fontFamily="@font/flappy_font"
-						android:shadowColor="#000000"
-						android:shadowDx="2"
-						android:shadowDy="2"
-						android:shadowRadius="1.5" />
-					<RadioGroup
-						android:id="@+id/rg_weather"
+						android:id="@+id/card_profiles"
 						android:layout_width="match_parent"
 						android:layout_height="wrap_content"
 						android:orientation="vertical">
-						<RadioButton
-							android:id="@+id/rb_weather_off"
+						<TextView
+							android:id="@+id/textview630"
+							android:layout_width="wrap_content"
+							android:layout_height="wrap_content"
+							android:layout_marginBottom="16dp"
+							android:text="Profiles &amp; Management"
+							android:textSize="20sp"
+							android:textColor="#4FC3F7"
+							android:fontFamily="@font/flappy_bold" />
+						<LinearLayout
+							android:id="@+id/linear354"
 							android:layout_width="match_parent"
 							android:layout_height="wrap_content"
-							android:text="Off"
-							android:textSize="18sp"
-							android:textColor="#FFFFFF"
-							android:buttonTint="#FFFFFF"
-							android:fontFamily="@font/flappy_font"
-							android:shadowColor="#000000"
-							android:shadowDx="2"
-							android:shadowDy="2"
-							android:shadowRadius="1.5" />
-						<RadioButton
-							android:id="@+id/rb_weather_rain"
+							android:layout_marginBottom="8dp"
+							android:gravity="center_vertical"
+							android:orientation="horizontal">
+							<TextView
+								android:id="@+id/textview631"
+								android:layout_width="0dp"
+								android:layout_height="wrap_content"
+								android:text="Slot 1"
+								android:textSize="18sp"
+								android:textColor="#FFFFFF"
+								android:layout_weight="1"
+								android:fontFamily="@font/flappy_font" />
+							<Button
+								android:id="@+id/button_save_profile_1"
+								android:layout_width="wrap_content"
+								android:layout_height="40dp"
+								android:text="Save"
+								android:textSize="12sp"
+								android:textColor="#FFFFFF"
+								style="@style/Widget.Material3.Button"
+								android:layout_marginEnd="4dp"
+								app:backgroundTint="#388E3C"
+								android:fontFamily="@font/flappy_font" />
+							<Button
+								android:id="@+id/button_load_profile_1"
+								android:layout_width="wrap_content"
+								android:layout_height="40dp"
+								android:text="Load"
+								android:textSize="12sp"
+								android:textColor="#FFFFFF"
+								style="@style/Widget.Material3.Button"
+								android:layout_marginEnd="4dp"
+								app:backgroundTint="#1976D2"
+								android:fontFamily="@font/flappy_font" />
+							<Button
+								android:id="@+id/button_reset_profile_1"
+								android:layout_width="48dp"
+								android:layout_height="40dp"
+								android:text="X"
+								android:textSize="12sp"
+								android:textColor="#FFFFFF"
+								style="@style/Widget.Material3.Button"
+								app:backgroundTint="#D32F2F"
+								android:fontFamily="@font/flappy_font" />
+						</LinearLayout>
+						<LinearLayout
+							android:id="@+id/linear355"
 							android:layout_width="match_parent"
 							android:layout_height="wrap_content"
-							android:text="Rain"
-							android:textSize="18sp"
-							android:textColor="#FFFFFF"
-							android:buttonTint="#FFFFFF"
-							android:fontFamily="@font/flappy_font"
-							android:shadowColor="#000000"
-							android:shadowDx="2"
-							android:shadowDy="2"
-							android:shadowRadius="1.5" />
-						<RadioButton
-							android:id="@+id/rb_weather_storm"
+							android:layout_marginBottom="8dp"
+							android:gravity="center_vertical"
+							android:orientation="horizontal">
+							<TextView
+								android:id="@+id/textview632"
+								android:layout_width="0dp"
+								android:layout_height="wrap_content"
+								android:text="Slot 2"
+								android:textSize="18sp"
+								android:textColor="#FFFFFF"
+								android:layout_weight="1"
+								android:fontFamily="@font/flappy_font" />
+							<Button
+								android:id="@+id/button_save_profile_2"
+								android:layout_width="wrap_content"
+								android:layout_height="40dp"
+								android:text="Save"
+								android:textSize="12sp"
+								android:textColor="#FFFFFF"
+								style="@style/Widget.Material3.Button"
+								android:layout_marginEnd="4dp"
+								app:backgroundTint="#388E3C"
+								android:fontFamily="@font/flappy_font" />
+							<Button
+								android:id="@+id/button_load_profile_2"
+								android:layout_width="wrap_content"
+								android:layout_height="40dp"
+								android:text="Load"
+								android:textSize="12sp"
+								android:textColor="#FFFFFF"
+								style="@style/Widget.Material3.Button"
+								android:layout_marginEnd="4dp"
+								app:backgroundTint="#1976D2"
+								android:fontFamily="@font/flappy_font" />
+							<Button
+								android:id="@+id/button_reset_profile_2"
+								android:layout_width="48dp"
+								android:layout_height="40dp"
+								android:text="X"
+								android:textSize="12sp"
+								android:textColor="#FFFFFF"
+								style="@style/Widget.Material3.Button"
+								app:backgroundTint="#D32F2F"
+								android:fontFamily="@font/flappy_font" />
+						</LinearLayout>
+						<LinearLayout
+							android:id="@+id/linear356"
 							android:layout_width="match_parent"
 							android:layout_height="wrap_content"
-							android:text="Storm"
-							android:textSize="18sp"
-							android:textColor="#FFFFFF"
-							android:buttonTint="#FFFFFF"
-							android:fontFamily="@font/flappy_font"
-							android:shadowColor="#000000"
-							android:shadowDx="2"
-							android:shadowDy="2"
-							android:shadowRadius="1.5" />
-						<RadioButton
-							android:id="@+id/rb_weather_snow"
+							android:layout_marginBottom="16dp"
+							android:gravity="center_vertical"
+							android:orientation="horizontal">
+							<TextView
+								android:id="@+id/textview633"
+								android:layout_width="0dp"
+								android:layout_height="wrap_content"
+								android:text="Slot 3"
+								android:textSize="18sp"
+								android:textColor="#FFFFFF"
+								android:layout_weight="1"
+								android:fontFamily="@font/flappy_font" />
+							<Button
+								android:id="@+id/button_save_profile_3"
+								android:layout_width="wrap_content"
+								android:layout_height="40dp"
+								android:text="Save"
+								android:textSize="12sp"
+								android:textColor="#FFFFFF"
+								style="@style/Widget.Material3.Button"
+								android:layout_marginEnd="4dp"
+								app:backgroundTint="#388E3C"
+								android:fontFamily="@font/flappy_font" />
+							<Button
+								android:id="@+id/button_load_profile_3"
+								android:layout_width="wrap_content"
+								android:layout_height="40dp"
+								android:text="Load"
+								android:textSize="12sp"
+								android:textColor="#FFFFFF"
+								style="@style/Widget.Material3.Button"
+								android:layout_marginEnd="4dp"
+								app:backgroundTint="#1976D2"
+								android:fontFamily="@font/flappy_font" />
+							<Button
+								android:id="@+id/button_reset_profile_3"
+								android:layout_width="48dp"
+								android:layout_height="40dp"
+								android:text="X"
+								android:textSize="12sp"
+								android:textColor="#FFFFFF"
+								style="@style/Widget.Material3.Button"
+								app:backgroundTint="#D32F2F"
+								android:fontFamily="@font/flappy_font" />
+						</LinearLayout>
+						<View
+							android:id="@+id/view357"
+							android:layout_width="match_parent"
+							android:layout_height="1dp"
+							android:layout_marginBottom="16dp"
+							android:background="#444444" />
+						<LinearLayout
+							android:id="@+id/linear358"
 							android:layout_width="match_parent"
 							android:layout_height="wrap_content"
-							android:text="Snow"
-							android:textSize="18sp"
-							android:textColor="#FFFFFF"
-							android:buttonTint="#FFFFFF"
-							android:fontFamily="@font/flappy_font"
-							android:shadowColor="#000000"
-							android:shadowDx="2"
-							android:shadowDy="2"
-							android:shadowRadius="1.5" />
-					</RadioGroup>
-				</LinearLayout>
-				<LinearLayout
-					android:id="@+id/card_visuals"
+							android:orientation="horizontal">
+							<Button
+								android:id="@+id/button_randomize_all"
+								android:layout_width="0dp"
+								android:layout_height="wrap_content"
+								android:text="Randomize"
+								android:textSize="12sp"
+								android:textColor="#000000"
+								android:layout_weight="1"
+								style="@style/Widget.Material3.Button"
+								app:backgroundTint="#FFC107"
+								android:layout_marginEnd="8dp"
+								android:fontFamily="@font/flappy_font" />
+							<Button
+								android:id="@+id/button_reset_all"
+								android:layout_width="0dp"
+								android:layout_height="wrap_content"
+								android:text="Default"
+								android:textSize="12sp"
+								android:textColor="#FFFFFF"
+								android:layout_weight="1"
+								style="@style/Widget.Material3.Button.OutlinedButton"
+								app:strokeColor="#F44336"
+								android:fontFamily="@font/flappy_font" />
+						</LinearLayout>
+						<Button
+							android:id="@+id/button_reset_profiles"
+							android:layout_width="match_parent"
+							android:layout_height="wrap_content"
+							android:text="Clear All Data"
+							android:textSize="12sp"
+							android:textColor="#FF6666"
+							style="@style/Widget.Material3.Button.TextButton"
+							android:fontFamily="@font/flappy_font" />
+					</LinearLayout>
+				</com.google.android.material.card.MaterialCardView>
+				<com.google.android.material.card.MaterialCardView
+					android:id="@+id/cardview91"
 					android:layout_width="match_parent"
 					android:layout_height="wrap_content"
-					android:layout_marginBottom="16dp"
-					android:padding="16dp"
-					android:background="@drawable/settings_card_background"
-					android:orientation="vertical">
-					<TextView
-						android:id="@+id/textview234"
-						android:layout_width="wrap_content"
-						android:layout_height="wrap_content"
-						android:layout_marginBottom="16dp"
-						android:text="Visuals &amp; Effects"
-						android:textSize="22sp"
-						android:textColor="#FFFFFF"
-						android:fontFamily="@font/flappy_bold"
-						android:shadowColor="#000000"
-						android:shadowDx="2"
-						android:shadowDy="2"
-						android:shadowRadius="1.5" />
-					<TextView
-						android:id="@+id/textview235"
-						android:layout_width="wrap_content"
-						android:layout_height="wrap_content"
-						android:layout_marginBottom="8dp"
-						android:text="Bird Appearance"
-						android:textSize="20sp"
-						android:textColor="#FFFFFF"
-						android:fontFamily="@font/flappy_font"
-						android:shadowColor="#000000"
-						android:shadowDx="2"
-						android:shadowDy="2"
-						android:shadowRadius="1.5" />
-					<RadioGroup
-						android:id="@+id/rg_bird_color"
+					android:layout_marginBottom="20dp"
+					app:contentPadding="20dp"
+					app:cardBackgroundColor="#252525"
+					app:cardCornerRadius="20dp"
+					app:cardElevation="2dp">
+					<LinearLayout
+						android:id="@+id/card_atmosphere"
 						android:layout_width="match_parent"
 						android:layout_height="wrap_content"
-						android:layout_marginBottom="16dp"
 						android:orientation="vertical">
-						<RadioButton
-							android:id="@+id/rb_bird_random"
+						<TextView
+							android:id="@+id/textview634"
+							android:layout_width="wrap_content"
+							android:layout_height="wrap_content"
+							android:layout_marginBottom="16dp"
+							android:text="World &amp; Atmosphere"
+							android:textSize="20sp"
+							android:textColor="#81C784"
+							android:fontFamily="@font/flappy_bold" />
+						<RelativeLayout
+							android:id="@+id/relativelayout210"
 							android:layout_width="match_parent"
 							android:layout_height="wrap_content"
-							android:text="Random"
-							android:textSize="18sp"
-							android:textColor="#FFFFFF"
-							android:buttonTint="#FFFFFF"
+							android:layout_marginBottom="12dp">
+							<TextView
+								android:id="@+id/textview635"
+								android:layout_width="wrap_content"
+								android:layout_height="wrap_content"
+								android:text="Dynamic Cycle"
+								android:textSize="18sp"
+								android:textColor="#EEEEEE"
+								android:fontFamily="@font/flappy_font"
+								android:layout_centerVertical="true" />
+							<com.google.android.material.materialswitch.MaterialSwitch
+								android:id="@+id/switch_day_night_cycle"
+								android:layout_width="wrap_content"
+								android:layout_height="wrap_content"
+								android:textSize="12sp"
+								android:textColor="#FFFFFF"
+								android:layout_alignParentEnd="true" />
+						</RelativeLayout>
+						<TextView
+							android:id="@+id/textview636"
+							android:layout_width="wrap_content"
+							android:layout_height="wrap_content"
+							android:layout_marginBottom="8dp"
+							android:text="Background Theme"
+							android:textSize="14sp"
+							android:textColor="#AAAAAA"
 							android:fontFamily="@font/flappy_font" />
-						<RadioButton
-							android:id="@+id/rb_bird_yellow"
+						<HorizontalScrollView
+							android:id="@+id/hscroll15"
 							android:layout_width="match_parent"
 							android:layout_height="wrap_content"
-							android:text="Yellow"
-							android:textSize="18sp"
-							android:textColor="#FFFFFF"
-							android:buttonTint="#FFFFFF"
+							android:layout_marginBottom="16dp"
+							android:scrollbars="none">
+							<LinearLayout
+								android:id="@+id/linear9"
+								android:layout_width="wrap_content"
+								android:layout_height="wrap_content"
+								android:orientation="vertical">
+								<RadioGroup
+									android:id="@+id/rg_background"
+									android:layout_width="wrap_content"
+									android:layout_height="wrap_content"
+									android:orientation="horizontal">
+									<com.google.android.material.radiobutton.MaterialRadioButton
+										android:id="@+id/rb_bg_day"
+										android:layout_width="90dp"
+										android:layout_height="wrap_content"
+										android:paddingStart="8dp"
+										android:paddingEnd="16dp"
+										app:buttonTint="#4FC3F7"
+										android:fontFamily="@font/flappy_font" />
+									<com.google.android.material.radiobutton.MaterialRadioButton
+										android:id="@+id/rb_bg_night"
+										android:layout_width="90dp"
+										android:layout_height="wrap_content"
+										android:paddingStart="8dp"
+										android:paddingEnd="16dp"
+										app:buttonTint="#7E57C2"
+										android:fontFamily="@font/flappy_font" />
+									<com.google.android.material.radiobutton.MaterialRadioButton
+										android:id="@+id/rb_bg_random"
+										android:layout_width="90dp"
+										android:layout_height="wrap_content"
+										android:paddingStart="8dp"
+										android:paddingEnd="16dp"
+										app:buttonTint="#AAAAAA"
+										android:fontFamily="@font/flappy_font" />
+								</RadioGroup>
+								<LinearLayout
+									android:id="@+id/linear10"
+									android:layout_width="wrap_content"
+									android:layout_height="wrap_content"
+									android:orientation="horizontal">
+									<TextView
+										android:id="@+id/textview21"
+										android:layout_width="90dp"
+										android:layout_height="wrap_content"
+										android:gravity="center_horizontal|center_vertical"
+										android:text="Day"
+										android:textSize="12sp"
+										android:textColor="#AAAAAA"
+										android:fontFamily="@font/flappy_font" />
+									<TextView
+										android:id="@+id/textview22"
+										android:layout_width="90dp"
+										android:layout_height="wrap_content"
+										android:gravity="center_horizontal|center_vertical"
+										android:text="Night"
+										android:textSize="12sp"
+										android:textColor="#AAAAAA"
+										android:fontFamily="@font/flappy_font" />
+									<TextView
+										android:id="@+id/textview23"
+										android:layout_width="90dp"
+										android:layout_height="wrap_content"
+										android:gravity="center_horizontal|center_vertical"
+										android:text="Random"
+										android:textSize="12sp"
+										android:textColor="#AAAAAA"
+										android:fontFamily="@font/flappy_font" />
+								</LinearLayout>
+							</LinearLayout>
+						</HorizontalScrollView>
+						<TextView
+							android:id="@+id/textview637"
+							android:layout_width="wrap_content"
+							android:layout_height="wrap_content"
+							android:layout_marginBottom="8dp"
+							android:text="Weather Effects"
+							android:textSize="14sp"
+							android:textColor="#AAAAAA"
 							android:fontFamily="@font/flappy_font" />
-						<RadioButton
-							android:id="@+id/rb_bird_blue"
+						<HorizontalScrollView
+							android:id="@+id/hscroll23"
 							android:layout_width="match_parent"
 							android:layout_height="wrap_content"
-							android:text="Blue"
-							android:textSize="18sp"
-							android:textColor="#FFFFFF"
-							android:buttonTint="#FFFFFF"
+							android:scrollbars="none">
+							<LinearLayout
+								android:id="@+id/linear11"
+								android:layout_width="wrap_content"
+								android:layout_height="wrap_content"
+								android:orientation="vertical">
+								<RadioGroup
+									android:id="@+id/rg_weather"
+									android:layout_width="wrap_content"
+									android:layout_height="wrap_content"
+									android:orientation="horizontal">
+									<com.google.android.material.radiobutton.MaterialRadioButton
+										android:id="@+id/rb_weather_off"
+										android:layout_width="90dp"
+										android:layout_height="wrap_content"
+										android:paddingStart="8dp"
+										android:paddingEnd="16dp"
+										app:buttonTint="#81C784"
+										android:fontFamily="@font/flappy_font" />
+									<com.google.android.material.radiobutton.MaterialRadioButton
+										android:id="@+id/rb_weather_rain"
+										android:layout_width="90dp"
+										android:layout_height="wrap_content"
+										android:paddingStart="8dp"
+										android:paddingEnd="16dp"
+										app:buttonTint="#4FC3F7"
+										android:fontFamily="@font/flappy_font" />
+									<com.google.android.material.radiobutton.MaterialRadioButton
+										android:id="@+id/rb_weather_storm"
+										android:layout_width="90dp"
+										android:layout_height="wrap_content"
+										android:paddingStart="8dp"
+										android:paddingEnd="16dp"
+										app:buttonTint="#FFD54F"
+										android:fontFamily="@font/flappy_font" />
+									<com.google.android.material.radiobutton.MaterialRadioButton
+										android:id="@+id/rb_weather_snow"
+										android:layout_width="90dp"
+										android:layout_height="wrap_content"
+										android:paddingStart="8dp"
+										android:paddingEnd="16dp"
+										app:buttonTint="#E0E0E0"
+										android:fontFamily="@font/flappy_font" />
+								</RadioGroup>
+								<LinearLayout
+									android:id="@+id/linear12"
+									android:layout_width="wrap_content"
+									android:layout_height="wrap_content"
+									android:orientation="horizontal">
+									<TextView
+										android:id="@+id/textview24"
+										android:layout_width="90dp"
+										android:layout_height="wrap_content"
+										android:gravity="center_horizontal|center_vertical"
+										android:text="Clear"
+										android:textSize="12sp"
+										android:textColor="#AAAAAA"
+										android:fontFamily="@font/flappy_font" />
+									<TextView
+										android:id="@+id/textview25"
+										android:layout_width="90dp"
+										android:layout_height="wrap_content"
+										android:gravity="center_horizontal|center_vertical"
+										android:text="Rain"
+										android:textSize="12sp"
+										android:textColor="#AAAAAA"
+										android:fontFamily="@font/flappy_font" />
+									<TextView
+										android:id="@+id/textview26"
+										android:layout_width="90dp"
+										android:layout_height="wrap_content"
+										android:gravity="center_horizontal|center_vertical"
+										android:text="Storm"
+										android:textSize="12sp"
+										android:textColor="#AAAAAA"
+										android:fontFamily="@font/flappy_font" />
+									<TextView
+										android:id="@+id/textview27"
+										android:layout_width="90dp"
+										android:layout_height="wrap_content"
+										android:gravity="center_horizontal|center_vertical"
+										android:text="Snow"
+										android:textSize="12sp"
+										android:textColor="#AAAAAA"
+										android:fontFamily="@font/flappy_font" />
+								</LinearLayout>
+							</LinearLayout>
+						</HorizontalScrollView>
+						<View
+							android:id="@+id/view6"
+							android:layout_width="match_parent"
+							android:layout_height="1dp"
+							android:background="#444444"
+							android:layout_marginVertical="12dp" />
+						<TextView
+							android:id="@+id/textview6"
+							android:layout_width="wrap_content"
+							android:layout_height="wrap_content"
+							android:layout_marginBottom="8dp"
+							android:text="Lightning Events (Storm Only)"
+							android:textSize="14sp"
+							android:textColor="#FFEB3B"
 							android:fontFamily="@font/flappy_font" />
-						<RadioButton
-							android:id="@+id/rb_bird_red"
+						<LinearLayout
+							android:id="@+id/linear7"
 							android:layout_width="match_parent"
 							android:layout_height="wrap_content"
-							android:text="Red"
-							android:textSize="18sp"
-							android:textColor="#FFFFFF"
-							android:buttonTint="#FFFFFF"
-							android:fontFamily="@font/flappy_font" />
-					</RadioGroup>
-					<RelativeLayout
-						android:id="@+id/relativelayout43"
-						android:layout_width="match_parent"
-						android:layout_height="wrap_content"
-						android:layout_marginBottom="16dp">
-						<TextView
-							android:id="@+id/textview52"
-							android:layout_width="wrap_content"
+							android:layout_marginBottom="8dp"
+							android:orientation="horizontal">
+							<TextView
+								android:id="@+id/textview7"
+								android:layout_width="0dp"
+								android:layout_height="wrap_content"
+								android:text="Strike Scores (e.g. 10,20):"
+								android:textSize="12sp"
+								android:textColor="#BBBBBB"
+								android:layout_weight="1"
+								android:fontFamily="@font/flappy_font" />
+							<EditText
+								android:id="@+id/et_lightning_scores"
+								android:layout_width="120dp"
+								android:layout_height="40dp"
+								android:padding="8dp"
+								android:background="#333333"
+								android:textSize="12sp"
+								android:textColor="#FFFFFF"
+								android:hint="11,34,79"
+								android:textColorHint="#666666"
+								android:fontFamily="@font/flappy_font" />
+						</LinearLayout>
+						<LinearLayout
+							android:id="@+id/linear8"
+							android:layout_width="match_parent"
 							android:layout_height="wrap_content"
-							android:text="Rainbow Bird"
-							android:textSize="20sp"
-							android:textColor="#FFFFFF"
-							android:fontFamily="@font/flappy_font"
-							android:shadowColor="#000000"
-							android:shadowDx="2"
-							android:shadowDy="2"
-							android:shadowRadius="1.5"
-							android:layout_toStartOf="@id/switch_rainbow_bird"
-							android:layout_alignParentStart="true"
-							android:layout_centerVertical="true" />
-						<com.google.android.material.materialswitch.MaterialSwitch
-							android:id="@+id/switch_rainbow_bird"
-							android:layout_width="wrap_content"
-							android:layout_height="wrap_content"
-							android:textSize="12sp"
-							android:textColor="#000000"
-							android:layout_alignParentEnd="true"
-							android:layout_centerVertical="true" />
-					</RelativeLayout>
-					<RelativeLayout
-						android:id="@+id/relativelayout44"
-						android:layout_width="match_parent"
-						android:layout_height="wrap_content"
-						android:layout_marginBottom="16dp">
-						<TextView
-							android:id="@+id/textview53"
-							android:layout_width="wrap_content"
-							android:layout_height="wrap_content"
-							android:text="Enable Bird Trail"
-							android:textSize="20sp"
-							android:textColor="#FFFFFF"
-							android:fontFamily="@font/flappy_font"
-							android:shadowColor="#000000"
-							android:shadowDx="2"
-							android:shadowDy="2"
-							android:shadowRadius="1.5"
-							android:layout_toStartOf="@id/switch_bird_trail"
-							android:layout_alignParentStart="true"
-							android:layout_centerVertical="true" />
-						<com.google.android.material.materialswitch.MaterialSwitch
-							android:id="@+id/switch_bird_trail"
-							android:layout_width="wrap_content"
-							android:layout_height="wrap_content"
-							android:textSize="12sp"
-							android:textColor="#000000"
-							android:layout_alignParentEnd="true"
-							android:layout_centerVertical="true" />
-					</RelativeLayout>
-					<RelativeLayout
-						android:id="@+id/relativelayout45"
-						android:layout_width="match_parent"
-						android:layout_height="wrap_content"
-						android:layout_marginBottom="16dp">
-						<TextView
-							android:id="@+id/textview54"
-							android:layout_width="wrap_content"
-							android:layout_height="wrap_content"
-							android:text="Screen Shake on Impact"
-							android:textSize="20sp"
-							android:textColor="#FFFFFF"
-							android:fontFamily="@font/flappy_font"
-							android:shadowColor="#000000"
-							android:shadowDx="2"
-							android:shadowDy="2"
-							android:shadowRadius="1.5"
-							android:layout_toStartOf="@id/switch_screen_shake"
-							android:layout_alignParentStart="true"
-							android:layout_centerVertical="true" />
-						<com.google.android.material.materialswitch.MaterialSwitch
-							android:id="@+id/switch_screen_shake"
-							android:layout_width="wrap_content"
-							android:layout_height="wrap_content"
-							android:textSize="12sp"
-							android:textColor="#000000"
-							android:layout_alignParentEnd="true"
-							android:layout_centerVertical="true" />
-					</RelativeLayout>
-					<RelativeLayout
-						android:id="@+id/relativelayout46"
-						android:layout_width="match_parent"
-						android:layout_height="wrap_content"
-						android:layout_marginBottom="16dp">
-						<TextView
-							android:id="@+id/textview55"
-							android:layout_width="wrap_content"
-							android:layout_height="wrap_content"
-							android:text="Shake Strength"
-							android:textSize="20sp"
-							android:textColor="#FFFFFF"
-							android:fontFamily="@font/flappy_font"
-							android:shadowColor="#000000"
-							android:shadowDx="2"
-							android:shadowDy="2"
-							android:shadowRadius="1.5"
-							android:layout_alignParentStart="true"
-							android:layout_centerVertical="true" />
-						<EditText
-							android:id="@+id/et_screen_shake_strength"
-							android:layout_width="100dp"
-							android:layout_height="wrap_content"
-							android:textSize="20sp"
-							android:textColor="#FFFFFF"
-							android:hint="1.0"
-							android:textColorHint="#AAAAAA"
-							android:inputType="numberDecimal"
-							android:gravity="end"
-							android:background="@null"
-							android:fontFamily="@font/flappy_font"
-							android:shadowColor="#000000"
-							android:shadowDx="2"
-							android:shadowDy="2"
-							android:shadowRadius="1.5"
-							android:layout_alignParentEnd="true"
-							android:layout_centerVertical="true" />
-					</RelativeLayout>
-					<RelativeLayout
-						android:id="@+id/relativelayout47"
-						android:layout_width="match_parent"
-						android:layout_height="wrap_content"
-						android:layout_marginBottom="16dp">
-						<TextView
-							android:id="@+id/textview56"
-							android:layout_width="wrap_content"
-							android:layout_height="wrap_content"
-							android:text="Motion Blur"
-							android:textSize="20sp"
-							android:textColor="#FFFFFF"
-							android:fontFamily="@font/flappy_font"
-							android:shadowColor="#000000"
-							android:shadowDx="2"
-							android:shadowDy="2"
-							android:shadowRadius="1.5"
-							android:layout_toStartOf="@id/switch_motion_blur"
-							android:layout_alignParentStart="true"
-							android:layout_centerVertical="true" />
-						<com.google.android.material.materialswitch.MaterialSwitch
-							android:id="@+id/switch_motion_blur"
-							android:layout_width="wrap_content"
-							android:layout_height="wrap_content"
-							android:textSize="12sp"
-							android:textColor="#000000"
-							android:layout_alignParentEnd="true"
-							android:layout_centerVertical="true" />
-					</RelativeLayout>
-					<RelativeLayout
-						android:id="@+id/relativelayout48"
-						android:layout_width="match_parent"
-						android:layout_height="wrap_content"
-						android:layout_marginBottom="16dp">
-						<TextView
-							android:id="@+id/textview57"
-							android:layout_width="wrap_content"
-							android:layout_height="wrap_content"
-							android:text="Blur Strength"
-							android:textSize="20sp"
-							android:textColor="#FFFFFF"
-							android:fontFamily="@font/flappy_font"
-							android:shadowColor="#000000"
-							android:shadowDx="2"
-							android:shadowDy="2"
-							android:shadowRadius="1.5"
-							android:layout_alignParentStart="true"
-							android:layout_centerVertical="true" />
-						<EditText
-							android:id="@+id/et_motion_blur_strength"
-							android:layout_width="100dp"
-							android:layout_height="wrap_content"
-							android:textSize="20sp"
-							android:textColor="#FFFFFF"
-							android:hint="1.0"
-							android:textColorHint="#AAAAAA"
-							android:inputType="numberDecimal"
-							android:gravity="end"
-							android:background="@null"
-							android:fontFamily="@font/flappy_font"
-							android:shadowColor="#000000"
-							android:shadowDx="2"
-							android:shadowDy="2"
-							android:shadowRadius="1.5"
-							android:layout_alignParentEnd="true"
-							android:layout_centerVertical="true" />
-					</RelativeLayout>
-					<RelativeLayout
-						android:id="@+id/relativelayout49"
-						android:layout_width="match_parent"
-						android:layout_height="wrap_content"
-						android:layout_marginBottom="16dp">
-						<TextView
-							android:id="@+id/textview58"
-							android:layout_width="wrap_content"
-							android:layout_height="wrap_content"
-							android:text="Game Over Opacity (%)"
-							android:textSize="20sp"
-							android:textColor="#FFFFFF"
-							android:fontFamily="@font/flappy_font"
-							android:shadowColor="#000000"
-							android:shadowDx="2"
-							android:shadowDy="2"
-							android:shadowRadius="1.5"
-							android:layout_alignParentStart="true"
-							android:layout_centerVertical="true" />
-						<EditText
-							android:id="@+id/et_opacity"
-							android:layout_width="100dp"
-							android:layout_height="wrap_content"
-							android:textSize="20sp"
-							android:textColor="#FFFFFF"
-							android:hint="5"
-							android:textColorHint="#AAAAAA"
-							android:gravity="end"
-							android:background="@null"
-							android:inputType="number"
-							android:maxLength="3"
-							android:fontFamily="@font/flappy_font"
-							android:shadowColor="#000000"
-							android:shadowDx="2"
-							android:shadowDy="2"
-							android:shadowRadius="1.5"
-							android:layout_alignParentEnd="true"
-							android:layout_centerVertical="true" />
-					</RelativeLayout>
-				</LinearLayout>
-				<LinearLayout
-					android:id="@+id/card_pipe_config"
+							android:orientation="horizontal">
+							<TextView
+								android:id="@+id/textview8"
+								android:layout_width="0dp"
+								android:layout_height="wrap_content"
+								android:text="Mega Strike Score:"
+								android:textSize="12sp"
+								android:textColor="#BBBBBB"
+								android:layout_weight="1"
+								android:fontFamily="@font/flappy_font" />
+							<EditText
+								android:id="@+id/et_mega_strike_score"
+								android:layout_width="120dp"
+								android:layout_height="40dp"
+								android:padding="8dp"
+								android:background="#333333"
+								android:textSize="12sp"
+								android:textColor="#FFFFFF"
+								android:textColorHint="#FFFFFF"
+								android:inputType="number"
+								android:fontFamily="@font/flappy_font" />
+						</LinearLayout>
+					</LinearLayout>
+				</com.google.android.material.card.MaterialCardView>
+				<com.google.android.material.card.MaterialCardView
+					android:id="@+id/cardview92"
 					android:layout_width="match_parent"
 					android:layout_height="wrap_content"
-					android:layout_marginBottom="16dp"
-					android:padding="16dp"
-					android:background="@drawable/settings_card_background"
-					android:orientation="vertical">
-					<TextView
-						android:id="@+id/textview243"
-						android:layout_width="wrap_content"
-						android:layout_height="wrap_content"
-						android:layout_marginBottom="16dp"
-						android:text="Pipe Configuration"
-						android:textSize="22sp"
-						android:textColor="#FFFFFF"
-						android:fontFamily="@font/flappy_bold"
-						android:shadowColor="#000000"
-						android:shadowDx="2"
-						android:shadowDy="2"
-						android:shadowRadius="1.5" />
-					<TextView
-						android:id="@+id/textview244"
-						android:layout_width="wrap_content"
-						android:layout_height="wrap_content"
-						android:layout_marginBottom="8dp"
-						android:text="Pipe Color"
-						android:textSize="20sp"
-						android:textColor="#FFFFFF"
-						android:fontFamily="@font/flappy_font"
-						android:shadowColor="#000000"
-						android:shadowDx="2"
-						android:shadowDy="2"
-						android:shadowRadius="1.5" />
-					<RadioGroup
-						android:id="@+id/rg_pipe_color"
+					android:layout_marginBottom="20dp"
+					app:contentPadding="20dp"
+					app:cardBackgroundColor="#252525"
+					app:cardCornerRadius="20dp"
+					app:cardElevation="2dp">
+					<LinearLayout
+						android:id="@+id/card_visuals"
 						android:layout_width="match_parent"
 						android:layout_height="wrap_content"
-						android:layout_marginBottom="16dp"
 						android:orientation="vertical">
-						<RadioButton
-							android:id="@+id/rb_pipe_default"
-							android:layout_width="match_parent"
-							android:layout_height="wrap_content"
-							android:text="Default (Green)"
-							android:textSize="18sp"
-							android:textColor="#FFFFFF"
-							android:buttonTint="#FFFFFF"
-							android:fontFamily="@font/flappy_font" />
-						<RadioButton
-							android:id="@+id/rb_pipe_red"
-							android:layout_width="match_parent"
-							android:layout_height="wrap_content"
-							android:text="Red"
-							android:textSize="18sp"
-							android:textColor="#FFFFFF"
-							android:buttonTint="#FFFFFF"
-							android:fontFamily="@font/flappy_font" />
-						<RadioButton
-							android:id="@+id/rb_pipe_blue"
-							android:layout_width="match_parent"
-							android:layout_height="wrap_content"
-							android:text="Blue"
-							android:textSize="18sp"
-							android:textColor="#FFFFFF"
-							android:buttonTint="#FFFFFF"
-							android:fontFamily="@font/flappy_font" />
-						<RadioButton
-							android:id="@+id/rb_pipe_yellow"
-							android:layout_width="match_parent"
-							android:layout_height="wrap_content"
-							android:text="Yellow"
-							android:textSize="18sp"
-							android:textColor="#FFFFFF"
-							android:buttonTint="#FFFFFF"
-							android:fontFamily="@font/flappy_font" />
-						<RadioButton
-							android:id="@+id/rb_pipe_white"
-							android:layout_width="match_parent"
-							android:layout_height="wrap_content"
-							android:text="White"
-							android:textSize="18sp"
-							android:textColor="#FFFFFF"
-							android:buttonTint="#FFFFFF"
-							android:fontFamily="@font/flappy_font" />
-						<RadioButton
-							android:id="@+id/rb_pipe_pink"
-							android:layout_width="match_parent"
-							android:layout_height="wrap_content"
-							android:text="Pink"
-							android:textSize="18sp"
-							android:textColor="#FFFFFF"
-							android:buttonTint="#FFFFFF"
-							android:fontFamily="@font/flappy_font" />
-						<RadioButton
-							android:id="@+id/rb_pipe_black"
-							android:layout_width="match_parent"
-							android:layout_height="wrap_content"
-							android:text="Black"
-							android:textSize="18sp"
-							android:textColor="#FFFFFF"
-							android:buttonTint="#FFFFFF"
-							android:fontFamily="@font/flappy_font" />
-						<RadioButton
-							android:id="@+id/rb_pipe_purple"
-							android:layout_width="match_parent"
-							android:layout_height="wrap_content"
-							android:text="Purple"
-							android:textSize="18sp"
-							android:textColor="#FFFFFF"
-							android:buttonTint="#FFFFFF"
-							android:fontFamily="@font/flappy_font" />
-						<RadioButton
-							android:id="@+id/rb_pipe_orange"
-							android:layout_width="match_parent"
-							android:layout_height="wrap_content"
-							android:text="Orange"
-							android:textSize="18sp"
-							android:textColor="#FFFFFF"
-							android:buttonTint="#FFFFFF"
-							android:fontFamily="@font/flappy_font" />
-					</RadioGroup>
-					<RelativeLayout
-						android:id="@+id/relativelayout50"
-						android:layout_width="match_parent"
-						android:layout_height="wrap_content"
-						android:layout_marginBottom="16dp">
 						<TextView
-							android:id="@+id/textview59"
+							android:id="@+id/textview638"
 							android:layout_width="wrap_content"
 							android:layout_height="wrap_content"
-							android:text="Random Pipe Colors"
+							android:layout_marginBottom="16dp"
+							android:text="Visuals &amp; Effects"
 							android:textSize="20sp"
-							android:textColor="#FFFFFF"
-							android:fontFamily="@font/flappy_font"
-							android:shadowColor="#000000"
-							android:shadowDx="2"
-							android:shadowDy="2"
-							android:shadowRadius="1.5"
-							android:layout_toStartOf="@id/switch_random_pipe_colors"
-							android:layout_alignParentStart="true"
-							android:layout_centerVertical="true" />
-						<com.google.android.material.materialswitch.MaterialSwitch
-							android:id="@+id/switch_random_pipe_colors"
-							android:layout_width="wrap_content"
-							android:layout_height="wrap_content"
-							android:textSize="12sp"
-							android:textColor="#000000"
-							android:layout_alignParentEnd="true"
-							android:layout_centerVertical="true" />
-					</RelativeLayout>
-					<TextView
-						android:id="@+id/textview60"
-						android:layout_width="wrap_content"
-						android:layout_height="wrap_content"
-						android:layout_marginTop="16dp"
-						android:layout_marginBottom="8dp"
-						android:text="Pipe Behavior"
-						android:textSize="20sp"
-						android:textColor="#FFFFFF"
-						android:fontFamily="@font/flappy_font"
-						android:shadowColor="#000000"
-						android:shadowDx="2"
-						android:shadowDy="2"
-						android:shadowRadius="1.5" />
-					<RelativeLayout
-						android:id="@+id/relativelayout51"
-						android:layout_width="match_parent"
-						android:layout_height="wrap_content"
-						android:layout_marginBottom="16dp">
+							android:textColor="#FF8A65"
+							android:fontFamily="@font/flappy_bold" />
 						<TextView
-							android:id="@+id/textview61"
+							android:id="@+id/textview639"
 							android:layout_width="wrap_content"
 							android:layout_height="wrap_content"
-							android:text="Enable Moving Pipes"
-							android:textSize="20sp"
-							android:textColor="#FFFFFF"
-							android:fontFamily="@font/flappy_font"
-							android:shadowColor="#000000"
-							android:shadowDx="2"
-							android:shadowDy="2"
-							android:shadowRadius="1.5"
-							android:layout_toStartOf="@id/switch_moving_pipes"
-							android:layout_alignParentStart="true"
-							android:layout_centerVertical="true" />
-						<com.google.android.material.materialswitch.MaterialSwitch
-							android:id="@+id/switch_moving_pipes"
-							android:layout_width="wrap_content"
+							android:layout_marginBottom="8dp"
+							android:text="Bird Color"
+							android:textSize="14sp"
+							android:textColor="#AAAAAA"
+							android:fontFamily="@font/flappy_font" />
+						<HorizontalScrollView
+							android:id="@+id/hscroll16"
+							android:layout_width="match_parent"
 							android:layout_height="wrap_content"
-							android:textSize="12sp"
-							android:textColor="#000000"
-							android:layout_alignParentEnd="true"
-							android:layout_centerVertical="true" />
-					</RelativeLayout>
-					<RelativeLayout
-						android:id="@+id/relativelayout52"
-						android:layout_width="match_parent"
-						android:layout_height="wrap_content"
-						android:layout_marginBottom="16dp">
-						<TextView
-							android:id="@+id/textview62"
-							android:layout_width="wrap_content"
+							android:layout_marginBottom="16dp"
+							android:scrollbars="none">
+							<LinearLayout
+								android:id="@+id/linear13"
+								android:layout_width="wrap_content"
+								android:layout_height="wrap_content"
+								android:orientation="vertical">
+								<RadioGroup
+									android:id="@+id/rg_bird_color"
+									android:layout_width="wrap_content"
+									android:layout_height="wrap_content"
+									android:orientation="horizontal">
+									<com.google.android.material.radiobutton.MaterialRadioButton
+										android:id="@+id/rb_bird_yellow"
+										android:layout_width="90dp"
+										android:layout_height="wrap_content"
+										android:paddingStart="8dp"
+										android:paddingEnd="16dp"
+										app:buttonTint="#FDD835"
+										android:fontFamily="@font/flappy_font" />
+									<com.google.android.material.radiobutton.MaterialRadioButton
+										android:id="@+id/rb_bird_blue"
+										android:layout_width="90dp"
+										android:layout_height="wrap_content"
+										android:paddingStart="8dp"
+										android:paddingEnd="16dp"
+										app:buttonTint="#2196F3"
+										android:fontFamily="@font/flappy_font" />
+									<com.google.android.material.radiobutton.MaterialRadioButton
+										android:id="@+id/rb_bird_red"
+										android:layout_width="90dp"
+										android:layout_height="wrap_content"
+										android:paddingStart="8dp"
+										android:paddingEnd="16dp"
+										app:buttonTint="#F44336"
+										android:fontFamily="@font/flappy_font" />
+									<com.google.android.material.radiobutton.MaterialRadioButton
+										android:id="@+id/rb_bird_random"
+										android:layout_width="90dp"
+										android:layout_height="wrap_content"
+										android:paddingStart="8dp"
+										android:paddingEnd="16dp"
+										app:buttonTint="#9E9E9E"
+										android:fontFamily="@font/flappy_font" />
+								</RadioGroup>
+								<LinearLayout
+									android:id="@+id/linear14"
+									android:layout_width="wrap_content"
+									android:layout_height="wrap_content"
+									android:orientation="horizontal">
+									<TextView
+										android:id="@+id/textview28"
+										android:layout_width="90dp"
+										android:layout_height="wrap_content"
+										android:gravity="center_horizontal|center_vertical"
+										android:text="Yellow"
+										android:textSize="12sp"
+										android:textColor="#AAAAAA"
+										android:fontFamily="@font/flappy_font" />
+									<TextView
+										android:id="@+id/textview29"
+										android:layout_width="90dp"
+										android:layout_height="wrap_content"
+										android:gravity="center_horizontal|center_vertical"
+										android:text="Blue"
+										android:textSize="12sp"
+										android:textColor="#AAAAAA"
+										android:fontFamily="@font/flappy_font" />
+									<TextView
+										android:id="@+id/textview30"
+										android:layout_width="90dp"
+										android:layout_height="wrap_content"
+										android:gravity="center_horizontal|center_vertical"
+										android:text="Red"
+										android:textSize="12sp"
+										android:textColor="#AAAAAA"
+										android:fontFamily="@font/flappy_font" />
+									<TextView
+										android:id="@+id/textview31"
+										android:layout_width="90dp"
+										android:layout_height="wrap_content"
+										android:gravity="center_horizontal|center_vertical"
+										android:text="Random"
+										android:textSize="12sp"
+										android:textColor="#AAAAAA"
+										android:fontFamily="@font/flappy_font" />
+								</LinearLayout>
+							</LinearLayout>
+						</HorizontalScrollView>
+						<RelativeLayout
+							android:id="@+id/relativelayout211"
+							android:layout_width="match_parent"
 							android:layout_height="wrap_content"
-							android:text="Tier 1 Start Score"
-							android:textSize="20sp"
-							android:textColor="#FFFFFF"
-							android:fontFamily="@font/flappy_font"
-							android:shadowColor="#000000"
-							android:shadowDx="2"
-							android:shadowDy="2"
-							android:shadowRadius="1.5"
-							android:layout_alignParentStart="true"
-							android:layout_centerVertical="true" />
-						<EditText
-							android:id="@+id/et_pipe_move_tier1"
-							android:layout_width="100dp"
+							android:layout_marginBottom="12dp">
+							<TextView
+								android:id="@+id/textview640"
+								android:layout_width="wrap_content"
+								android:layout_height="wrap_content"
+								android:text="Rainbow Bird"
+								android:textSize="18sp"
+								android:textColor="#EEEEEE"
+								android:fontFamily="@font/flappy_font"
+								android:layout_centerVertical="true" />
+							<com.google.android.material.materialswitch.MaterialSwitch
+								android:id="@+id/switch_rainbow_bird"
+								android:layout_width="wrap_content"
+								android:layout_height="wrap_content"
+								android:textSize="12sp"
+								android:textColor="#FFFFFF"
+								android:layout_alignParentEnd="true" />
+						</RelativeLayout>
+						<RelativeLayout
+							android:id="@+id/relativelayout212"
+							android:layout_width="match_parent"
 							android:layout_height="wrap_content"
-							android:textSize="20sp"
-							android:textColor="#FFFFFF"
-							android:hint="2000"
-							android:textColorHint="#AAAAAA"
-							android:gravity="end"
-							android:background="@null"
-							android:inputType="number"
-							android:maxLength="5"
-							android:fontFamily="@font/flappy_font"
-							android:shadowColor="#000000"
-							android:shadowDx="2"
-							android:shadowDy="2"
-							android:shadowRadius="1.5"
-							android:layout_alignParentEnd="true"
-							android:layout_centerVertical="true" />
-					</RelativeLayout>
-					<RelativeLayout
-						android:id="@+id/relativelayout53"
-						android:layout_width="match_parent"
-						android:layout_height="wrap_content"
-						android:layout_marginBottom="16dp">
-						<TextView
-							android:id="@+id/textview63"
-							android:layout_width="wrap_content"
+							android:layout_marginBottom="12dp">
+							<TextView
+								android:id="@+id/textview641"
+								android:layout_width="wrap_content"
+								android:layout_height="wrap_content"
+								android:text="Bird Trail"
+								android:textSize="18sp"
+								android:textColor="#EEEEEE"
+								android:fontFamily="@font/flappy_font"
+								android:layout_centerVertical="true" />
+							<com.google.android.material.materialswitch.MaterialSwitch
+								android:id="@+id/switch_bird_trail"
+								android:layout_width="wrap_content"
+								android:layout_height="wrap_content"
+								android:textSize="12sp"
+								android:textColor="#FFFFFF"
+								android:layout_alignParentEnd="true" />
+						</RelativeLayout>
+						<RelativeLayout
+							android:id="@+id/relativelayout213"
+							android:layout_width="match_parent"
 							android:layout_height="wrap_content"
-							android:text="Tier 2 Start Score"
-							android:textSize="20sp"
-							android:textColor="#FFFFFF"
-							android:fontFamily="@font/flappy_font"
-							android:shadowColor="#000000"
-							android:shadowDx="2"
-							android:shadowDy="2"
-							android:shadowRadius="1.5"
-							android:layout_alignParentStart="true"
-							android:layout_centerVertical="true" />
-						<EditText
-							android:id="@+id/et_pipe_move_tier2"
-							android:layout_width="100dp"
+							android:layout_marginBottom="12dp">
+							<TextView
+								android:id="@+id/textview642"
+								android:layout_width="wrap_content"
+								android:layout_height="wrap_content"
+								android:text="Screen Shake"
+								android:textSize="18sp"
+								android:textColor="#EEEEEE"
+								android:fontFamily="@font/flappy_font"
+								android:layout_centerVertical="true" />
+							<com.google.android.material.materialswitch.MaterialSwitch
+								android:id="@+id/switch_screen_shake"
+								android:layout_width="wrap_content"
+								android:layout_height="wrap_content"
+								android:textSize="12sp"
+								android:textColor="#FFFFFF"
+								android:layout_alignParentEnd="true" />
+						</RelativeLayout>
+						<LinearLayout
+							android:id="@+id/linear359"
+							android:layout_width="match_parent"
 							android:layout_height="wrap_content"
-							android:textSize="20sp"
-							android:textColor="#FFFFFF"
-							android:hint="3000"
-							android:textColorHint="#AAAAAA"
-							android:gravity="end"
-							android:background="@null"
-							android:inputType="number"
-							android:maxLength="5"
-							android:fontFamily="@font/flappy_font"
-							android:shadowColor="#000000"
-							android:shadowDx="2"
-							android:shadowDy="2"
-							android:shadowRadius="1.5"
-							android:layout_alignParentEnd="true"
-							android:layout_centerVertical="true" />
-					</RelativeLayout>
-					<TextView
-						android:id="@+id/textview64"
-						android:layout_width="wrap_content"
-						android:layout_height="wrap_content"
-						android:layout_marginTop="16dp"
-						android:layout_marginBottom="8dp"
-						android:text="Golden Pipe Bonus"
-						android:textSize="20sp"
-						android:textColor="#FFFFFF"
-						android:fontFamily="@font/flappy_font"
-						android:shadowColor="#000000"
-						android:shadowDx="2"
-						android:shadowDy="2"
-						android:shadowRadius="1.5" />
-					<RelativeLayout
-						android:id="@+id/relativelayout54"
-						android:layout_width="match_parent"
-						android:layout_height="wrap_content"
-						android:layout_marginBottom="16dp">
-						<TextView
-							android:id="@+id/textview65"
-							android:layout_width="wrap_content"
+							android:layout_marginBottom="16dp"
+							android:gravity="center_vertical"
+							android:orientation="horizontal"
+							android:paddingStart="16dp">
+							<TextView
+								android:id="@+id/textview643"
+								android:layout_width="0dp"
+								android:layout_height="wrap_content"
+								android:text="Shake Strength:"
+								android:textSize="16sp"
+								android:textColor="#BBBBBB"
+								android:layout_weight="1"
+								android:fontFamily="@font/flappy_font" />
+							<EditText
+								android:id="@+id/et_screen_shake_strength"
+								android:layout_width="80dp"
+								android:layout_height="40dp"
+								android:padding="8dp"
+								android:background="#333333"
+								android:gravity="center_horizontal|center_vertical"
+								android:textSize="12sp"
+								android:textColor="#FFFFFF"
+								android:textColorHint="#FFFFFF"
+								android:inputType="numberDecimal"
+								android:fontFamily="@font/flappy_font" />
+						</LinearLayout>
+						<RelativeLayout
+							android:id="@+id/relativelayout214"
+							android:layout_width="match_parent"
 							android:layout_height="wrap_content"
-							android:text="Enable Golden Pipes"
-							android:textSize="20sp"
-							android:textColor="#FFFFFF"
-							android:fontFamily="@font/flappy_font"
-							android:shadowColor="#000000"
-							android:shadowDx="2"
-							android:shadowDy="2"
-							android:shadowRadius="1.5"
-							android:layout_toStartOf="@id/switch_golden_pipe"
-							android:layout_alignParentStart="true"
-							android:layout_centerVertical="true" />
-						<com.google.android.material.materialswitch.MaterialSwitch
-							android:id="@+id/switch_golden_pipe"
-							android:layout_width="wrap_content"
+							android:layout_marginBottom="12dp">
+							<TextView
+								android:id="@+id/textview644"
+								android:layout_width="wrap_content"
+								android:layout_height="wrap_content"
+								android:text="Motion Blur"
+								android:textSize="18sp"
+								android:textColor="#EEEEEE"
+								android:fontFamily="@font/flappy_font"
+								android:layout_centerVertical="true" />
+							<com.google.android.material.materialswitch.MaterialSwitch
+								android:id="@+id/switch_motion_blur"
+								android:layout_width="wrap_content"
+								android:layout_height="wrap_content"
+								android:textSize="12sp"
+								android:textColor="#FFFFFF"
+								android:layout_alignParentEnd="true" />
+						</RelativeLayout>
+						<LinearLayout
+							android:id="@+id/linear360"
+							android:layout_width="match_parent"
 							android:layout_height="wrap_content"
-							android:textSize="12sp"
-							android:textColor="#000000"
-							android:layout_alignParentEnd="true"
-							android:layout_centerVertical="true" />
-					</RelativeLayout>
-					<RelativeLayout
-						android:id="@+id/relativelayout55"
-						android:layout_width="match_parent"
-						android:layout_height="wrap_content"
-						android:layout_marginBottom="16dp">
-						<TextView
-							android:id="@+id/textview66"
-							android:layout_width="wrap_content"
+							android:layout_marginBottom="16dp"
+							android:gravity="center_vertical"
+							android:orientation="horizontal"
+							android:paddingStart="16dp">
+							<TextView
+								android:id="@+id/textview645"
+								android:layout_width="0dp"
+								android:layout_height="wrap_content"
+								android:text="Blur Strength:"
+								android:textSize="16sp"
+								android:textColor="#BBBBBB"
+								android:layout_weight="1"
+								android:fontFamily="@font/flappy_font" />
+							<EditText
+								android:id="@+id/et_motion_blur_strength"
+								android:layout_width="80dp"
+								android:layout_height="40dp"
+								android:padding="8dp"
+								android:background="#333333"
+								android:gravity="center_horizontal|center_vertical"
+								android:textSize="12sp"
+								android:textColor="#FFFFFF"
+								android:textColorHint="#FFFFFF"
+								android:inputType="numberDecimal"
+								android:fontFamily="@font/flappy_font" />
+						</LinearLayout>
+						<LinearLayout
+							android:id="@+id/linear361"
+							android:layout_width="match_parent"
 							android:layout_height="wrap_content"
-							android:text="Golden Pipe Chance (%)"
-							android:textSize="20sp"
-							android:textColor="#FFFFFF"
-							android:fontFamily="@font/flappy_font"
-							android:shadowColor="#000000"
-							android:shadowDx="2"
-							android:shadowDy="2"
-							android:shadowRadius="1.5"
-							android:layout_alignParentStart="true"
-							android:layout_centerVertical="true" />
-						<EditText
-							android:id="@+id/et_golden_pipe_chance"
-							android:layout_width="100dp"
-							android:layout_height="wrap_content"
-							android:textSize="20sp"
-							android:textColor="#FFFFFF"
-							android:hint="5"
-							android:textColorHint="#AAAAAA"
-							android:gravity="end"
-							android:background="@null"
-							android:inputType="number"
-							android:maxLength="3"
-							android:fontFamily="@font/flappy_font"
-							android:shadowColor="#000000"
-							android:shadowDx="2"
-							android:shadowDy="2"
-							android:shadowRadius="1.5"
-							android:layout_alignParentEnd="true"
-							android:layout_centerVertical="true" />
-					</RelativeLayout>
-					<RelativeLayout
-						android:id="@+id/relativelayout56"
-						android:layout_width="match_parent"
-						android:layout_height="wrap_content"
-						android:layout_marginBottom="16dp">
-						<TextView
-							android:id="@+id/textview67"
-							android:layout_width="wrap_content"
-							android:layout_height="wrap_content"
-							android:text="Golden Pipe Score Bonus"
-							android:textSize="20sp"
-							android:textColor="#FFFFFF"
-							android:fontFamily="@font/flappy_font"
-							android:shadowColor="#000000"
-							android:shadowDx="2"
-							android:shadowDy="2"
-							android:shadowRadius="1.5"
-							android:layout_alignParentStart="true"
-							android:layout_centerVertical="true" />
-						<EditText
-							android:id="@+id/et_golden_pipe_bonus"
-							android:layout_width="100dp"
-							android:layout_height="wrap_content"
-							android:textSize="20sp"
-							android:textColor="#FFFFFF"
-							android:hint="10"
-							android:textColorHint="#AAAAAA"
-							android:gravity="end"
-							android:background="@null"
-							android:inputType="number"
-							android:maxLength="4"
-							android:fontFamily="@font/flappy_font"
-							android:shadowColor="#000000"
-							android:shadowDx="2"
-							android:shadowDy="2"
-							android:shadowRadius="1.5"
-							android:layout_alignParentEnd="true"
-							android:layout_centerVertical="true" />
-					</RelativeLayout>
-				</LinearLayout>
-				<LinearLayout
-					android:id="@+id/card_physics"
+							android:gravity="center_vertical"
+							android:orientation="horizontal">
+							<TextView
+								android:id="@+id/textview646"
+								android:layout_width="0dp"
+								android:layout_height="wrap_content"
+								android:text="Game Over Opacity %:"
+								android:textSize="18sp"
+								android:textColor="#EEEEEE"
+								android:layout_weight="1"
+								android:fontFamily="@font/flappy_font" />
+							<EditText
+								android:id="@+id/et_opacity"
+								android:layout_width="80dp"
+								android:layout_height="40dp"
+								android:padding="8dp"
+								android:background="#333333"
+								android:gravity="center_horizontal|center_vertical"
+								android:textSize="12sp"
+								android:textColor="#FFFFFF"
+								android:textColorHint="#FFFFFF"
+								android:inputType="number"
+								android:fontFamily="@font/flappy_font" />
+						</LinearLayout>
+					</LinearLayout>
+				</com.google.android.material.card.MaterialCardView>
+				<com.google.android.material.card.MaterialCardView
+					android:id="@+id/cardview93"
 					android:layout_width="match_parent"
 					android:layout_height="wrap_content"
-					android:layout_marginBottom="16dp"
-					android:padding="16dp"
-					android:background="@drawable/settings_card_background"
-					android:orientation="vertical">
-					<TextView
-						android:id="@+id/textview254"
-						android:layout_width="wrap_content"
-						android:layout_height="wrap_content"
-						android:layout_marginBottom="16dp"
-						android:text="Gameplay &amp; Physics"
-						android:textSize="22sp"
-						android:textColor="#FFFFFF"
-						android:fontFamily="@font/flappy_bold"
-						android:shadowColor="#000000"
-						android:shadowDx="2"
-						android:shadowDy="2"
-						android:shadowRadius="1.5" />
-					<RelativeLayout
-						android:id="@+id/relativelayout57"
+					android:layout_marginBottom="20dp"
+					app:contentPadding="20dp"
+					app:cardBackgroundColor="#252525"
+					app:cardCornerRadius="20dp"
+					app:cardElevation="2dp">
+					<LinearLayout
+						android:id="@+id/card_pipe_config"
 						android:layout_width="match_parent"
 						android:layout_height="wrap_content"
-						android:layout_marginBottom="16dp">
+						android:orientation="vertical">
 						<TextView
-							android:id="@+id/textview68"
+							android:id="@+id/textview647"
 							android:layout_width="wrap_content"
 							android:layout_height="wrap_content"
-							android:text="Game Speed"
+							android:layout_marginBottom="16dp"
+							android:text="Pipe Configuration"
 							android:textSize="20sp"
-							android:textColor="#FFFFFF"
-							android:fontFamily="@font/flappy_font"
-							android:shadowColor="#000000"
-							android:shadowDx="2"
-							android:shadowDy="2"
-							android:shadowRadius="1.5"
-							android:layout_alignParentStart="true"
-							android:layout_centerVertical="true" />
-						<EditText
-							android:id="@+id/et_game_speed"
-							android:layout_width="100dp"
-							android:layout_height="wrap_content"
-							android:textSize="20sp"
-							android:textColor="#FFFFFF"
-							android:hint="1.0"
-							android:textColorHint="#AAAAAA"
-							android:inputType="numberDecimal"
-							android:gravity="end"
-							android:background="@null"
-							android:fontFamily="@font/flappy_font"
-							android:shadowColor="#000000"
-							android:shadowDx="2"
-							android:shadowDy="2"
-							android:shadowRadius="1.5"
-							android:layout_alignParentEnd="true"
-							android:layout_centerVertical="true" />
-					</RelativeLayout>
-					<RelativeLayout
-						android:id="@+id/relativelayout58"
-						android:layout_width="match_parent"
-						android:layout_height="wrap_content"
-						android:layout_marginBottom="16dp">
+							android:textColor="#7E57C2"
+							android:fontFamily="@font/flappy_bold" />
 						<TextView
-							android:id="@+id/textview69"
+							android:id="@+id/textview648"
 							android:layout_width="wrap_content"
 							android:layout_height="wrap_content"
-							android:text="Gravity"
-							android:textSize="20sp"
-							android:textColor="#FFFFFF"
-							android:fontFamily="@font/flappy_font"
-							android:shadowColor="#000000"
-							android:shadowDx="2"
-							android:shadowDy="2"
-							android:shadowRadius="1.5"
-							android:layout_alignParentStart="true"
-							android:layout_centerVertical="true" />
-						<EditText
-							android:id="@+id/et_gravity"
-							android:layout_width="100dp"
+							android:layout_marginBottom="8dp"
+							android:text="Pipe Style"
+							android:textSize="14sp"
+							android:textColor="#AAAAAA"
+							android:fontFamily="@font/flappy_font" />
+						<HorizontalScrollView
+							android:id="@+id/hscroll24"
+							android:layout_width="match_parent"
 							android:layout_height="wrap_content"
-							android:textSize="20sp"
-							android:textColor="#FFFFFF"
-							android:hint="1.0"
-							android:textColorHint="#AAAAAA"
-							android:inputType="numberSigned|numberDecimal"
-							android:gravity="end"
-							android:background="@null"
-							android:fontFamily="@font/flappy_font"
-							android:shadowColor="#000000"
-							android:shadowDx="2"
-							android:shadowDy="2"
-							android:shadowRadius="1.5"
-							android:layout_alignParentEnd="true"
-							android:layout_centerVertical="true" />
-					</RelativeLayout>
-					<RelativeLayout
-						android:id="@+id/relativelayout59"
-						android:layout_width="match_parent"
-						android:layout_height="wrap_content"
-						android:layout_marginBottom="16dp">
-						<TextView
-							android:id="@+id/textview70"
-							android:layout_width="wrap_content"
+							android:layout_marginBottom="16dp"
+							android:scrollbars="none">
+							<LinearLayout
+								android:id="@+id/linear15"
+								android:layout_width="wrap_content"
+								android:layout_height="wrap_content"
+								android:orientation="vertical">
+								<RadioGroup
+									android:id="@+id/rg_pipe_color"
+									android:layout_width="wrap_content"
+									android:layout_height="wrap_content"
+									android:orientation="horizontal">
+									<com.google.android.material.radiobutton.MaterialRadioButton
+										android:id="@+id/rb_pipe_default"
+										android:layout_width="90dp"
+										android:layout_height="wrap_content"
+										android:paddingStart="8dp"
+										android:paddingEnd="12dp"
+										app:buttonTint="#66BB6A"
+										android:fontFamily="@font/flappy_font" />
+									<com.google.android.material.radiobutton.MaterialRadioButton
+										android:id="@+id/rb_pipe_red"
+										android:layout_width="90dp"
+										android:layout_height="wrap_content"
+										android:paddingStart="8dp"
+										android:paddingEnd="12dp"
+										app:buttonTint="#EF5350"
+										android:fontFamily="@font/flappy_font" />
+									<com.google.android.material.radiobutton.MaterialRadioButton
+										android:id="@+id/rb_pipe_blue"
+										android:layout_width="90dp"
+										android:layout_height="wrap_content"
+										android:paddingStart="8dp"
+										android:paddingEnd="12dp"
+										app:buttonTint="#42A5F5"
+										android:fontFamily="@font/flappy_font" />
+									<com.google.android.material.radiobutton.MaterialRadioButton
+										android:id="@+id/rb_pipe_yellow"
+										android:layout_width="90dp"
+										android:layout_height="wrap_content"
+										android:paddingStart="8dp"
+										android:paddingEnd="12dp"
+										app:buttonTint="#FFEE58"
+										android:fontFamily="@font/flappy_font" />
+									<com.google.android.material.radiobutton.MaterialRadioButton
+										android:id="@+id/rb_pipe_white"
+										android:layout_width="90dp"
+										android:layout_height="wrap_content"
+										android:paddingStart="8dp"
+										android:paddingEnd="12dp"
+										app:buttonTint="#EEE"
+										android:fontFamily="@font/flappy_font" />
+									<com.google.android.material.radiobutton.MaterialRadioButton
+										android:id="@+id/rb_pipe_pink"
+										android:layout_width="90dp"
+										android:layout_height="wrap_content"
+										android:paddingStart="8dp"
+										android:paddingEnd="12dp"
+										app:buttonTint="#F48FB1"
+										android:fontFamily="@font/flappy_font" />
+									<com.google.android.material.radiobutton.MaterialRadioButton
+										android:id="@+id/rb_pipe_black"
+										android:layout_width="90dp"
+										android:layout_height="wrap_content"
+										android:paddingStart="8dp"
+										android:paddingEnd="12dp"
+										app:buttonTint="#999"
+										android:fontFamily="@font/flappy_font" />
+									<com.google.android.material.radiobutton.MaterialRadioButton
+										android:id="@+id/rb_pipe_purple"
+										android:layout_width="90dp"
+										android:layout_height="wrap_content"
+										android:paddingStart="8dp"
+										android:paddingEnd="12dp"
+										app:buttonTint="#AB47BC"
+										android:fontFamily="@font/flappy_font" />
+									<com.google.android.material.radiobutton.MaterialRadioButton
+										android:id="@+id/rb_pipe_orange"
+										android:layout_width="90dp"
+										android:layout_height="wrap_content"
+										android:paddingStart="8dp"
+										android:paddingEnd="12dp"
+										app:buttonTint="#FFA726"
+										android:fontFamily="@font/flappy_font" />
+								</RadioGroup>
+								<LinearLayout
+									android:id="@+id/linear16"
+									android:layout_width="wrap_content"
+									android:layout_height="wrap_content"
+									android:orientation="horizontal">
+									<TextView
+										android:id="@+id/textview32"
+										android:layout_width="90dp"
+										android:layout_height="wrap_content"
+										android:gravity="center_horizontal|center_vertical"
+										android:text="Classic"
+										android:textSize="12sp"
+										android:textColor="#AAAAAA"
+										android:fontFamily="@font/flappy_font" />
+									<TextView
+										android:id="@+id/textview33"
+										android:layout_width="90dp"
+										android:layout_height="wrap_content"
+										android:gravity="center_horizontal|center_vertical"
+										android:text="Red"
+										android:textSize="12sp"
+										android:textColor="#AAAAAA"
+										android:fontFamily="@font/flappy_font" />
+									<TextView
+										android:id="@+id/textview34"
+										android:layout_width="90dp"
+										android:layout_height="wrap_content"
+										android:gravity="center_horizontal|center_vertical"
+										android:text="Blue"
+										android:textSize="12sp"
+										android:textColor="#AAAAAA"
+										android:fontFamily="@font/flappy_font" />
+									<TextView
+										android:id="@+id/textview35"
+										android:layout_width="90dp"
+										android:layout_height="wrap_content"
+										android:gravity="center_horizontal|center_vertical"
+										android:text="Yellow"
+										android:textSize="12sp"
+										android:textColor="#AAAAAA"
+										android:fontFamily="@font/flappy_font" />
+									<TextView
+										android:id="@+id/textview36"
+										android:layout_width="90dp"
+										android:layout_height="wrap_content"
+										android:gravity="center_horizontal|center_vertical"
+										android:text="White"
+										android:textSize="12sp"
+										android:textColor="#AAAAAA"
+										android:fontFamily="@font/flappy_font" />
+									<TextView
+										android:id="@+id/textview37"
+										android:layout_width="90dp"
+										android:layout_height="wrap_content"
+										android:gravity="center_horizontal|center_vertical"
+										android:text="Pink"
+										android:textSize="12sp"
+										android:textColor="#AAAAAA"
+										android:fontFamily="@font/flappy_font" />
+									<TextView
+										android:id="@+id/textview38"
+										android:layout_width="90dp"
+										android:layout_height="wrap_content"
+										android:gravity="center_horizontal|center_vertical"
+										android:text="Black"
+										android:textSize="12sp"
+										android:textColor="#AAAAAA"
+										android:fontFamily="@font/flappy_font" />
+									<TextView
+										android:id="@+id/textview39"
+										android:layout_width="90dp"
+										android:layout_height="wrap_content"
+										android:gravity="center_horizontal|center_vertical"
+										android:text="Purple"
+										android:textSize="12sp"
+										android:textColor="#AAAAAA"
+										android:fontFamily="@font/flappy_font" />
+									<TextView
+										android:id="@+id/textview40"
+										android:layout_width="90dp"
+										android:layout_height="wrap_content"
+										android:gravity="center_horizontal|center_vertical"
+										android:text="Orange"
+										android:textSize="12sp"
+										android:textColor="#AAAAAA"
+										android:fontFamily="@font/flappy_font" />
+								</LinearLayout>
+							</LinearLayout>
+						</HorizontalScrollView>
+						<RelativeLayout
+							android:id="@+id/relativelayout215"
+							android:layout_width="match_parent"
 							android:layout_height="wrap_content"
-							android:text="Jump Strength"
-							android:textSize="20sp"
-							android:textColor="#FFFFFF"
-							android:fontFamily="@font/flappy_font"
-							android:shadowColor="#000000"
-							android:shadowDx="2"
-							android:shadowDy="2"
-							android:shadowRadius="1.5"
-							android:layout_alignParentStart="true"
-							android:layout_centerVertical="true" />
-						<EditText
-							android:id="@+id/et_jump"
-							android:layout_width="100dp"
+							android:layout_marginBottom="12dp">
+							<TextView
+								android:id="@+id/textview649"
+								android:layout_width="wrap_content"
+								android:layout_height="wrap_content"
+								android:text="Randomize Pipe Colors"
+								android:textSize="18sp"
+								android:textColor="#EEEEEE"
+								android:fontFamily="@font/flappy_font"
+								android:layout_centerVertical="true" />
+							<com.google.android.material.materialswitch.MaterialSwitch
+								android:id="@+id/switch_random_pipe_colors"
+								android:layout_width="wrap_content"
+								android:layout_height="wrap_content"
+								android:textSize="12sp"
+								android:textColor="#FFFFFF"
+								android:layout_alignParentEnd="true" />
+						</RelativeLayout>
+						<View
+							android:id="@+id/view362"
+							android:layout_width="match_parent"
+							android:layout_height="1dp"
+							android:background="#444444"
+							android:layout_marginVertical="12dp" />
+						<RelativeLayout
+							android:id="@+id/relativelayout216"
+							android:layout_width="match_parent"
 							android:layout_height="wrap_content"
-							android:textSize="20sp"
-							android:textColor="#FFFFFF"
-							android:hint="1.0"
-							android:textColorHint="#AAAAAA"
-							android:inputType="numberDecimal"
-							android:gravity="end"
-							android:background="@null"
-							android:fontFamily="@font/flappy_font"
-							android:shadowColor="#000000"
-							android:shadowDx="2"
-							android:shadowDy="2"
-							android:shadowRadius="1.5"
-							android:layout_alignParentEnd="true"
-							android:layout_centerVertical="true" />
-					</RelativeLayout>
-					<RelativeLayout
-						android:id="@+id/relativelayout60"
-						android:layout_width="match_parent"
-						android:layout_height="wrap_content"
-						android:layout_marginBottom="16dp">
-						<TextView
-							android:id="@+id/textview71"
-							android:layout_width="wrap_content"
+							android:layout_marginBottom="12dp">
+							<TextView
+								android:id="@+id/textview650"
+								android:layout_width="wrap_content"
+								android:layout_height="wrap_content"
+								android:text="Enable Moving Pipes"
+								android:textSize="18sp"
+								android:textColor="#EEEEEE"
+								android:fontFamily="@font/flappy_font"
+								android:layout_centerVertical="true" />
+							<com.google.android.material.materialswitch.MaterialSwitch
+								android:id="@+id/switch_moving_pipes"
+								android:layout_width="wrap_content"
+								android:layout_height="wrap_content"
+								android:textSize="12sp"
+								android:textColor="#FFFFFF"
+								android:layout_alignParentEnd="true" />
+						</RelativeLayout>
+						<LinearLayout
+							android:id="@+id/linear363"
+							android:layout_width="match_parent"
 							android:layout_height="wrap_content"
-							android:text="Bird Hang Delay"
-							android:textSize="20sp"
-							android:textColor="#FFFFFF"
-							android:fontFamily="@font/flappy_font"
-							android:shadowColor="#000000"
-							android:shadowDx="2"
-							android:shadowDy="2"
-							android:shadowRadius="1.5"
-							android:layout_alignParentStart="true"
-							android:layout_centerVertical="true" />
-						<EditText
-							android:id="@+id/et_hang_delay"
-							android:layout_width="100dp"
+							android:layout_marginBottom="8dp"
+							android:orientation="horizontal">
+							<LinearLayout
+								android:id="@+id/linear364"
+								android:layout_width="0dp"
+								android:layout_height="wrap_content"
+								android:orientation="vertical"
+								android:layout_weight="1"
+								android:layout_marginEnd="8dp">
+								<TextView
+									android:id="@+id/textview651"
+									android:layout_width="wrap_content"
+									android:layout_height="wrap_content"
+									android:text="Tier 1 Score"
+									android:textSize="12sp"
+									android:textColor="#FFFAAA"
+									android:fontFamily="@font/flappy_font" />
+								<EditText
+									android:id="@+id/et_pipe_move_tier1"
+									android:layout_width="match_parent"
+									android:layout_height="40dp"
+									android:padding="8dp"
+									android:background="#333333"
+									android:textSize="12sp"
+									android:textColor="#FFFFFF"
+									android:textColorHint="#FFFFFF"
+									android:inputType="number"
+									android:fontFamily="@font/flappy_font" />
+							</LinearLayout>
+							<LinearLayout
+								android:id="@+id/linear365"
+								android:layout_width="0dp"
+								android:layout_height="wrap_content"
+								android:orientation="vertical"
+								android:layout_weight="1"
+								android:layout_marginStart="8dp">
+								<TextView
+									android:id="@+id/textview652"
+									android:layout_width="wrap_content"
+									android:layout_height="wrap_content"
+									android:text="Tier 2 Score"
+									android:textSize="12sp"
+									android:textColor="#FFFAAA"
+									android:fontFamily="@font/flappy_font" />
+								<EditText
+									android:id="@+id/et_pipe_move_tier2"
+									android:layout_width="match_parent"
+									android:layout_height="40dp"
+									android:padding="8dp"
+									android:background="#333333"
+									android:textSize="12sp"
+									android:textColor="#FFFFFF"
+									android:textColorHint="#FFFFFF"
+									android:inputType="number"
+									android:fontFamily="@font/flappy_font" />
+							</LinearLayout>
+						</LinearLayout>
+						<View
+							android:id="@+id/view366"
+							android:layout_width="match_parent"
+							android:layout_height="1dp"
+							android:background="#444444"
+							android:layout_marginVertical="12dp" />
+						<RelativeLayout
+							android:id="@+id/relativelayout217"
+							android:layout_width="match_parent"
 							android:layout_height="wrap_content"
-							android:textSize="20sp"
-							android:textColor="#FFFFFF"
-							android:hint="1.0"
-							android:textColorHint="#AAAAAA"
-							android:inputType="numberDecimal"
-							android:gravity="end"
-							android:background="@null"
-							android:fontFamily="@font/flappy_font"
-							android:shadowColor="#000000"
-							android:shadowDx="2"
-							android:shadowDy="2"
-							android:shadowRadius="1.5"
-							android:layout_alignParentEnd="true"
-							android:layout_centerVertical="true" />
-					</RelativeLayout>
-					<RelativeLayout
-						android:id="@+id/relativelayout61"
-						android:layout_width="match_parent"
-						android:layout_height="wrap_content"
-						android:layout_marginBottom="16dp">
-						<TextView
-							android:id="@+id/textview72"
-							android:layout_width="wrap_content"
+							android:layout_marginBottom="12dp">
+							<TextView
+								android:id="@+id/textview653"
+								android:layout_width="wrap_content"
+								android:layout_height="wrap_content"
+								android:text="Golden Pipes (Bonus)"
+								android:textSize="18sp"
+								android:textColor="#FFD700"
+								android:fontFamily="@font/flappy_font"
+								android:layout_centerVertical="true" />
+							<com.google.android.material.materialswitch.MaterialSwitch
+								android:id="@+id/switch_golden_pipe"
+								android:layout_width="wrap_content"
+								android:layout_height="wrap_content"
+								android:textSize="12sp"
+								android:textColor="#FFFFFF"
+								android:layout_alignParentEnd="true" />
+						</RelativeLayout>
+						<LinearLayout
+							android:id="@+id/linear367"
+							android:layout_width="match_parent"
 							android:layout_height="wrap_content"
-							android:text="Bird Size"
-							android:textSize="20sp"
-							android:textColor="#FFFFFF"
-							android:fontFamily="@font/flappy_font"
-							android:shadowColor="#000000"
-							android:shadowDx="2"
-							android:shadowDy="2"
-							android:shadowRadius="1.5"
-							android:layout_alignParentStart="true"
-							android:layout_centerVertical="true" />
-						<EditText
-							android:id="@+id/et_bird_size"
-							android:layout_width="100dp"
-							android:layout_height="wrap_content"
-							android:textSize="20sp"
-							android:textColor="#FFFFFF"
-							android:hint="1.0"
-							android:textColorHint="#AAAAAA"
-							android:inputType="numberDecimal"
-							android:gravity="end"
-							android:background="@null"
-							android:fontFamily="@font/flappy_font"
-							android:shadowColor="#000000"
-							android:shadowDx="2"
-							android:shadowDy="2"
-							android:shadowRadius="1.5"
-							android:layout_alignParentEnd="true"
-							android:layout_centerVertical="true" />
-					</RelativeLayout>
-					<RelativeLayout
-						android:id="@+id/relativelayout62"
-						android:layout_width="match_parent"
-						android:layout_height="wrap_content"
-						android:layout_marginBottom="16dp">
-						<TextView
-							android:id="@+id/textview73"
-							android:layout_width="wrap_content"
-							android:layout_height="wrap_content"
-							android:text="Bird Hitbox Size"
-							android:textSize="20sp"
-							android:textColor="#FFFFFF"
-							android:fontFamily="@font/flappy_font"
-							android:shadowColor="#000000"
-							android:shadowDx="2"
-							android:shadowDy="2"
-							android:shadowRadius="1.5"
-							android:layout_alignParentStart="true"
-							android:layout_centerVertical="true" />
-						<EditText
-							android:id="@+id/et_bird_hitbox"
-							android:layout_width="100dp"
-							android:layout_height="wrap_content"
-							android:textSize="20sp"
-							android:textColor="#FFFFFF"
-							android:hint="1.0"
-							android:textColorHint="#AAAAAA"
-							android:inputType="numberDecimal"
-							android:gravity="end"
-							android:background="@null"
-							android:fontFamily="@font/flappy_font"
-							android:shadowColor="#000000"
-							android:shadowDx="2"
-							android:shadowDy="2"
-							android:shadowRadius="1.5"
-							android:layout_alignParentEnd="true"
-							android:layout_centerVertical="true" />
-					</RelativeLayout>
-					<RelativeLayout
-						android:id="@+id/relativelayout63"
-						android:layout_width="match_parent"
-						android:layout_height="wrap_content"
-						android:layout_marginBottom="16dp">
-						<TextView
-							android:id="@+id/textview74"
-							android:layout_width="wrap_content"
-							android:layout_height="wrap_content"
-							android:text="Pipe Gap Size"
-							android:textSize="20sp"
-							android:textColor="#FFFFFF"
-							android:fontFamily="@font/flappy_font"
-							android:shadowColor="#000000"
-							android:shadowDx="2"
-							android:shadowDy="2"
-							android:shadowRadius="1.5"
-							android:layout_alignParentStart="true"
-							android:layout_centerVertical="true" />
-						<EditText
-							android:id="@+id/et_pipe_gap"
-							android:layout_width="100dp"
-							android:layout_height="wrap_content"
-							android:textSize="20sp"
-							android:textColor="#FFFFFF"
-							android:hint="1.0"
-							android:textColorHint="#AAAAAA"
-							android:inputType="numberDecimal"
-							android:gravity="end"
-							android:background="@null"
-							android:fontFamily="@font/flappy_font"
-							android:shadowColor="#000000"
-							android:shadowDx="2"
-							android:shadowDy="2"
-							android:shadowRadius="1.5"
-							android:layout_alignParentEnd="true"
-							android:layout_centerVertical="true" />
-					</RelativeLayout>
-					<RelativeLayout
-						android:id="@+id/relativelayout64"
-						android:layout_width="match_parent"
-						android:layout_height="wrap_content"
-						android:layout_marginBottom="16dp">
-						<TextView
-							android:id="@+id/textview75"
-							android:layout_width="wrap_content"
-							android:layout_height="wrap_content"
-							android:text="Pipe Spacing"
-							android:textSize="20sp"
-							android:textColor="#FFFFFF"
-							android:fontFamily="@font/flappy_font"
-							android:shadowColor="#000000"
-							android:shadowDx="2"
-							android:shadowDy="2"
-							android:shadowRadius="1.5"
-							android:layout_alignParentStart="true"
-							android:layout_centerVertical="true" />
-						<EditText
-							android:id="@+id/et_pipe_spacing"
-							android:layout_width="100dp"
-							android:layout_height="wrap_content"
-							android:textSize="20sp"
-							android:textColor="#FFFFFF"
-							android:hint="1.0"
-							android:textColorHint="#AAAAAA"
-							android:inputType="numberDecimal"
-							android:gravity="end"
-							android:background="@null"
-							android:fontFamily="@font/flappy_font"
-							android:shadowColor="#000000"
-							android:shadowDx="2"
-							android:shadowDy="2"
-							android:shadowRadius="1.5"
-							android:layout_alignParentEnd="true"
-							android:layout_centerVertical="true" />
-					</RelativeLayout>
-					<RelativeLayout
-						android:id="@+id/relativelayout65"
-						android:layout_width="match_parent"
-						android:layout_height="wrap_content"
-						android:layout_marginBottom="16dp">
-						<TextView
-							android:id="@+id/textview76"
-							android:layout_width="wrap_content"
-							android:layout_height="wrap_content"
-							android:text="Pipe Width"
-							android:textSize="20sp"
-							android:textColor="#FFFFFF"
-							android:fontFamily="@font/flappy_font"
-							android:shadowColor="#000000"
-							android:shadowDx="2"
-							android:shadowDy="2"
-							android:shadowRadius="1.5"
-							android:layout_alignParentStart="true"
-							android:layout_centerVertical="true" />
-						<EditText
-							android:id="@+id/et_pipe_width"
-							android:layout_width="100dp"
-							android:layout_height="wrap_content"
-							android:textSize="20sp"
-							android:textColor="#FFFFFF"
-							android:hint="1.0"
-							android:textColorHint="#AAAAAA"
-							android:inputType="numberDecimal"
-							android:gravity="end"
-							android:background="@null"
-							android:fontFamily="@font/flappy_font"
-							android:shadowColor="#000000"
-							android:shadowDx="2"
-							android:shadowDy="2"
-							android:shadowRadius="1.5"
-							android:layout_alignParentEnd="true"
-							android:layout_centerVertical="true" />
-					</RelativeLayout>
-					<RelativeLayout
-						android:id="@+id/relativelayout66"
-						android:layout_width="match_parent"
-						android:layout_height="wrap_content"
-						android:layout_marginBottom="16dp">
-						<TextView
-							android:id="@+id/textview77"
-							android:layout_width="wrap_content"
-							android:layout_height="wrap_content"
-							android:text="Pipe Gap Variation"
-							android:textSize="20sp"
-							android:textColor="#FFFFFF"
-							android:fontFamily="@font/flappy_font"
-							android:shadowColor="#000000"
-							android:shadowDx="2"
-							android:shadowDy="2"
-							android:shadowRadius="1.5"
-							android:layout_alignParentStart="true"
-							android:layout_centerVertical="true" />
-						<EditText
-							android:id="@+id/et_pipe_variation"
-							android:layout_width="100dp"
-							android:layout_height="wrap_content"
-							android:textSize="20sp"
-							android:textColor="#FFFFFF"
-							android:hint="1.0"
-							android:textColorHint="#AAAAAA"
-							android:inputType="numberDecimal"
-							android:gravity="end"
-							android:background="@null"
-							android:fontFamily="@font/flappy_font"
-							android:shadowColor="#000000"
-							android:shadowDx="2"
-							android:shadowDy="2"
-							android:shadowRadius="1.5"
-							android:layout_alignParentEnd="true"
-							android:layout_centerVertical="true" />
-					</RelativeLayout>
-					<RelativeLayout
-						android:id="@+id/relativelayout67"
-						android:layout_width="match_parent"
-						android:layout_height="wrap_content"
-						android:layout_marginBottom="16dp">
-						<TextView
-							android:id="@+id/textview78"
-							android:layout_width="wrap_content"
-							android:layout_height="wrap_content"
-							android:text="Pipe Speed Variation"
-							android:textSize="20sp"
-							android:textColor="#FFFFFF"
-							android:fontFamily="@font/flappy_font"
-							android:shadowColor="#000000"
-							android:shadowDx="2"
-							android:shadowDy="2"
-							android:shadowRadius="1.5"
-							android:layout_alignParentStart="true"
-							android:layout_centerVertical="true" />
-						<EditText
-							android:id="@+id/et_pipe_speed_variation"
-							android:layout_width="100dp"
-							android:layout_height="wrap_content"
-							android:textSize="20sp"
-							android:textColor="#FFFFFF"
-							android:hint="0.0"
-							android:textColorHint="#AAAAAA"
-							android:inputType="numberDecimal"
-							android:gravity="end"
-							android:background="@null"
-							android:fontFamily="@font/flappy_font"
-							android:shadowColor="#000000"
-							android:shadowDx="2"
-							android:shadowDy="2"
-							android:shadowRadius="1.5"
-							android:layout_alignParentEnd="true"
-							android:layout_centerVertical="true" />
-					</RelativeLayout>
-					<RelativeLayout
-						android:id="@+id/relativelayout68"
-						android:layout_width="match_parent"
-						android:layout_height="wrap_content"
-						android:layout_marginBottom="16dp">
-						<TextView
-							android:id="@+id/textview79"
-							android:layout_width="wrap_content"
-							android:layout_height="wrap_content"
-							android:text="Score Multiplier"
-							android:textSize="20sp"
-							android:textColor="#FFFFFF"
-							android:fontFamily="@font/flappy_font"
-							android:shadowColor="#000000"
-							android:shadowDx="2"
-							android:shadowDy="2"
-							android:shadowRadius="1.5"
-							android:layout_alignParentStart="true"
-							android:layout_centerVertical="true" />
-						<EditText
-							android:id="@+id/et_score_multiplier"
-							android:layout_width="100dp"
-							android:layout_height="wrap_content"
-							android:textSize="20sp"
-							android:textColor="#FFFFFF"
-							android:hint="1"
-							android:textColorHint="#AAAAAA"
-							android:gravity="end"
-							android:background="@null"
-							android:inputType="number"
-							android:maxLength="3"
-							android:fontFamily="@font/flappy_font"
-							android:shadowColor="#000000"
-							android:shadowDx="2"
-							android:shadowDy="2"
-							android:shadowRadius="1.5"
-							android:layout_alignParentEnd="true"
-							android:layout_centerVertical="true" />
-					</RelativeLayout>
-					<RelativeLayout
-						android:id="@+id/relativelayout69"
-						android:layout_width="match_parent"
-						android:layout_height="wrap_content"
-						android:layout_marginBottom="16dp">
-						<TextView
-							android:id="@+id/textview80"
-							android:layout_width="wrap_content"
-							android:layout_height="wrap_content"
-							android:text="Background Scroll Speed"
-							android:textSize="20sp"
-							android:textColor="#FFFFFF"
-							android:fontFamily="@font/flappy_font"
-							android:shadowColor="#000000"
-							android:shadowDx="2"
-							android:shadowDy="2"
-							android:shadowRadius="1.5"
-							android:layout_alignParentStart="true"
-							android:layout_centerVertical="true" />
-						<EditText
-							android:id="@+id/et_bg_scroll"
-							android:layout_width="100dp"
-							android:layout_height="wrap_content"
-							android:textSize="20sp"
-							android:textColor="#FFFFFF"
-							android:hint="0.5"
-							android:textColorHint="#AAAAAA"
-							android:inputType="numberDecimal"
-							android:gravity="end"
-							android:background="@null"
-							android:fontFamily="@font/flappy_font"
-							android:shadowColor="#000000"
-							android:shadowDx="2"
-							android:shadowDy="2"
-							android:shadowRadius="1.5"
-							android:layout_alignParentEnd="true"
-							android:layout_centerVertical="true" />
-					</RelativeLayout>
-					<RelativeLayout
-						android:id="@+id/relativelayout70"
-						android:layout_width="match_parent"
-						android:layout_height="wrap_content"
-						android:layout_marginBottom="16dp">
-						<TextView
-							android:id="@+id/textview81"
-							android:layout_width="wrap_content"
-							android:layout_height="wrap_content"
-							android:text="Ground Scroll Speed"
-							android:textSize="20sp"
-							android:textColor="#FFFFFF"
-							android:fontFamily="@font/flappy_font"
-							android:shadowColor="#000000"
-							android:shadowDx="2"
-							android:shadowDy="2"
-							android:shadowRadius="1.5"
-							android:layout_alignParentStart="true"
-							android:layout_centerVertical="true" />
-						<EditText
-							android:id="@+id/et_ground_scroll"
-							android:layout_width="100dp"
-							android:layout_height="wrap_content"
-							android:textSize="20sp"
-							android:textColor="#FFFFFF"
-							android:hint="1.0"
-							android:textColorHint="#AAAAAA"
-							android:inputType="numberDecimal"
-							android:gravity="end"
-							android:background="@null"
-							android:fontFamily="@font/flappy_font"
-							android:shadowColor="#000000"
-							android:shadowDx="2"
-							android:shadowDy="2"
-							android:shadowRadius="1.5"
-							android:layout_alignParentEnd="true"
-							android:layout_centerVertical="true" />
-					</RelativeLayout>
-				</LinearLayout>
-				<LinearLayout
-					android:id="@+id/card_general"
+							android:layout_marginBottom="8dp"
+							android:orientation="horizontal">
+							<LinearLayout
+								android:id="@+id/linear368"
+								android:layout_width="0dp"
+								android:layout_height="wrap_content"
+								android:orientation="vertical"
+								android:layout_weight="1"
+								android:layout_marginEnd="8dp">
+								<TextView
+									android:id="@+id/textview654"
+									android:layout_width="wrap_content"
+									android:layout_height="wrap_content"
+									android:text="Chance %"
+									android:textSize="12sp"
+									android:textColor="#FFFAAA"
+									android:fontFamily="@font/flappy_font" />
+								<EditText
+									android:id="@+id/et_golden_pipe_chance"
+									android:layout_width="match_parent"
+									android:layout_height="40dp"
+									android:padding="8dp"
+									android:background="#333333"
+									android:textSize="12sp"
+									android:textColor="#FFFFFF"
+									android:textColorHint="#FFFFFF"
+									android:inputType="number"
+									android:fontFamily="@font/flappy_font" />
+							</LinearLayout>
+							<LinearLayout
+								android:id="@+id/linear369"
+								android:layout_width="0dp"
+								android:layout_height="wrap_content"
+								android:orientation="vertical"
+								android:layout_weight="1"
+								android:layout_marginStart="8dp">
+								<TextView
+									android:id="@+id/textview655"
+									android:layout_width="wrap_content"
+									android:layout_height="wrap_content"
+									android:text="Bonus Points"
+									android:textSize="12sp"
+									android:textColor="#FFFAAA"
+									android:fontFamily="@font/flappy_font" />
+								<EditText
+									android:id="@+id/et_golden_pipe_bonus"
+									android:layout_width="match_parent"
+									android:layout_height="40dp"
+									android:padding="8dp"
+									android:background="#333333"
+									android:textSize="12sp"
+									android:textColor="#FFFFFF"
+									android:textColorHint="#FFFFFF"
+									android:inputType="number"
+									android:fontFamily="@font/flappy_font" />
+							</LinearLayout>
+						</LinearLayout>
+					</LinearLayout>
+				</com.google.android.material.card.MaterialCardView>
+				<com.google.android.material.card.MaterialCardView
+					android:id="@+id/cardview94"
 					android:layout_width="match_parent"
 					android:layout_height="wrap_content"
-					android:layout_marginBottom="16dp"
-					android:padding="16dp"
-					android:background="@drawable/settings_card_background"
-					android:orientation="vertical">
-					<TextView
-						android:id="@+id/textview269"
-						android:layout_width="wrap_content"
-						android:layout_height="wrap_content"
-						android:layout_marginBottom="16dp"
-						android:text="General Settings"
-						android:textSize="22sp"
-						android:textColor="#FFFFFF"
-						android:fontFamily="@font/flappy_bold"
-						android:shadowColor="#000000"
-						android:shadowDx="2"
-						android:shadowDy="2"
-						android:shadowRadius="1.5" />
-					<RelativeLayout
-						android:id="@+id/relativelayout71"
+					android:layout_marginBottom="20dp"
+					app:contentPadding="20dp"
+					app:cardBackgroundColor="#252525"
+					app:cardCornerRadius="20dp"
+					app:cardElevation="2dp">
+					<LinearLayout
+						android:id="@+id/card_physics"
 						android:layout_width="match_parent"
 						android:layout_height="wrap_content"
-						android:layout_marginBottom="16dp">
+						android:orientation="vertical">
 						<TextView
-							android:id="@+id/textview82"
+							android:id="@+id/textview656"
 							android:layout_width="wrap_content"
 							android:layout_height="wrap_content"
-							android:text="Enable Sound"
+							android:layout_marginBottom="16dp"
+							android:text="Game Physics"
 							android:textSize="20sp"
-							android:textColor="#FFFFFF"
-							android:fontFamily="@font/flappy_font"
-							android:shadowColor="#000000"
-							android:shadowDx="2"
-							android:shadowDy="2"
-							android:shadowRadius="1.5"
-							android:layout_toStartOf="@id/switch_sound"
-							android:layout_alignParentStart="true"
-							android:layout_centerVertical="true" />
-						<com.google.android.material.materialswitch.MaterialSwitch
-							android:id="@+id/switch_sound"
-							android:layout_width="wrap_content"
+							android:textColor="#EF5350"
+							android:fontFamily="@font/flappy_bold" />
+						<GridLayout
+							android:id="@+id/grid_layout370"
+							android:layout_width="match_parent"
 							android:layout_height="wrap_content"
-							android:textSize="12sp"
-							android:textColor="#000000"
-							android:layout_alignParentEnd="true"
-							android:layout_centerVertical="true" />
-					</RelativeLayout>
-					<RelativeLayout
-						android:id="@+id/relativelayout72"
-						android:layout_width="match_parent"
-						android:layout_height="wrap_content"
-						android:layout_marginBottom="16dp">
-						<TextView
-							android:id="@+id/textview83"
-							android:layout_width="wrap_content"
-							android:layout_height="wrap_content"
-							android:text="Enable Haptic Feedback"
-							android:textSize="20sp"
-							android:textColor="#FFFFFF"
-							android:fontFamily="@font/flappy_font"
-							android:shadowColor="#000000"
-							android:shadowDx="2"
-							android:shadowDy="2"
-							android:shadowRadius="1.5"
-							android:layout_toStartOf="@id/switch_haptic_feedback"
-							android:layout_alignParentStart="true"
-							android:layout_centerVertical="true" />
-						<com.google.android.material.materialswitch.MaterialSwitch
-							android:id="@+id/switch_haptic_feedback"
-							android:layout_width="wrap_content"
-							android:layout_height="wrap_content"
-							android:textSize="12sp"
-							android:textColor="#000000"
-							android:layout_alignParentEnd="true"
-							android:layout_centerVertical="true" />
-					</RelativeLayout>
-					<RelativeLayout
-						android:id="@+id/relativelayout73"
-						android:layout_width="match_parent"
-						android:layout_height="wrap_content"
-						android:layout_marginBottom="16dp">
-						<TextView
-							android:id="@+id/textview84"
-							android:layout_width="wrap_content"
-							android:layout_height="wrap_content"
-							android:text="Enable Wing Animation"
-							android:textSize="20sp"
-							android:textColor="#FFFFFF"
-							android:fontFamily="@font/flappy_font"
-							android:shadowColor="#000000"
-							android:shadowDx="2"
-							android:shadowDy="2"
-							android:shadowRadius="1.5"
-							android:layout_toStartOf="@id/switch_wing_animation"
-							android:layout_alignParentStart="true"
-							android:layout_centerVertical="true" />
-						<com.google.android.material.materialswitch.MaterialSwitch
-							android:id="@+id/switch_wing_animation"
-							android:layout_width="wrap_content"
-							android:layout_height="wrap_content"
-							android:textSize="12sp"
-							android:textColor="#000000"
-							android:layout_alignParentEnd="true"
-							android:layout_centerVertical="true" />
-					</RelativeLayout>
-					<RelativeLayout
-						android:id="@+id/relativelayout74"
-						android:layout_width="match_parent"
-						android:layout_height="wrap_content"
-						android:layout_marginBottom="16dp">
-						<TextView
-							android:id="@+id/textview85"
-							android:layout_width="wrap_content"
-							android:layout_height="wrap_content"
-							android:text="Hide Settings Icon In-Game"
-							android:textSize="20sp"
-							android:textColor="#FFFFFF"
-							android:fontFamily="@font/flappy_font"
-							android:shadowColor="#000000"
-							android:shadowDx="2"
-							android:shadowDy="2"
-							android:shadowRadius="1.5"
-							android:layout_toStartOf="@id/switch_hide_settings_icon"
-							android:layout_alignParentStart="true"
-							android:layout_centerVertical="true" />
-						<com.google.android.material.materialswitch.MaterialSwitch
-							android:id="@+id/switch_hide_settings_icon"
-							android:layout_width="wrap_content"
-							android:layout_height="wrap_content"
-							android:textSize="12sp"
-							android:textColor="#000000"
-							android:layout_alignParentEnd="true"
-							android:layout_centerVertical="true" />
-					</RelativeLayout>
-				</LinearLayout>
-				<LinearLayout
-					android:id="@+id/card_cheats"
+							android:columnCount="2"
+							android:useDefaultMargins="true">
+							<LinearLayout
+								android:id="@+id/linear371"
+								android:layout_width="0dp"
+								android:layout_height="wrap_content"
+								android:layout_marginBottom="12dp"
+								android:orientation="vertical"
+								android:layout_columnWeight="1">
+								<TextView
+									android:id="@+id/textview657"
+									android:layout_width="wrap_content"
+									android:layout_height="wrap_content"
+									android:text="Game Speed"
+									android:textSize="12sp"
+									android:textColor="#FFFAAA"
+									android:fontFamily="@font/flappy_font" />
+								<EditText
+									android:id="@+id/et_game_speed"
+									android:layout_width="match_parent"
+									android:layout_height="40dp"
+									android:padding="8dp"
+									android:background="#333333"
+									android:textSize="12sp"
+									android:textColor="#FFFFFF"
+									android:textColorHint="#FFFFFF"
+									android:inputType="numberDecimal"
+									android:fontFamily="@font/flappy_font" />
+							</LinearLayout>
+							<LinearLayout
+								android:id="@+id/linear372"
+								android:layout_width="0dp"
+								android:layout_height="wrap_content"
+								android:layout_marginBottom="12dp"
+								android:orientation="vertical"
+								android:layout_columnWeight="1"
+								android:layout_marginStart="8dp">
+								<TextView
+									android:id="@+id/textview658"
+									android:layout_width="wrap_content"
+									android:layout_height="wrap_content"
+									android:text="Gravity"
+									android:textSize="12sp"
+									android:textColor="#FFFAAA"
+									android:fontFamily="@font/flappy_font" />
+								<EditText
+									android:id="@+id/et_gravity"
+									android:layout_width="match_parent"
+									android:layout_height="40dp"
+									android:padding="8dp"
+									android:background="#333333"
+									android:textSize="12sp"
+									android:textColor="#FFFFFF"
+									android:textColorHint="#FFFFFF"
+									android:inputType="numberDecimal"
+									android:fontFamily="@font/flappy_font" />
+							</LinearLayout>
+							<LinearLayout
+								android:id="@+id/linear373"
+								android:layout_width="0dp"
+								android:layout_height="wrap_content"
+								android:layout_marginBottom="12dp"
+								android:orientation="vertical"
+								android:layout_columnWeight="1">
+								<TextView
+									android:id="@+id/textview659"
+									android:layout_width="wrap_content"
+									android:layout_height="wrap_content"
+									android:text="Jump Strength"
+									android:textSize="12sp"
+									android:textColor="#FFFAAA"
+									android:fontFamily="@font/flappy_font" />
+								<EditText
+									android:id="@+id/et_jump"
+									android:layout_width="match_parent"
+									android:layout_height="40dp"
+									android:padding="8dp"
+									android:background="#333333"
+									android:textSize="12sp"
+									android:textColor="#FFFFFF"
+									android:textColorHint="#FFFFFF"
+									android:inputType="numberDecimal"
+									android:fontFamily="@font/flappy_font" />
+							</LinearLayout>
+							<LinearLayout
+								android:id="@+id/linear374"
+								android:layout_width="0dp"
+								android:layout_height="wrap_content"
+								android:layout_marginBottom="12dp"
+								android:orientation="vertical"
+								android:layout_columnWeight="1"
+								android:layout_marginStart="8dp">
+								<TextView
+									android:id="@+id/textview660"
+									android:layout_width="wrap_content"
+									android:layout_height="wrap_content"
+									android:text="Hang Delay"
+									android:textSize="12sp"
+									android:textColor="#FFFAAA"
+									android:fontFamily="@font/flappy_font" />
+								<EditText
+									android:id="@+id/et_hang_delay"
+									android:layout_width="match_parent"
+									android:layout_height="40dp"
+									android:padding="8dp"
+									android:background="#333333"
+									android:textSize="12sp"
+									android:textColor="#FFFFFF"
+									android:textColorHint="#FFFFFF"
+									android:inputType="numberDecimal"
+									android:fontFamily="@font/flappy_font" />
+							</LinearLayout>
+							<LinearLayout
+								android:id="@+id/linear375"
+								android:layout_width="0dp"
+								android:layout_height="wrap_content"
+								android:layout_marginBottom="12dp"
+								android:orientation="vertical"
+								android:layout_columnWeight="1">
+								<TextView
+									android:id="@+id/textview661"
+									android:layout_width="wrap_content"
+									android:layout_height="wrap_content"
+									android:text="Bird Size"
+									android:textSize="12sp"
+									android:textColor="#FFFAAA"
+									android:fontFamily="@font/flappy_font" />
+								<EditText
+									android:id="@+id/et_bird_size"
+									android:layout_width="match_parent"
+									android:layout_height="40dp"
+									android:padding="8dp"
+									android:background="#333333"
+									android:textSize="12sp"
+									android:textColor="#FFFFFF"
+									android:textColorHint="#FFFFFF"
+									android:inputType="numberDecimal"
+									android:fontFamily="@font/flappy_font" />
+							</LinearLayout>
+							<LinearLayout
+								android:id="@+id/linear376"
+								android:layout_width="0dp"
+								android:layout_height="wrap_content"
+								android:layout_marginBottom="12dp"
+								android:orientation="vertical"
+								android:layout_columnWeight="1"
+								android:layout_marginStart="8dp">
+								<TextView
+									android:id="@+id/textview662"
+									android:layout_width="wrap_content"
+									android:layout_height="wrap_content"
+									android:text="Hitbox Scale"
+									android:textSize="12sp"
+									android:textColor="#FFFAAA"
+									android:fontFamily="@font/flappy_font" />
+								<EditText
+									android:id="@+id/et_bird_hitbox"
+									android:layout_width="match_parent"
+									android:layout_height="40dp"
+									android:padding="8dp"
+									android:background="#333333"
+									android:textSize="12sp"
+									android:textColor="#FFFFFF"
+									android:textColorHint="#FFFFFF"
+									android:inputType="numberDecimal"
+									android:fontFamily="@font/flappy_font" />
+							</LinearLayout>
+							<LinearLayout
+								android:id="@+id/linear377"
+								android:layout_width="0dp"
+								android:layout_height="wrap_content"
+								android:layout_marginBottom="12dp"
+								android:orientation="vertical"
+								android:layout_columnWeight="1">
+								<TextView
+									android:id="@+id/textview663"
+									android:layout_width="wrap_content"
+									android:layout_height="wrap_content"
+									android:text="Pipe Gap"
+									android:textSize="12sp"
+									android:textColor="#FFFAAA"
+									android:fontFamily="@font/flappy_font" />
+								<EditText
+									android:id="@+id/et_pipe_gap"
+									android:layout_width="match_parent"
+									android:layout_height="40dp"
+									android:padding="8dp"
+									android:background="#333333"
+									android:textSize="12sp"
+									android:textColor="#FFFFFF"
+									android:textColorHint="#FFFFFF"
+									android:inputType="numberDecimal"
+									android:fontFamily="@font/flappy_font" />
+							</LinearLayout>
+							<LinearLayout
+								android:id="@+id/linear378"
+								android:layout_width="0dp"
+								android:layout_height="wrap_content"
+								android:layout_marginBottom="12dp"
+								android:orientation="vertical"
+								android:layout_columnWeight="1"
+								android:layout_marginStart="8dp">
+								<TextView
+									android:id="@+id/textview664"
+									android:layout_width="wrap_content"
+									android:layout_height="wrap_content"
+									android:text="Pipe Spacing"
+									android:textSize="12sp"
+									android:textColor="#FFFAAA"
+									android:fontFamily="@font/flappy_font" />
+								<EditText
+									android:id="@+id/et_pipe_spacing"
+									android:layout_width="match_parent"
+									android:layout_height="40dp"
+									android:padding="8dp"
+									android:background="#333333"
+									android:textSize="12sp"
+									android:textColor="#FFFFFF"
+									android:textColorHint="#FFFFFF"
+									android:inputType="numberDecimal"
+									android:fontFamily="@font/flappy_font" />
+							</LinearLayout>
+							<LinearLayout
+								android:id="@+id/linear379"
+								android:layout_width="0dp"
+								android:layout_height="wrap_content"
+								android:layout_marginBottom="12dp"
+								android:orientation="vertical"
+								android:layout_columnWeight="1">
+								<TextView
+									android:id="@+id/textview665"
+									android:layout_width="wrap_content"
+									android:layout_height="wrap_content"
+									android:text="Pipe Width"
+									android:textSize="12sp"
+									android:textColor="#FFFAAA"
+									android:fontFamily="@font/flappy_font" />
+								<EditText
+									android:id="@+id/et_pipe_width"
+									android:layout_width="match_parent"
+									android:layout_height="40dp"
+									android:padding="8dp"
+									android:background="#333333"
+									android:textSize="12sp"
+									android:textColor="#FFFFFF"
+									android:textColorHint="#FFFFFF"
+									android:inputType="numberDecimal"
+									android:fontFamily="@font/flappy_font" />
+							</LinearLayout>
+							<LinearLayout
+								android:id="@+id/linear380"
+								android:layout_width="0dp"
+								android:layout_height="wrap_content"
+								android:layout_marginBottom="12dp"
+								android:orientation="vertical"
+								android:layout_columnWeight="1"
+								android:layout_marginStart="8dp">
+								<TextView
+									android:id="@+id/textview666"
+									android:layout_width="wrap_content"
+									android:layout_height="wrap_content"
+									android:text="Height Variation"
+									android:textSize="12sp"
+									android:textColor="#FFFAAA"
+									android:fontFamily="@font/flappy_font" />
+								<EditText
+									android:id="@+id/et_pipe_variation"
+									android:layout_width="match_parent"
+									android:layout_height="40dp"
+									android:padding="8dp"
+									android:background="#333333"
+									android:textSize="12sp"
+									android:textColor="#FFFFFF"
+									android:textColorHint="#FFFFFF"
+									android:inputType="numberDecimal"
+									android:fontFamily="@font/flappy_font" />
+							</LinearLayout>
+							<LinearLayout
+								android:id="@+id/linear381"
+								android:layout_width="0dp"
+								android:layout_height="wrap_content"
+								android:layout_marginBottom="12dp"
+								android:orientation="vertical"
+								android:layout_columnWeight="1">
+								<TextView
+									android:id="@+id/textview667"
+									android:layout_width="wrap_content"
+									android:layout_height="wrap_content"
+									android:text="Speed Flux"
+									android:textSize="12sp"
+									android:textColor="#FFFAAA"
+									android:fontFamily="@font/flappy_font" />
+								<EditText
+									android:id="@+id/et_pipe_speed_variation"
+									android:layout_width="match_parent"
+									android:layout_height="40dp"
+									android:padding="8dp"
+									android:background="#333333"
+									android:textSize="12sp"
+									android:textColor="#FFFFFF"
+									android:textColorHint="#FFFFFF"
+									android:inputType="numberDecimal"
+									android:fontFamily="@font/flappy_font" />
+							</LinearLayout>
+							<LinearLayout
+								android:id="@+id/linear382"
+								android:layout_width="0dp"
+								android:layout_height="wrap_content"
+								android:layout_marginBottom="12dp"
+								android:orientation="vertical"
+								android:layout_columnWeight="1"
+								android:layout_marginStart="8dp">
+								<TextView
+									android:id="@+id/textview668"
+									android:layout_width="wrap_content"
+									android:layout_height="wrap_content"
+									android:text="Score Multiplier"
+									android:textSize="12sp"
+									android:textColor="#FFFAAA"
+									android:fontFamily="@font/flappy_font" />
+								<EditText
+									android:id="@+id/et_score_multiplier"
+									android:layout_width="match_parent"
+									android:layout_height="40dp"
+									android:padding="8dp"
+									android:background="#333333"
+									android:textSize="12sp"
+									android:textColor="#FFFFFF"
+									android:textColorHint="#FFFFFF"
+									android:inputType="number"
+									android:fontFamily="@font/flappy_font" />
+							</LinearLayout>
+							<LinearLayout
+								android:id="@+id/linear383"
+								android:layout_width="0dp"
+								android:layout_height="wrap_content"
+								android:layout_marginBottom="12dp"
+								android:orientation="vertical"
+								android:layout_columnWeight="1">
+								<TextView
+									android:id="@+id/textview669"
+									android:layout_width="wrap_content"
+									android:layout_height="wrap_content"
+									android:text="Sky Speed"
+									android:textSize="12sp"
+									android:textColor="#FFFAAA"
+									android:fontFamily="@font/flappy_font" />
+								<EditText
+									android:id="@+id/et_bg_scroll"
+									android:layout_width="match_parent"
+									android:layout_height="40dp"
+									android:padding="8dp"
+									android:background="#333333"
+									android:textSize="12sp"
+									android:textColor="#FFFFFF"
+									android:textColorHint="#FFFFFF"
+									android:inputType="numberDecimal"
+									android:fontFamily="@font/flappy_font" />
+							</LinearLayout>
+							<LinearLayout
+								android:id="@+id/linear384"
+								android:layout_width="0dp"
+								android:layout_height="wrap_content"
+								android:layout_marginBottom="12dp"
+								android:orientation="vertical"
+								android:layout_columnWeight="1"
+								android:layout_marginStart="8dp">
+								<TextView
+									android:id="@+id/textview670"
+									android:layout_width="wrap_content"
+									android:layout_height="wrap_content"
+									android:text="Ground Speed"
+									android:textSize="12sp"
+									android:textColor="#FFFAAA"
+									android:fontFamily="@font/flappy_font" />
+								<EditText
+									android:id="@+id/et_ground_scroll"
+									android:layout_width="match_parent"
+									android:layout_height="40dp"
+									android:padding="8dp"
+									android:background="#333333"
+									android:textSize="12sp"
+									android:textColor="#FFFFFF"
+									android:textColorHint="#FFFFFF"
+									android:inputType="numberDecimal"
+									android:fontFamily="@font/flappy_font" />
+							</LinearLayout>
+						</GridLayout>
+					</LinearLayout>
+				</com.google.android.material.card.MaterialCardView>
+				<com.google.android.material.card.MaterialCardView
+					android:id="@+id/cardview95"
 					android:layout_width="match_parent"
 					android:layout_height="wrap_content"
-					android:layout_marginBottom="16dp"
-					android:padding="16dp"
-					android:background="@drawable/settings_card_background"
-					android:orientation="vertical">
-					<TextView
-						android:id="@+id/textview86"
-						android:layout_width="wrap_content"
-						android:layout_height="wrap_content"
-						android:layout_marginBottom="16dp"
-						android:text="Cheats &amp; Special Modes"
-						android:textSize="22sp"
-						android:textColor="#FFFFFF"
-						android:fontFamily="@font/flappy_bold"
-						android:shadowColor="#000000"
-						android:shadowDx="2"
-						android:shadowDy="2"
-						android:shadowRadius="1.5" />
-					<RelativeLayout
-						android:id="@+id/relativelayout75"
+					android:layout_marginBottom="20dp"
+					app:contentPadding="20dp"
+					app:cardBackgroundColor="#252525"
+					app:cardCornerRadius="20dp"
+					app:cardElevation="2dp">
+					<LinearLayout
+						android:id="@+id/card_cheats"
 						android:layout_width="match_parent"
 						android:layout_height="wrap_content"
-						android:layout_marginBottom="16dp">
+						android:orientation="vertical">
 						<TextView
-							android:id="@+id/textview87"
+							android:id="@+id/textview671"
 							android:layout_width="wrap_content"
 							android:layout_height="wrap_content"
-							android:text="Jetpack Flight Mode"
+							android:layout_marginBottom="16dp"
+							android:text="Modes &amp; Cheats"
 							android:textSize="20sp"
-							android:textColor="#FFFFFF"
-							android:fontFamily="@font/flappy_font"
-							android:shadowColor="#000000"
-							android:shadowDx="2"
-							android:shadowDy="2"
-							android:shadowRadius="1.5"
-							android:layout_toStartOf="@id/switch_jetpack_mode"
-							android:layout_alignParentStart="true"
-							android:layout_centerVertical="true" />
-						<com.google.android.material.materialswitch.MaterialSwitch
-							android:id="@+id/switch_jetpack_mode"
-							android:layout_width="wrap_content"
+							android:textColor="#FFD180"
+							android:fontFamily="@font/flappy_bold" />
+						<RelativeLayout
+							android:id="@+id/relativelayout2"
+							android:layout_width="match_parent"
 							android:layout_height="wrap_content"
-							android:textSize="12sp"
-							android:textColor="#000000"
-							android:layout_alignParentEnd="true"
-							android:layout_centerVertical="true" />
-					</RelativeLayout>
-					<RelativeLayout
-						android:id="@+id/relativelayout76"
+							android:layout_marginBottom="12dp"
+							android:visibility="gone">
+							<LinearLayout
+								android:id="@+id/linear17"
+								android:layout_width="wrap_content"
+								android:layout_height="wrap_content"
+								android:orientation="vertical"
+								android:layout_centerVertical="true">
+								<TextView
+									android:id="@+id/textview9"
+									android:layout_width="wrap_content"
+									android:layout_height="wrap_content"
+									android:text="FB v1.3 Mode"
+									android:textSize="18sp"
+									android:textColor="#4DB6AC"
+									android:fontFamily="@font/flappy_font" />
+								<TextView
+									android:id="@+id/textview10"
+									android:layout_width="wrap_content"
+									android:layout_height="wrap_content"
+									android:text="Authentic physics. Overrides settings. Not working, unreleased, highly experimental."
+									android:textSize="10sp"
+									android:textColor="#AAAAAA"
+									android:fontFamily="@font/flappy_font" />
+							</LinearLayout>
+							<com.google.android.material.materialswitch.MaterialSwitch
+								android:id="@+id/switch_original_mode"
+								android:layout_width="wrap_content"
+								android:layout_height="wrap_content"
+								android:textSize="12sp"
+								android:textColor="#FFFFFF"
+								android:layout_alignParentEnd="true"
+								android:layout_centerVertical="true" />
+						</RelativeLayout>
+						<View
+							android:id="@+id/view18"
+							android:layout_width="match_parent"
+							android:layout_height="1dp"
+							android:layout_marginBottom="12dp"
+							android:background="#444444"
+							android:visibility="gone" />
+						<RelativeLayout
+							android:id="@+id/relativelayout218"
+							android:layout_width="match_parent"
+							android:layout_height="wrap_content"
+							android:layout_marginBottom="12dp">
+							<TextView
+								android:id="@+id/textview672"
+								android:layout_width="wrap_content"
+								android:layout_height="wrap_content"
+								android:text="God Mode (No Clip)"
+								android:textSize="18sp"
+								android:textColor="#EF5350"
+								android:fontFamily="@font/flappy_font"
+								android:layout_centerVertical="true" />
+							<com.google.android.material.materialswitch.MaterialSwitch
+								android:id="@+id/switch_no_clip"
+								android:layout_width="wrap_content"
+								android:layout_height="wrap_content"
+								android:textSize="12sp"
+								android:textColor="#FFFFFF"
+								android:layout_alignParentEnd="true" />
+						</RelativeLayout>
+						<RelativeLayout
+							android:id="@+id/relativelayout219"
+							android:layout_width="match_parent"
+							android:layout_height="wrap_content"
+							android:layout_marginBottom="12dp">
+							<TextView
+								android:id="@+id/textview673"
+								android:layout_width="wrap_content"
+								android:layout_height="wrap_content"
+								android:text="Ghost Mode (Transparent)"
+								android:textSize="18sp"
+								android:textColor="#EEEEEE"
+								android:fontFamily="@font/flappy_font"
+								android:layout_centerVertical="true" />
+							<com.google.android.material.materialswitch.MaterialSwitch
+								android:id="@+id/switch_ghost_mode"
+								android:layout_width="wrap_content"
+								android:layout_height="wrap_content"
+								android:textSize="12sp"
+								android:textColor="#FFFFFF"
+								android:layout_alignParentEnd="true" />
+						</RelativeLayout>
+						<RelativeLayout
+							android:id="@+id/relativelayout220"
+							android:layout_width="match_parent"
+							android:layout_height="wrap_content"
+							android:layout_marginBottom="12dp">
+							<TextView
+								android:id="@+id/textview674"
+								android:layout_width="wrap_content"
+								android:layout_height="wrap_content"
+								android:text="Jetpack Mode"
+								android:textSize="18sp"
+								android:textColor="#EEEEEE"
+								android:fontFamily="@font/flappy_font"
+								android:layout_centerVertical="true" />
+							<com.google.android.material.materialswitch.MaterialSwitch
+								android:id="@+id/switch_jetpack_mode"
+								android:layout_width="wrap_content"
+								android:layout_height="wrap_content"
+								android:textSize="12sp"
+								android:textColor="#FFFFFF"
+								android:layout_alignParentEnd="true" />
+						</RelativeLayout>
+						<RelativeLayout
+							android:id="@+id/relativelayout221"
+							android:layout_width="match_parent"
+							android:layout_height="wrap_content"
+							android:layout_marginBottom="12dp">
+							<TextView
+								android:id="@+id/textview675"
+								android:layout_width="wrap_content"
+								android:layout_height="wrap_content"
+								android:text="Infinite Flap"
+								android:textSize="18sp"
+								android:textColor="#EEEEEE"
+								android:fontFamily="@font/flappy_font"
+								android:layout_centerVertical="true" />
+							<com.google.android.material.materialswitch.MaterialSwitch
+								android:id="@+id/switch_flap_timeout"
+								android:layout_width="wrap_content"
+								android:layout_height="wrap_content"
+								android:textSize="12sp"
+								android:textColor="#FFFFFF"
+								android:layout_alignParentEnd="true" />
+						</RelativeLayout>
+						<RelativeLayout
+							android:id="@+id/relativelayout222"
+							android:layout_width="match_parent"
+							android:layout_height="wrap_content"
+							android:layout_marginBottom="12dp">
+							<TextView
+								android:id="@+id/textview676"
+								android:layout_width="wrap_content"
+								android:layout_height="wrap_content"
+								android:text="Drunk Mode"
+								android:textSize="18sp"
+								android:textColor="#EEEEEE"
+								android:fontFamily="@font/flappy_font"
+								android:layout_centerVertical="true" />
+							<com.google.android.material.materialswitch.MaterialSwitch
+								android:id="@+id/switch_drunk_mode"
+								android:layout_width="wrap_content"
+								android:layout_height="wrap_content"
+								android:textSize="12sp"
+								android:textColor="#FFFFFF"
+								android:layout_alignParentEnd="true" />
+						</RelativeLayout>
+						<LinearLayout
+							android:id="@+id/linear385"
+							android:layout_width="match_parent"
+							android:layout_height="wrap_content"
+							android:layout_marginBottom="16dp"
+							android:gravity="center_vertical"
+							android:orientation="horizontal"
+							android:paddingStart="16dp">
+							<TextView
+								android:id="@+id/textview677"
+								android:layout_width="0dp"
+								android:layout_height="wrap_content"
+								android:text="Drunk Strength:"
+								android:textSize="16sp"
+								android:textColor="#BBBBBB"
+								android:layout_weight="1"
+								android:fontFamily="@font/flappy_font" />
+							<EditText
+								android:id="@+id/et_drunk_mode_strength"
+								android:layout_width="80dp"
+								android:layout_height="40dp"
+								android:padding="8dp"
+								android:background="#333333"
+								android:gravity="center_horizontal|center_vertical"
+								android:textSize="12sp"
+								android:textColor="#FFFFFF"
+								android:textColorHint="#FFFFFF"
+								android:inputType="numberDecimal"
+								android:fontFamily="@font/flappy_font" />
+						</LinearLayout>
+						<RelativeLayout
+							android:id="@+id/relativelayout223"
+							android:layout_width="match_parent"
+							android:layout_height="wrap_content"
+							android:layout_marginBottom="12dp">
+							<TextView
+								android:id="@+id/textview678"
+								android:layout_width="wrap_content"
+								android:layout_height="wrap_content"
+								android:text="Upside Down World"
+								android:textSize="18sp"
+								android:textColor="#EEEEEE"
+								android:fontFamily="@font/flappy_font"
+								android:layout_centerVertical="true" />
+							<com.google.android.material.materialswitch.MaterialSwitch
+								android:id="@+id/switch_upside_down"
+								android:layout_width="wrap_content"
+								android:layout_height="wrap_content"
+								android:textSize="12sp"
+								android:textColor="#FFFFFF"
+								android:layout_alignParentEnd="true" />
+						</RelativeLayout>
+						<RelativeLayout
+							android:id="@+id/relativelayout224"
+							android:layout_width="match_parent"
+							android:layout_height="wrap_content">
+							<TextView
+								android:id="@+id/textview679"
+								android:layout_width="wrap_content"
+								android:layout_height="wrap_content"
+								android:text="Reverse Pipes (Right to Left)"
+								android:textSize="18sp"
+								android:textColor="#EEEEEE"
+								android:fontFamily="@font/flappy_font"
+								android:layout_centerVertical="true" />
+							<com.google.android.material.materialswitch.MaterialSwitch
+								android:id="@+id/switch_reverse_pipes"
+								android:layout_width="wrap_content"
+								android:layout_height="wrap_content"
+								android:textSize="12sp"
+								android:textColor="#FFFFFF"
+								android:layout_alignParentEnd="true" />
+						</RelativeLayout>
+					</LinearLayout>
+				</com.google.android.material.card.MaterialCardView>
+				<com.google.android.material.card.MaterialCardView
+					android:id="@+id/cardview96"
+					android:layout_width="match_parent"
+					android:layout_height="wrap_content"
+					android:layout_marginBottom="20dp"
+					app:contentPadding="20dp"
+					app:cardBackgroundColor="#252525"
+					app:cardCornerRadius="20dp"
+					app:cardElevation="2dp">
+					<LinearLayout
+						android:id="@+id/card_general"
 						android:layout_width="match_parent"
 						android:layout_height="wrap_content"
-						android:layout_marginBottom="16dp">
+						android:orientation="vertical">
 						<TextView
-							android:id="@+id/textview88"
+							android:id="@+id/textview680"
 							android:layout_width="wrap_content"
 							android:layout_height="wrap_content"
-							android:text="'Drunk Mode' (Horizontal Drift)"
+							android:layout_marginBottom="16dp"
+							android:text="System"
 							android:textSize="20sp"
-							android:textColor="#FFFFFF"
-							android:fontFamily="@font/flappy_font"
-							android:shadowColor="#000000"
-							android:shadowDx="2"
-							android:shadowDy="2"
-							android:shadowRadius="1.5"
-							android:layout_toStartOf="@id/switch_drunk_mode"
-							android:layout_alignParentStart="true"
-							android:layout_centerVertical="true" />
-						<com.google.android.material.materialswitch.MaterialSwitch
-							android:id="@+id/switch_drunk_mode"
-							android:layout_width="wrap_content"
+							android:textColor="#BDBDBD"
+							android:fontFamily="@font/flappy_bold" />
+						<RelativeLayout
+							android:id="@+id/relativelayout225"
+							android:layout_width="match_parent"
 							android:layout_height="wrap_content"
-							android:textSize="12sp"
-							android:textColor="#000000"
-							android:layout_alignParentEnd="true"
-							android:layout_centerVertical="true" />
-					</RelativeLayout>
-					<RelativeLayout
-						android:id="@+id/relativelayout77"
-						android:layout_width="match_parent"
-						android:layout_height="wrap_content"
-						android:layout_marginBottom="16dp">
-						<TextView
-							android:id="@+id/textview89"
-							android:layout_width="wrap_content"
+							android:layout_marginBottom="12dp">
+							<TextView
+								android:id="@+id/textview681"
+								android:layout_width="wrap_content"
+								android:layout_height="wrap_content"
+								android:text="Sound Effects"
+								android:textSize="18sp"
+								android:textColor="#EEEEEE"
+								android:fontFamily="@font/flappy_font"
+								android:layout_centerVertical="true" />
+							<com.google.android.material.materialswitch.MaterialSwitch
+								android:id="@+id/switch_sound"
+								android:layout_width="wrap_content"
+								android:layout_height="wrap_content"
+								android:textSize="12sp"
+								android:textColor="#FFFFFF"
+								android:layout_alignParentEnd="true" />
+						</RelativeLayout>
+						<RelativeLayout
+							android:id="@+id/relativelayout226"
+							android:layout_width="match_parent"
 							android:layout_height="wrap_content"
-							android:text="Drift Strength"
-							android:textSize="20sp"
-							android:textColor="#FFFFFF"
-							android:fontFamily="@font/flappy_font"
-							android:shadowColor="#000000"
-							android:shadowDx="2"
-							android:shadowDy="2"
-							android:shadowRadius="1.5"
-							android:layout_alignParentStart="true"
-							android:layout_centerVertical="true" />
-						<EditText
-							android:id="@+id/et_drunk_mode_strength"
-							android:layout_width="100dp"
+							android:layout_marginBottom="12dp">
+							<TextView
+								android:id="@+id/textview682"
+								android:layout_width="wrap_content"
+								android:layout_height="wrap_content"
+								android:text="Vibration"
+								android:textSize="18sp"
+								android:textColor="#EEEEEE"
+								android:fontFamily="@font/flappy_font"
+								android:layout_centerVertical="true" />
+							<com.google.android.material.materialswitch.MaterialSwitch
+								android:id="@+id/switch_haptic_feedback"
+								android:layout_width="wrap_content"
+								android:layout_height="wrap_content"
+								android:textSize="12sp"
+								android:textColor="#FFFFFF"
+								android:layout_alignParentEnd="true" />
+						</RelativeLayout>
+						<RelativeLayout
+							android:id="@+id/relativelayout227"
+							android:layout_width="match_parent"
 							android:layout_height="wrap_content"
-							android:textSize="20sp"
-							android:textColor="#FFFFFF"
-							android:hint="0.0"
-							android:textColorHint="#AAAAAA"
-							android:inputType="numberSigned|numberDecimal"
-							android:gravity="end"
-							android:background="@null"
-							android:fontFamily="@font/flappy_font"
-							android:shadowColor="#000000"
-							android:shadowDx="2"
-							android:shadowDy="2"
-							android:shadowRadius="1.5"
-							android:layout_alignParentEnd="true"
-							android:layout_centerVertical="true" />
-					</RelativeLayout>
-					<RelativeLayout
-						android:id="@+id/relativelayout78"
-						android:layout_width="match_parent"
-						android:layout_height="wrap_content"
-						android:layout_marginBottom="16dp">
-						<TextView
-							android:id="@+id/textview90"
-							android:layout_width="wrap_content"
-							android:layout_height="wrap_content"
-							android:text="No Clip (Invincible)"
-							android:textSize="20sp"
-							android:textColor="#FFFFFF"
-							android:fontFamily="@font/flappy_font"
-							android:shadowColor="#000000"
-							android:shadowDx="2"
-							android:shadowDy="2"
-							android:shadowRadius="1.5"
-							android:layout_toStartOf="@id/switch_no_clip"
-							android:layout_alignParentStart="true"
-							android:layout_centerVertical="true" />
-						<com.google.android.material.materialswitch.MaterialSwitch
-							android:id="@+id/switch_no_clip"
-							android:layout_width="wrap_content"
-							android:layout_height="wrap_content"
-							android:textSize="12sp"
-							android:textColor="#000000"
-							android:layout_alignParentEnd="true"
-							android:layout_centerVertical="true" />
-					</RelativeLayout>
-					<RelativeLayout
-						android:id="@+id/relativelayout79"
-						android:layout_width="match_parent"
-						android:layout_height="wrap_content"
-						android:layout_marginBottom="16dp">
-						<TextView
-							android:id="@+id/textview91"
-							android:layout_width="wrap_content"
-							android:layout_height="wrap_content"
-							android:text="Spectator Mode (Translucent)"
-							android:textSize="20sp"
-							android:textColor="#FFFFFF"
-							android:fontFamily="@font/flappy_font"
-							android:shadowColor="#000000"
-							android:shadowDx="2"
-							android:shadowDy="2"
-							android:shadowRadius="1.5"
-							android:layout_toStartOf="@id/switch_ghost_mode"
-							android:layout_alignParentStart="true"
-							android:layout_centerVertical="true" />
-						<com.google.android.material.materialswitch.MaterialSwitch
-							android:id="@+id/switch_ghost_mode"
-							android:layout_width="wrap_content"
-							android:layout_height="wrap_content"
-							android:textSize="12sp"
-							android:textColor="#000000"
-							android:layout_alignParentEnd="true"
-							android:layout_centerVertical="true" />
-					</RelativeLayout>
-					<RelativeLayout
-						android:id="@+id/relativelayout80"
-						android:layout_width="match_parent"
-						android:layout_height="wrap_content"
-						android:layout_marginBottom="16dp">
-						<TextView
-							android:id="@+id/textview92"
-							android:layout_width="wrap_content"
-							android:layout_height="wrap_content"
-							android:text="Infinite Wing Flapping"
-							android:textSize="20sp"
-							android:textColor="#FFFFFF"
-							android:fontFamily="@font/flappy_font"
-							android:shadowColor="#000000"
-							android:shadowDx="2"
-							android:shadowDy="2"
-							android:shadowRadius="1.5"
-							android:layout_toStartOf="@id/switch_flap_timeout"
-							android:layout_alignParentStart="true"
-							android:layout_centerVertical="true" />
-						<com.google.android.material.materialswitch.MaterialSwitch
-							android:id="@+id/switch_flap_timeout"
-							android:layout_width="wrap_content"
-							android:layout_height="wrap_content"
-							android:textSize="12sp"
-							android:textColor="#000000"
-							android:layout_alignParentEnd="true"
-							android:layout_centerVertical="true" />
-					</RelativeLayout>
-					<RelativeLayout
-						android:id="@+id/relativelayout81"
-						android:layout_width="match_parent"
-						android:layout_height="wrap_content"
-						android:layout_marginBottom="16dp">
-						<TextView
-							android:id="@+id/textview93"
-							android:layout_width="wrap_content"
-							android:layout_height="wrap_content"
-							android:text="Upside Down Mode"
-							android:textSize="20sp"
-							android:textColor="#FFFFFF"
-							android:fontFamily="@font/flappy_font"
-							android:shadowColor="#000000"
-							android:shadowDx="2"
-							android:shadowDy="2"
-							android:shadowRadius="1.5"
-							android:layout_toStartOf="@id/switch_upside_down"
-							android:layout_alignParentStart="true"
-							android:layout_centerVertical="true" />
-						<com.google.android.material.materialswitch.MaterialSwitch
-							android:id="@+id/switch_upside_down"
-							android:layout_width="wrap_content"
-							android:layout_height="wrap_content"
-							android:textSize="12sp"
-							android:textColor="#000000"
-							android:layout_alignParentEnd="true"
-							android:layout_centerVertical="true" />
-					</RelativeLayout>
-					<RelativeLayout
-						android:id="@+id/relativelayout82"
-						android:layout_width="match_parent"
-						android:layout_height="wrap_content"
-						android:layout_marginBottom="16dp">
-						<TextView
-							android:id="@+id/textview94"
-							android:layout_width="wrap_content"
-							android:layout_height="wrap_content"
-							android:text="Reverse Pipes"
-							android:textSize="20sp"
-							android:textColor="#FFFFFF"
-							android:fontFamily="@font/flappy_font"
-							android:shadowColor="#000000"
-							android:shadowDx="2"
-							android:shadowDy="2"
-							android:shadowRadius="1.5"
-							android:layout_toStartOf="@id/switch_reverse_pipes"
-							android:layout_alignParentStart="true"
-							android:layout_centerVertical="true" />
-						<com.google.android.material.materialswitch.MaterialSwitch
-							android:id="@+id/switch_reverse_pipes"
-							android:layout_width="wrap_content"
-							android:layout_height="wrap_content"
-							android:textSize="12sp"
-							android:textColor="#000000"
-							android:layout_alignParentEnd="true"
-							android:layout_centerVertical="true" />
-					</RelativeLayout>
-				</LinearLayout>
+							android:layout_marginBottom="12dp">
+							<TextView
+								android:id="@+id/textview683"
+								android:layout_width="wrap_content"
+								android:layout_height="wrap_content"
+								android:text="Bird Wing Animations"
+								android:textSize="18sp"
+								android:textColor="#EEEEEE"
+								android:fontFamily="@font/flappy_font"
+								android:layout_centerVertical="true" />
+							<com.google.android.material.materialswitch.MaterialSwitch
+								android:id="@+id/switch_wing_animation"
+								android:layout_width="wrap_content"
+								android:layout_height="wrap_content"
+								android:textSize="12sp"
+								android:textColor="#FFFFFF"
+								android:layout_alignParentEnd="true" />
+						</RelativeLayout>
+						<RelativeLayout
+							android:id="@+id/relativelayout228"
+							android:layout_width="match_parent"
+							android:layout_height="wrap_content">
+							<TextView
+								android:id="@+id/textview684"
+								android:layout_width="wrap_content"
+								android:layout_height="wrap_content"
+								android:text="Hide Gear Icon In-Game"
+								android:textSize="18sp"
+								android:textColor="#EEEEEE"
+								android:fontFamily="@font/flappy_font"
+								android:layout_centerVertical="true" />
+							<com.google.android.material.materialswitch.MaterialSwitch
+								android:id="@+id/switch_hide_settings_icon"
+								android:layout_width="wrap_content"
+								android:layout_height="wrap_content"
+								android:textSize="12sp"
+								android:textColor="#FFFFFF"
+								android:layout_alignParentEnd="true" />
+						</RelativeLayout>
+					</LinearLayout>
+				</com.google.android.material.card.MaterialCardView>
 			</LinearLayout>
-		</ScrollView>
+		</androidx.core.widget.NestedScrollView>
 	</LinearLayout>
 </FrameLayout>

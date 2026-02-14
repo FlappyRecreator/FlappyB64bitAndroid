@@ -50,10 +50,13 @@ import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 
 import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Deque;
+import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Random;
+import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -99,13 +102,9 @@ public class MainActivity extends AppCompatActivity {
 
 class GameView extends View implements Choreographer.FrameCallback {
 
-    // --- MEDAL ADJUSTMENTS (Change these if position is off) ---
-    // Negative X = Left, Positive X = Right
-    // Negative Y = Up,   Positive Y = Down
-    // These values are multiplied by the screen scale, so they remain consistent across devices.
+    // --- MEDAL ADJUSTMENTS ---
     private final float PLATINUM_OFFSET_X = -1.0f;
     private final float PLATINUM_OFFSET_Y = 1.0f;
-    
     private final float GOLD_OFFSET_X = -1.0f;
     private final float GOLD_OFFSET_Y = 1.0f;
 
@@ -187,7 +186,6 @@ class GameView extends View implements Choreographer.FrameCallback {
     private final int SCORE_PANEL_CURRENT_SCORE_Y_OFFSET = 55;
     private final int SCORE_PANEL_HIGH_SCORE_Y_OFFSET = 98;
     private final int SCORE_PANEL_MEDAL_X_OFFSET = 32;
-    // UPDATED: Changed from 45 to 41 to fix "positioned too low"
     private final int SCORE_PANEL_MEDAL_Y_OFFSET = 43;
     private static final String PREF_KEY_WARNING_SHOWN = "hasSeenAspectRatioWarning";
     private final float BIRD_HITBOX_PADDING_X = 0.10f;
@@ -252,6 +250,13 @@ class GameView extends View implements Choreographer.FrameCallback {
     private boolean settingInfiniteFlapEnabled, settingJetpackModeEnabled, settingDrunkModeEnabled;
     private boolean settingDynamicDayNightEnabled, settingScreenShakeEnabled, settingGoldenPipeEnabled;
     private boolean settingMotionBlurEnabled;
+    
+    // NEW SETTINGS & KEYS
+    public static final String PREF_LIGHTNING_SCORES = "pref_lightning_scores";
+    public static final String PREF_MEGA_STRIKE_SCORE = "pref_mega_strike_score";
+    
+    private Set<Integer> settingLightningScores = new HashSet<>();
+    private int settingMegaStrikeScore = 350;
 
     private float rainbowHue = 0f;
     private Deque<TrailParticle> birdTrail;
@@ -293,8 +298,11 @@ class GameView extends View implements Choreographer.FrameCallback {
     // --- BURNT BIRD & CINEMATIC VARIABLES ---
     private boolean isBirdBurnt = false;
     private float burntTimer = 0f;
-    private boolean hasTriggeredStrikeForScore = false;
+    
+    // Lightning Logic Fixed
+    private int lastLightningScore = -1; // To ensure we only strike once per score
     private boolean hasTriggeredMegaStrike = false;
+    
     private float pipeElectrificationTimer = 0f;
     
     private List<SmokeParticle> smokeParticles = new ArrayList<>();
@@ -304,10 +312,10 @@ class GameView extends View implements Choreographer.FrameCallback {
     private Paint electricityPipePaint;
 
     // Cinematic Engine Variables
-    private float timeDilation = 1.0f; // 1.0 = Normal, < 1.0 = Slow Motion
+    private float timeDilation = 1.0f; 
     private float cameraZoom = 1.0f;
     private float cinematicTimer = 0f;
-    private int cinematicPhase = 0; // 0: None, 1: Zoom In, 2: Strike, 3: Zoom Out
+    private int cinematicPhase = 0;
     
     // --- MEDAL SHINE VARIABLES ---
     private Bitmap sparkleBitmap;
@@ -317,7 +325,7 @@ class GameView extends View implements Choreographer.FrameCallback {
     private float sparkleScaleCurrent = 0f;
     private boolean isSparkleAnimating = false;
     private final float SPARKLE_DURATION = 0.6f; 
-    private final float SPARKLE_INTERVAL = 2.0f; // Seconds between shines
+    private final float SPARKLE_INTERVAL = 2.0f; 
     
     public GameView(Context context) {
         super(context);
@@ -389,7 +397,6 @@ class GameView extends View implements Choreographer.FrameCallback {
         sparkPaint.setStyle(Paint.Style.STROKE);
         sparkPaint.setStrokeCap(Paint.Cap.ROUND);
         sparkPaint.setAntiAlias(true);
-        // Apply a blur to sparks to make them glow
         sparkPaint.setMaskFilter(new BlurMaskFilter(3, BlurMaskFilter.Blur.NORMAL));
         
         electricityPipePaint = new Paint();
@@ -399,7 +406,6 @@ class GameView extends View implements Choreographer.FrameCallback {
         electricityPipePaint.setAntiAlias(true);
         electricityPipePaint.setMaskFilter(new BlurMaskFilter(5, BlurMaskFilter.Blur.NORMAL));
         
-        // Darken the bird for burnt effect
         burntColorFilter = new PorterDuffColorFilter(Color.rgb(40, 40, 40), PorterDuff.Mode.MULTIPLY);
 
         weatherSystem = new WeatherSystem();
@@ -408,29 +414,21 @@ class GameView extends View implements Choreographer.FrameCallback {
     }
     
     private Bitmap createSparkleBitmap() {
-        int size = 64; // Base size
+        int size = 64; 
         Bitmap bmp = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888);
         Canvas c = new Canvas(bmp);
         Paint p = new Paint();
         p.setColor(Color.WHITE);
         p.setAntiAlias(true);
-        
-        // Draw a glow
         p.setMaskFilter(new BlurMaskFilter(size / 4f, BlurMaskFilter.Blur.NORMAL));
         c.drawCircle(size / 2f, size / 2f, size / 6f, p);
-        
-        // Draw the cross/star shape
         p.setMaskFilter(null);
         float cx = size / 2f;
         float cy = size / 2f;
         float halfLen = size / 2.5f;
         float thickness = size / 12f;
-        
-        // Horizontal bar
         c.drawRect(cx - halfLen, cy - thickness/2, cx + halfLen, cy + thickness/2, p);
-        // Vertical bar
         c.drawRect(cx - thickness/2, cy - halfLen, cx + thickness/2, cy + halfLen, p);
-        
         return bmp;
     }
 
@@ -481,6 +479,22 @@ class GameView extends View implements Choreographer.FrameCallback {
         settingGoldenPipeBonus = prefs.getInt(PREF_GOLDEN_PIPE_BONUS, DEFAULT_GOLDEN_PIPE_BONUS);
         settingMotionBlurEnabled = prefs.getBoolean(PREF_MOTION_BLUR_ENABLED, DEFAULT_MOTION_BLUR_ENABLED);
         settingMotionBlurStrength = prefs.getFloat(PREF_MOTION_BLUR_STRENGTH, DEFAULT_MOTION_BLUR_STRENGTH);
+        
+        settingMegaStrikeScore = prefs.getInt(PREF_MEGA_STRIKE_SCORE, 350);
+        
+        String lightningScoresStr = prefs.getString(PREF_LIGHTNING_SCORES, "11,34,79,210");
+        settingLightningScores.clear();
+        try {
+            if (lightningScoresStr != null && !lightningScoresStr.isEmpty()) {
+                String[] parts = lightningScoresStr.split(",");
+                for (String p : parts) {
+                    settingLightningScores.add(Integer.parseInt(p.trim()));
+                }
+            }
+        } catch (Exception e) {
+            // Fallback defaults if parsing fails
+            settingLightningScores.addAll(Arrays.asList(11, 34, 79, 210));
+        }
     }
 
     @Override
@@ -507,6 +521,8 @@ class GameView extends View implements Choreographer.FrameCallback {
         }
 
         scale = (float) getPlayableHeight() / unscaledBgDay.getHeight();
+        
+        // Base Physics Constants
         BASE_GRAVITY_PER_SEC = (0.10f * scale) * TARGET_FPS * TARGET_FPS;
         BASE_FLAP_VELOCITY_PER_SEC = (-3.2f * scale) * TARGET_FPS;
         BASE_PIPE_SPEED_PER_SEC = (1.1f * scale) * TARGET_FPS;
@@ -541,9 +557,11 @@ class GameView extends View implements Choreographer.FrameCallback {
 
     private void resetGame() {
         loadSettings();
+        
+        // Standard Custom Mode
         updateWeatherSounds();
         weatherSystem.setWeatherType(settingWeatherEffect);
-        weatherSystem.setHeavyRain(false); // Reset heavy rain
+        weatherSystem.setHeavyRain(false);
 
         float speedVariation = 1.0f + (random.nextFloat() - 0.5f) * 2 * settingPipeSpeedVariation;
         GRAVITY_PER_SEC = BASE_GRAVITY_PER_SEC * settingGravity * (settingUpsideDownEnabled ? -1 : 1);
@@ -551,6 +569,7 @@ class GameView extends View implements Choreographer.FrameCallback {
         PIPE_SPEED_PER_SEC = BASE_PIPE_SPEED_PER_SEC * settingGameSpeed * speedVariation * (settingReversePipesEnabled ? -1 : 1);
         ROTATION_DELAY_THRESHOLD_PER_SEC = BASE_ROTATION_DELAY_THRESHOLD_PER_SEC * settingBirdHangDelay;
         ROTATION_DOWN_SPEED_PER_SEC = BASE_ROTATION_DOWN_SPEED_PER_SEC;
+
         final int UNSCALED_BIRD_HEIGHT_FOR_GAP = 48;
         pipeGap = (int) (UNSCALED_BIRD_HEIGHT_FOR_GAP * scale * PIPE_GAP_BIRD_HEIGHT_MULTIPLIER * settingPipeGap);
 
@@ -575,22 +594,21 @@ class GameView extends View implements Choreographer.FrameCallback {
         drunkModePhase = 0f;
         dayNightCycleProgress = 0f;
         shakeTimer = 0f;
-        flashAlpha = 0f; // Reset flash
+        flashAlpha = 0f;
         birdTrail.clear();
         
-        // Reset Burnt State & Cinematic
         isBirdBurnt = false;
         burntTimer = 0f;
         pipeElectrificationTimer = 0f;
-        hasTriggeredStrikeForScore = false;
         hasTriggeredMegaStrike = false;
+        lastLightningScore = -1; // Reset lightning trigger state
+        
         smokeParticles.clear();
         sparkParticles.clear();
         timeDilation = 1.0f;
         cameraZoom = 1.0f;
         cinematicPhase = 0;
         
-        // Reset Shine
         sparkleTimer = 0f;
         isSparkleAnimating = false;
 
@@ -651,31 +669,28 @@ class GameView extends View implements Choreographer.FrameCallback {
 
     private ColorFilter createPipeColorFilter(int pipeColorSetting) {
         switch (pipeColorSetting) {
-            case 1: return new PorterDuffColorFilter(0xFFD05050, PorterDuff.Mode.MULTIPLY);
-            case 2: return new PorterDuffColorFilter(0xFF6080E0, PorterDuff.Mode.MULTIPLY);
-            case 3: return new PorterDuffColorFilter(0xFFE0E060, PorterDuff.Mode.MULTIPLY);
-            case 4: return new PorterDuffColorFilter(0xFFFFFFFF, PorterDuff.Mode.SRC_ATOP);
-            case 5: return new PorterDuffColorFilter(0xFFE879E8, PorterDuff.Mode.MULTIPLY);
-            case 6: return new PorterDuffColorFilter(0xFF505050, PorterDuff.Mode.MULTIPLY);
-            case 7: return new PorterDuffColorFilter(0xFF9040D0, PorterDuff.Mode.MULTIPLY);
-            case 8: return new PorterDuffColorFilter(0xFFE89030, PorterDuff.Mode.MULTIPLY);
-            default: return null;
+            case 1: return new PorterDuffColorFilter(0xFFD05050, PorterDuff.Mode.MULTIPLY); // Red
+            case 2: return new PorterDuffColorFilter(0xFF6080E0, PorterDuff.Mode.MULTIPLY); // Blue
+            case 3: return new PorterDuffColorFilter(0xFFE0E060, PorterDuff.Mode.MULTIPLY); // Yellow
+            case 4: return new PorterDuffColorFilter(0xFFFFFFFF, PorterDuff.Mode.SRC_ATOP); // White
+            case 5: return new PorterDuffColorFilter(0xFFE879E8, PorterDuff.Mode.MULTIPLY); // Pink
+            case 6: return new PorterDuffColorFilter(0xFF505050, PorterDuff.Mode.MULTIPLY); // Black
+            case 7: return new PorterDuffColorFilter(0xFF9040D0, PorterDuff.Mode.MULTIPLY); // Purple
+            case 8: return new PorterDuffColorFilter(0xFFE89030, PorterDuff.Mode.MULTIPLY); // Orange
+            default: return null; // Default Green
         }
     }
 
     private void update(float deltaTime) {
-        // --- Time Management ---
         float realDeltaTime = deltaTime; 
         float gameDeltaTime = deltaTime * timeDilation;
 
-        // Flash decay logic (Real Time)
         if (flashAlpha > 0) {
             float decaySpeed = 1500f;
             flashAlpha -= decaySpeed * realDeltaTime;
             if (flashAlpha < 0) flashAlpha = 0;
         }
 
-        // --- Cinematic Engine Update ---
         updateCinematicSequence(realDeltaTime);
 
         // Background Scrolling (Game Time)
@@ -686,7 +701,7 @@ class GameView extends View implements Choreographer.FrameCallback {
 
             Bitmap bg = (backgroundBitmap != null) ? backgroundBitmap : bgDayBitmap;
             float bgWidth = bg.getWidth();
-
+            
             backgroundX -= bgScrollSpeed * gameDeltaTime;
             if (bgScrollSpeed > 0 && backgroundX <= -bgWidth) {
                 backgroundX += bgWidth;
@@ -703,7 +718,6 @@ class GameView extends View implements Choreographer.FrameCallback {
             }
         }
         
-        // Settings Button Animation Logic (Real Time)
         if (settingsButtonScale != settingsButtonTargetScale) {
             float diff = settingsButtonTargetScale - settingsButtonScale;
             if (Math.abs(diff) < 0.01f) {
@@ -716,7 +730,6 @@ class GameView extends View implements Choreographer.FrameCallback {
         boolean wingAnimation = settingWingAnimationEnabled && (settingInfiniteFlapEnabled || System.currentTimeMillis() - lastFlapTimeMillis < FLAP_ANIMATION_TIMEOUT_MS);
         if (gameState == GameState.PLAYING) {
             if (wingAnimation || (settingJetpackModeEnabled && isScreenPressed)) {
-               long scaledTime = (long)(System.currentTimeMillis() * timeDilation); 
                birdFrame = (int) ((System.currentTimeMillis() / 75) % birdBitmaps.length);
             }
             else birdFrame = 1;
@@ -742,56 +755,32 @@ class GameView extends View implements Choreographer.FrameCallback {
         }
 
         if (shakeTimer > 0) {
-            shakeTimer -= realDeltaTime; // Shake runs in real time
+            shakeTimer -= realDeltaTime;
         }
         
-        // --- PIPE ELECTRIFICATION ---
         if (pipeElectrificationTimer > 0) {
             pipeElectrificationTimer -= gameDeltaTime;
             if (pipeElectrificationTimer < 0) pipeElectrificationTimer = 0;
         }
         
-        // --- APOCALYPSE MODE CHECK ---
         boolean isApocalypse = (score >= 600 && settingWeatherEffect == 2);
-        
-        if (isApocalypse) {
-            weatherSystem.setHeavyRain(true);
-        }
+        if (isApocalypse) weatherSystem.setHeavyRain(true);
 
-        // --- UPDATE BURNT & SMOKE EFFECTS (Game Time) ---
         if (isBirdBurnt) {
             burntTimer -= gameDeltaTime;
             if (burntTimer <= 0) {
                 isBirdBurnt = false;
                 sparkParticles.clear();
             } else {
-                // Add Smoke - Frequent
-                if (random.nextInt(100) < 50) { 
-                   smokeParticles.add(new SmokeParticle(birdX, birdY, scale));
-                }
-                
-                // Add Sparks - Falling and Zapping
-                if (random.nextInt(100) < 40) { // 40% chance per frame
-                    // Type 0: Zap (Static relative to bird)
-                    // Type 1: Fall (Gravity)
-                    int type = random.nextBoolean() ? 0 : 1;
-                    sparkParticles.add(new SparkParticle(birdX, birdY, scale, type));
-                }
+                if (random.nextInt(100) < 50) smokeParticles.add(new SmokeParticle(birdX, birdY, scale));
+                if (random.nextInt(100) < 40) sparkParticles.add(new SparkParticle(birdX, birdY, scale, random.nextBoolean() ? 0 : 1));
             }
         }
         
-        // --- AMBIENT APOCALYPSE EFFECTS ---
-        if (isApocalypse) {
-            // Random Ambient Sparks falling from sky (matches bird spark visual)
-            if (random.nextInt(100) < 30) {
-                float sparkX = random.nextFloat() * screenWidth;
-                float sparkY = -50;
-                // Type 1 = Falling
-                sparkParticles.add(new SparkParticle(sparkX, sparkY, scale, 1));
-            }
+        if (isApocalypse && random.nextInt(100) < 30) {
+            sparkParticles.add(new SparkParticle(random.nextFloat() * screenWidth, -50, scale, 1));
         }
 
-        // Update existing particles
         Iterator<SmokeParticle> smokeIter = smokeParticles.iterator();
         while (smokeIter.hasNext()) {
             SmokeParticle p = smokeIter.next();
@@ -802,9 +791,7 @@ class GameView extends View implements Choreographer.FrameCallback {
         Iterator<SparkParticle> sparkIter = sparkParticles.iterator();
         while(sparkIter.hasNext()) {
             SparkParticle sp = sparkIter.next();
-            // Move sparks relative to world (wind) if they are falling
-            float wind = (sp.type == 1) ? PIPE_SPEED_PER_SEC * 0.8f : 0;
-            sp.update(gameDeltaTime, wind);
+            sp.update(gameDeltaTime, (sp.type == 1) ? PIPE_SPEED_PER_SEC * 0.8f : 0);
             if (sp.isDead()) sparkIter.remove();
         }
 
@@ -815,11 +802,7 @@ class GameView extends View implements Choreographer.FrameCallback {
         }
 
         if (settingDynamicDayNightEnabled && (gameState == GameState.PLAYING || gameState == GameState.WAITING)) {
-            float cycleDuration = 120.0f;
-            dayNightCycleProgress += gameDeltaTime / cycleDuration;
-            if (dayNightCycleProgress > 1.0f) {
-                dayNightCycleProgress -= 1.0f;
-            }
+            dayNightCycleProgress = (dayNightCycleProgress + gameDeltaTime / 120.0f) % 1.0f;
         }
 
         switch (gameState) {
@@ -855,38 +838,33 @@ class GameView extends View implements Choreographer.FrameCallback {
                 if(settingDrunkModeEnabled) {
                     drunkModePhase += gameDeltaTime * 2.0f;
                     float maxDrift = screenWidth * 0.15f * settingDrunkModeStrength;
-                    float drift = (float)Math.sin(drunkModePhase) * maxDrift;
-                    birdX = baseBirdX + drift;
+                    birdX = baseBirdX + ((float)Math.sin(drunkModePhase) * maxDrift);
+                } else {
+                    birdX = baseBirdX;
                 }
 
                 if (settingWeatherEffect == 2) {
-                    // Increase lightning frequency in Apocalypse Mode (Score >= 600)
-                    // 100 vs 300 -> 3x more frequent
                     int lightningChance = (score >= 600) ? 100 : 300;
-                    if (random.nextInt(lightningChance) == 0) {
-                        triggerLightning();
-                    }
+                    if (random.nextInt(lightningChance) == 0) triggerLightning();
                 }
                 
-                // --- DYNAMIC LIGHTNING STRIKE LOGIC ---
+                // --- CUSTOM LIGHTNING STRIKE LOGIC (FIXED) ---
                 if (settingWeatherEffect == 2) {
-                    // Regular Strike Scores
-                    if (score == 11 || score == 34 || score == 79 || score == 210) {
-                        if (!hasTriggeredStrikeForScore) {
+                    if (settingLightningScores.contains(score)) {
+                        // Only trigger if we haven't triggered for *this specific score* yet
+                        if (score != lastLightningScore) {
                             startCinematicStrikeSequence(false); // Normal single bolt
-                            hasTriggeredStrikeForScore = true;
+                            lastLightningScore = score;
                         }
-                    } else if (score == 350) {
-                        // MEGA STRIKE
+                    } else if (score == settingMegaStrikeScore) {
                         if (!hasTriggeredMegaStrike) {
                             startCinematicStrikeSequence(true); // Mega Multi-bolt
                             hasTriggeredMegaStrike = true;
                         }
-                    } else {
-                        hasTriggeredStrikeForScore = false;
                     }
                 }
 
+                // --- ROTATION LOGIC ---
                 final float ROTATION_UP_SPEED = 6.0f * TARGET_FPS;
                 if (settingUpsideDownEnabled) {
                     if (birdVelocityY > 0) {
@@ -995,28 +973,23 @@ class GameView extends View implements Choreographer.FrameCallback {
                 } else {
                     gameOverElementsY = gameOverElementsTargetY;
                     
-                    // --- MEDAL SHINE LOGIC ---
                     if (currentMedalBitmap != null && displayedScore == score) {
                         sparkleTimer += realDeltaTime;
 
                         if (!isSparkleAnimating) {
-                            // Waiting to shine
                             if (sparkleTimer >= SPARKLE_INTERVAL) {
                                 isSparkleAnimating = true;
                                 sparkleTimer = 0;
-                                // Pick a random spot on the medal (relative range 0.2 to 0.8)
                                 sparkleXOffset = 0.2f + random.nextFloat() * 0.6f;
                                 sparkleYOffset = 0.2f + random.nextFloat() * 0.6f;
                             }
                         } else {
-                            // Currently shining (Scale up then down)
                             float progress = sparkleTimer / SPARKLE_DURATION;
                             if (progress >= 1.0f) {
                                 isSparkleAnimating = false;
                                 sparkleTimer = 0;
                                 sparkleScaleCurrent = 0;
                             } else {
-                                // Sine wave for smooth pop-in/pop-out
                                 sparkleScaleCurrent = (float) Math.sin(progress * Math.PI);
                             }
                         }
@@ -1181,49 +1154,35 @@ class GameView extends View implements Choreographer.FrameCallback {
         cinematicTimer += realDeltaTime;
         
         if (cinematicPhase == 1) { // PHASE 1: ZOOM IN & SLOW MO
-            // Duration: 0.2s
             float progress = Math.min(1.0f, cinematicTimer / 0.2f);
-            
-            // Zoom to 1.5x (Normal) or 1.8x (Mega)
             float targetZoom = isMegaStrike ? 1.8f : 1.5f;
             cameraZoom = 1.0f + ((targetZoom - 1.0f) * progress);
-            
-            // Slow time to 0.1x (Normal) or 0.05x (Mega)
             float targetTime = isMegaStrike ? 0.05f : 0.1f;
             timeDilation = 1.0f - ((1.0f - targetTime) * progress);
             
             if (progress >= 1.0f) {
                 cinematicPhase = 2;
                 cinematicTimer = 0f;
-                
                 if (isMegaStrike) {
                     triggerMegaStrike();
                 } else {
-                    triggerDirectLightningOnBird(); // Normal Strike
+                    triggerDirectLightningOnBird();
                 }
             }
         } 
-        else if (cinematicPhase == 2) { // PHASE 2: HOLD THE IMPACT
-            // Duration: 0.5s (Stay slow, Stay zoomed)
+        else if (cinematicPhase == 2) { // PHASE 2: HOLD
             timeDilation = isMegaStrike ? 0.05f : 0.1f;
             cameraZoom = isMegaStrike ? 1.8f : 1.5f;
-            
-            if (cinematicTimer >= (isMegaStrike ? 0.8f : 0.5f)) { // Hold longer for mega
+            if (cinematicTimer >= (isMegaStrike ? 0.8f : 0.5f)) { 
                 cinematicPhase = 3;
                 cinematicTimer = 0f;
             }
         } 
-        else if (cinematicPhase == 3) { // PHASE 3: ZOOM OUT & RESTORE SPEED
-            // Duration: 0.3s
+        else if (cinematicPhase == 3) { // PHASE 3: ZOOM OUT
             float progress = Math.min(1.0f, cinematicTimer / 0.3f);
-            
             float startZoom = isMegaStrike ? 1.8f : 1.5f;
             float startTime = isMegaStrike ? 0.05f : 0.1f;
-            
-            // Zoom back to 1.0
             cameraZoom = startZoom - ((startZoom - 1.0f) * progress);
-            
-            // Speed back to 1.0
             timeDilation = startTime + ((1.0f - startTime) * progress);
             
             if (progress >= 1.0f) {
@@ -1236,7 +1195,6 @@ class GameView extends View implements Choreographer.FrameCallback {
     }
 
     private void triggerLightning() {
-        // Random background lightning
         weatherSystem.triggerLightning(screenWidth, getPlayableHeight() + systemBarTop);
         playSound(soundThunder);
         triggerThunderHaptic();
@@ -1246,44 +1204,24 @@ class GameView extends View implements Choreographer.FrameCallback {
     }
     
     private void triggerDirectLightningOnBird() {
-        // Strike specifically on the bird
         weatherSystem.triggerTargetedLightning(birdX, birdY, screenWidth, getPlayableHeight() + systemBarTop);
         playSound(soundThunder);
         triggerThunderHaptic();
-        if (settingScreenShakeEnabled) {
-            triggerShake(15.0f, 0.8f); // Massive shake
-        }
-        
-        // Ignite the bird (Standard Duration)
+        if (settingScreenShakeEnabled) triggerShake(15.0f, 0.8f); 
         isBirdBurnt = true;
         burntTimer = 10.0f; 
-        
-        // Trigger white flash for screen
         flashAlpha = 255;
     }
     
     private void triggerMegaStrike() {
-        // Multiple bolts from multiple angles
         weatherSystem.triggerMultiDirectionalBolts(birdX, birdY, screenWidth, getPlayableHeight() + systemBarTop);
-        
         playSound(soundThunder);
-        // Play it twice for volume
         playSound(soundThunder); 
-        
         triggerThunderHaptic();
-        
-        if (settingScreenShakeEnabled) {
-            triggerShake(25.0f, 1.5f); // Extreme shake
-        }
-        
-        // Ignite the bird (Long Duration)
+        if (settingScreenShakeEnabled) triggerShake(25.0f, 1.5f);
         isBirdBurnt = true;
         burntTimer = 20.0f; 
-        
-        // Electrify Pipes
         pipeElectrificationTimer = 20.0f;
-        
-        // Trigger white flash for screen
         flashAlpha = 255;
     }
 
@@ -1336,12 +1274,11 @@ class GameView extends View implements Choreographer.FrameCallback {
         if (gameState == GameState.PLAYING) {
             gameState = GameState.GAME_OVER;
             
-            // Reset Cinematic State instantly on death
             cinematicPhase = 0;
             cameraZoom = 1.0f;
             timeDilation = 1.0f;
             
-            flashAlpha = 255f; // Trigger white flash
+            flashAlpha = 255f;
             stopWeatherSounds();
             playSound(soundHit);
             triggerShake(5.0f, 0.4f);
@@ -1349,11 +1286,6 @@ class GameView extends View implements Choreographer.FrameCallback {
             if (score > highScore) { highScore = score; prefs.edit().putInt("highScore", highScore).apply();
             }
             
-            // UPDATED MEDAL LOGIC (Correct Mapping)
-            // Platinum (40+): medals_0
-            // Gold (30+): medals_1
-            // Silver (20+): medals_2
-            // Bronze (10+): medals_3
             if (score >= 40) currentMedalBitmap = medalBitmaps[0]; 
             else if (score >= 30) currentMedalBitmap = medalBitmaps[1];
             else if (score >= 20) currentMedalBitmap = medalBitmaps[2];
@@ -1380,8 +1312,6 @@ class GameView extends View implements Choreographer.FrameCallback {
         canvas.save();
 
         // --- CAMERA TRANSFORM (Zoom & Shake) ---
-        
-        // 1. Apply Shake Offset
         if (shakeTimer > 0) {
             float magnitude = currentShakeMagnitude * (shakeTimer / 0.5f);
             float xOffset = (random.nextFloat() - 0.5f) * 2 * magnitude;
@@ -1389,7 +1319,6 @@ class GameView extends View implements Choreographer.FrameCallback {
             canvas.translate(xOffset, yOffset);
         }
         
-        // 2. Apply Cinematic Zoom (Centered on Bird)
         if (cameraZoom > 1.0f) {
             canvas.scale(cameraZoom, cameraZoom, birdX, birdY);
         }
@@ -1408,11 +1337,11 @@ class GameView extends View implements Choreographer.FrameCallback {
         }
 
         float bgDrawWidth = bgToDraw.getWidth();
-        float startX = backgroundX % bgDrawWidth;
-        if (startX > 0) {
-            startX -= bgDrawWidth;
-        }
-        for (float x = startX; x < screenWidth; x += bgDrawWidth) {
+        // Robust tiling logic
+        float startBgX = backgroundX % bgDrawWidth;
+        if (startBgX > 0) startBgX -= bgDrawWidth; 
+        
+        for (float x = startBgX - bgDrawWidth; x < screenWidth + bgDrawWidth; x += bgDrawWidth) {
             canvas.drawBitmap(bgToDraw, x, 0, pixelPaint);
         }
 
@@ -1421,12 +1350,11 @@ class GameView extends View implements Choreographer.FrameCallback {
             int alpha = (int) (sineProgress * 255);
             nightBgPaint.setAlpha(alpha);
 
-            for (float x = startX; x < screenWidth; x += bgDrawWidth) {
+            for (float x = startBgX - bgDrawWidth; x < screenWidth + bgDrawWidth; x += bgDrawWidth) {
                 canvas.drawBitmap(bgNightBitmap, x, 0, nightBgPaint);
             }
         }
 
-        // Draw Background Parallax Weather (Depth Layer)
         if (settingWeatherEffect > 0) {
              weatherSystem.drawBack(canvas);
         }
@@ -1440,7 +1368,6 @@ class GameView extends View implements Choreographer.FrameCallback {
                 pipeDestRect.set(xPos, pipe.getTopPipeY(), xPos + visualPipeWidth, pipe.getTopPipeY() + pipe.height);
                 canvas.drawBitmap(currentPipeTopBitmap, null, pipeDestRect, pipe.pipePaint);
                 
-                // Draw Electricity on top pipe if active
                 if (pipeElectrificationTimer > 0) {
                      drawPipeElectricity(canvas, xPos, pipe.getTopPipeY(), visualPipeWidth, pipe.height);
                 }
@@ -1448,7 +1375,6 @@ class GameView extends View implements Choreographer.FrameCallback {
                 pipeDestRect.set(xPos, pipe.getBottomPipeY(pipeGap), xPos + visualPipeWidth, pipe.getBottomPipeY(pipeGap) + pipe.height);
                 canvas.drawBitmap(currentPipeBottomBitmap, null, pipeDestRect, pipe.pipePaint);
 
-                // Draw Electricity on bottom pipe if active
                 if (pipeElectrificationTimer > 0) {
                      drawPipeElectricity(canvas, xPos, pipe.getBottomPipeY(pipeGap), visualPipeWidth, pipe.height);
                 }
@@ -1467,11 +1393,11 @@ class GameView extends View implements Choreographer.FrameCallback {
         
         float groundDrawWidth = groundBitmap.getWidth();
         float groundTopY = screenHeight - systemBarBottom - groundHeight;
-        startX = groundX % groundDrawWidth;
-        if (startX > 0) {
-            startX -= groundDrawWidth;
-        }
-        for (float x = startX; x < screenWidth; x += groundDrawWidth) {
+        
+        float startGroundX = groundX % groundDrawWidth;
+        if (startGroundX > 0) startGroundX -= groundDrawWidth;
+        
+        for (float x = startGroundX - groundDrawWidth; x < screenWidth + groundDrawWidth; x += groundDrawWidth) {
             groundDestRect.set(x, groundTopY, x + groundDrawWidth, screenHeight);
             canvas.drawBitmap(groundBitmap, null, groundDestRect, pixelPaint);
         }
@@ -1492,7 +1418,6 @@ class GameView extends View implements Choreographer.FrameCallback {
             birdPaint.setColorFilter(new ColorMatrixColorFilter(colorMatrix));
         }
         
-        // Apply Burnt Filter if active
         if (isBirdBurnt) {
             birdPaint.setColorFilter(burntColorFilter);
         }
@@ -1516,7 +1441,6 @@ class GameView extends View implements Choreographer.FrameCallback {
             sp.draw(canvas, sparkPaint);
         }
 
-        // Draw Foreground Weather and Lighting
         if (settingWeatherEffect > 0) {
              weatherSystem.drawFront(canvas);
              weatherSystem.drawLightingOverlay(canvas, screenWidth, screenHeight);
@@ -1548,7 +1472,6 @@ class GameView extends View implements Choreographer.FrameCallback {
             canvas.drawRect(0, 0, screenWidth, screenHeight, transitionPaint);
         }
         
-        // Draw White Flash on top of everything
         if (flashAlpha > 0) {
             flashPaint.setAlpha((int) flashAlpha);
             canvas.drawRect(0, 0, screenWidth, screenHeight, flashPaint);
@@ -1559,20 +1482,15 @@ class GameView extends View implements Choreographer.FrameCallback {
         Path path = new Path();
         float currentY = y;
         float endY = y + h;
-        
-        // Draw jagged lines running up/down the pipe
-        for(int i=0; i<3; i++) { // 3 Bolts per pipe segment
+        for(int i=0; i<3; i++) {
             path.reset();
             float startX = x + (random.nextFloat() * w);
             path.moveTo(startX, currentY);
-            
             float cy = currentY;
             float cx = startX;
-            
             while(cy < endY) {
                  cy += random.nextInt(40) + 10;
                  cx += (random.nextInt(30) - 15);
-                 // Constrain to pipe width
                  if(cx < x) cx = x;
                  if(cx > x + w) cx = x + w;
                  path.lineTo(cx, cy);
@@ -1593,14 +1511,14 @@ class GameView extends View implements Choreographer.FrameCallback {
             case MotionEvent.ACTION_DOWN:
                 isScreenPressed = true;
                 pressedButtonRect = null;
-                settingsButtonTargetScale = 1.0f; // Default reset
+                settingsButtonTargetScale = 1.0f;
                 
                 if (gameState == GameState.HOME) {
                     if (playButtonRect.contains(touchX, touchY)) pressedButtonRect = playButtonRect;
                     else if (scoreButtonRect.contains(touchX, touchY)) pressedButtonRect = scoreButtonRect;
                     else if (settingsButtonRect.contains(touchX, touchY)) {
                         pressedButtonRect = settingsButtonRect;
-                        settingsButtonTargetScale = 0.85f; // Shrink on press
+                        settingsButtonTargetScale = 0.85f;
                     }
                 } else if (gameState == GameState.WAITING) {
                     gameState = GameState.PLAYING;
@@ -1614,14 +1532,14 @@ class GameView extends View implements Choreographer.FrameCallback {
                     }
                     if (isGameOverIconAnimationDone && settingsButtonRect.contains(touchX, touchY)) {
                         pressedButtonRect = settingsButtonRect;
-                        settingsButtonTargetScale = 0.85f; // Shrink on press
+                        settingsButtonTargetScale = 0.85f;
                     }
                 }
                 if (pressedButtonRect != null) invalidate();
                 break;
             case MotionEvent.ACTION_UP:
                 isScreenPressed = false;
-                settingsButtonTargetScale = 1.0f; // Bounce back
+                settingsButtonTargetScale = 1.0f; 
                 
                 if (pressedButtonRect != null && pressedButtonRect.contains(touchX, touchY)) {
                     if (gameState == GameState.HOME) {
@@ -1722,19 +1640,16 @@ class GameView extends View implements Choreographer.FrameCallback {
             float settingsBtnX = screenWidth - settingsButtonBitmap.getWidth() - margin;
             float settingsBtnY = systemBarTop + margin;
             
-            // Update rect for hit detection
             settingsButtonRect.set((int) settingsBtnX, (int) settingsBtnY, 
                 (int) (settingsBtnX + settingsButtonBitmap.getWidth()), 
                 (int) (settingsBtnY + settingsButtonBitmap.getHeight()));
                 
             if (!settingHideSettingsIcon) {
-                // Scale Animation
                 float centerX = settingsButtonRect.centerX();
                 float centerY = settingsButtonRect.centerY();
                 canvas.save();
                 canvas.scale(settingsButtonScale, settingsButtonScale, centerX, centerY);
                 
-                // Tint when pressed
                 if (pressedButtonRect == settingsButtonRect) {
                     pixelPaint.setColorFilter(new PorterDuffColorFilter(Color.GRAY, PorterDuff.Mode.MULTIPLY));
                 } else {
@@ -1744,7 +1659,6 @@ class GameView extends View implements Choreographer.FrameCallback {
                 canvas.drawBitmap(settingsButtonBitmap, settingsBtnX, settingsBtnY, pixelPaint);
                 canvas.restore();
                 
-                // Reset paint
                 pixelPaint.setColorFilter(null);
             }
         }
@@ -1816,7 +1730,6 @@ class GameView extends View implements Choreographer.FrameCallback {
                 float medalY = panelY + (SCORE_PANEL_MEDAL_Y_OFFSET * scale * scaleCorrection);
                 medalDestRect.set(medalX, medalY, medalX + medalWidth, medalY + medalHeight);
                 
-                // --- APPLY MEDAL OFFSETS (Fix for Platinum/Gold positioning) ---
                 float xOffset = 0;
                 float yOffset = 0;
 
@@ -1829,29 +1742,20 @@ class GameView extends View implements Choreographer.FrameCallback {
                 }
                 
                 medalDestRect.offset(xOffset, yOffset);
-                // Also update medalX/Y variables so the sparkle follows the offset
                 medalX += xOffset;
                 medalY += yOffset;
 
                 canvas.drawBitmap(currentMedalBitmap, null, medalDestRect, pixelPaint);
                 
                 if (isSparkleAnimating && sparkleBitmap != null) {
-                    float shineSize = 30 * scale * scaleCorrection * sparkleScaleCurrent; // 30 is base visual size
-                    
-                    // Calculate center position based on random offsets
+                    float shineSize = 30 * scale * scaleCorrection * sparkleScaleCurrent; 
                     float centerX = medalX + (medalWidth * sparkleXOffset);
                     float centerY = medalY + (medalHeight * sparkleYOffset);
-                    
                     float left = centerX - (shineSize / 2f);
                     float top = centerY - (shineSize / 2f);
-                    
                     RectF sparkleDest = new RectF(left, top, left + shineSize, top + shineSize);
-                    
-                    // Use a smooth paint for the glow effect
                     Paint smoothPaint = new Paint(); 
                     smoothPaint.setFilterBitmap(true);
-                    
-                    // Rotate the sparkle slightly over time for effect
                     canvas.save();
                     canvas.rotate(sparkleTimer * 100, centerX, centerY);
                     canvas.drawBitmap(sparkleBitmap, null, sparkleDest, smoothPaint);
@@ -1880,7 +1784,6 @@ class GameView extends View implements Choreographer.FrameCallback {
                 settingsButtonRect.set((int) settingsBtnX, (int) settingsBtnY, (int) (settingsBtnX + settingsButtonBitmap.getWidth()), (int) (settingsBtnY + settingsButtonBitmap.getHeight()));
                 
                 if (!settingHideSettingsIcon) {
-                    // Animation logic for settings button on game over screen
                     float centerX = settingsButtonRect.centerX();
                     float centerY = settingsButtonRect.centerY();
                     canvas.save();
@@ -2004,10 +1907,8 @@ class GameView extends View implements Choreographer.FrameCallback {
         if (settingsResId != 0) unscaledButtonSettings = BitmapFactory.decodeResource(getResources(), settingsResId, options);
         if (unscaledButtonSettings == null) Log.w("GameView", "Could not load 'settingsbutton.png'.");
         
-        // UPDATED: Changed extraction height from 44 to 48 to prevent cut-off for Platinum/Gold
         unscaledMedalsBitmaps[0] = extract(atlas, loc(0.23632812, ATLAS_WIDTH), loc(0.50390625, ATLAS_HEIGHT), 48, 48);
         unscaledMedalsBitmaps[1] = extract(atlas, loc(0.23632812, ATLAS_WIDTH), loc(0.55078125, ATLAS_HEIGHT), 48, 48);
-        // Silver and Bronze remain 44 width
         unscaledMedalsBitmaps[2] = extract(atlas, loc(0.21875, ATLAS_WIDTH), loc(0.8847656, ATLAS_HEIGHT), 44, 48);
         unscaledMedalsBitmaps[3] = extract(atlas, loc(0.21875, ATLAS_WIDTH), loc(0.9316406, ATLAS_HEIGHT), 44, 48);
         
@@ -2262,7 +2163,7 @@ class GameView extends View implements Choreographer.FrameCallback {
                 this.maxLife = 0.1f + r.nextFloat() * 0.1f;
             } else { // Fall
                 this.vx = (r.nextFloat() - 0.5f) * 200 * scale;
-                this.vy = -(100 + r.nextFloat() * 100) * scale; // Pop up then fall
+                this.vy = -(100 + r.nextFloat() * 100) * scale; 
                 this.maxLife = 0.5f + r.nextFloat() * 0.5f;
             }
             
@@ -2291,9 +2192,6 @@ class GameView extends View implements Choreographer.FrameCallback {
         boolean isDead() { return life <= 0; }
     }
 
-    /**
-     * Advanced Weather System 2.0
-     */
     class WeatherSystem {
         private WeatherParticle[] frontParticles;
         private WeatherParticle[] backParticles;
@@ -2310,10 +2208,8 @@ class GameView extends View implements Choreographer.FrameCallback {
         private float lightningIntensity = 0f;
         private float lightningDecay = 4.0f; 
         
-        // Apocalypse Mode
         private boolean heavyRain = false;
         
-        // Screen specs
         private int width, height;
 
         public WeatherSystem() {
@@ -2334,7 +2230,7 @@ class GameView extends View implements Choreographer.FrameCallback {
             lightningPaint.setAntiAlias(true);
 
             lightningGlowPaint = new Paint(lightningPaint);
-            lightningGlowPaint.setColor(Color.argb(255, 200, 230, 255)); // Brighter glow
+            lightningGlowPaint.setColor(Color.argb(255, 200, 230, 255));
             lightningGlowPaint.setMaskFilter(new BlurMaskFilter(30, BlurMaskFilter.Blur.NORMAL));
             
             stormVignettePaint = new Paint();
@@ -2387,13 +2283,13 @@ class GameView extends View implements Choreographer.FrameCallback {
         
         public void setWeatherType(int type) {
             this.currentWeatherType = type;
-            for(WeatherParticle p : frontParticles) p.respawn(width, height, type);
-            for(WeatherParticle p : backParticles) p.respawn(width, height, type);
+            if(frontParticles != null) for(WeatherParticle p : frontParticles) p.respawn(width, height, type);
+            if(backParticles != null) for(WeatherParticle p : backParticles) p.respawn(width, height, type);
         }
 
         public void triggerLightning(int width, int height) {
             bolts.add(new LightningBolt(random.nextFloat() * width, -50, width, height * 0.8f, -1, -1));
-            lightningIntensity = 1.0f; // Full flash
+            lightningIntensity = 1.0f; 
         }
         
         public void triggerTargetedLightning(float targetX, float targetY, int width, int height) {
@@ -2402,16 +2298,11 @@ class GameView extends View implements Choreographer.FrameCallback {
         }
         
         public void triggerMultiDirectionalBolts(float targetX, float targetY, int width, int height) {
-            // Top Center
             bolts.add(new LightningBolt(targetX, -50, width, height, targetX, targetY));
-            // Top Left
             bolts.add(new LightningBolt(0, -50, width, height, targetX, targetY));
-            // Top Right
             bolts.add(new LightningBolt(width, -50, width, height, targetX, targetY));
-            // Side High
             bolts.add(new LightningBolt(-50, height * 0.2f, width, height, targetX, targetY));
             bolts.add(new LightningBolt(width + 50, height * 0.2f, width, height, targetX, targetY));
-            
             lightningIntensity = 1.0f;
         }
 
@@ -2463,7 +2354,7 @@ class GameView extends View implements Choreographer.FrameCallback {
 
     class LightningBolt {
         private Path path = new Path();
-        private float life = 0.25f; // Total duration
+        private float life = 0.25f;
         private float maxLife = 0.25f;
         private float alpha = 1.0f;
 
@@ -2513,12 +2404,8 @@ class GameView extends View implements Choreographer.FrameCallback {
             for(int i=0; i<segments; i++) {
                 currentX += stepX;
                 currentY += stepY;
-                
-                // Add jitter
                 float jitterX = (r.nextFloat() - 0.5f) * 100;
                 float jitterY = (r.nextFloat() - 0.5f) * 50;
-                
-                // Lock last point to target
                 if (i == segments -1) {
                     currentX = endX;
                     currentY = endY;
@@ -2526,7 +2413,6 @@ class GameView extends View implements Choreographer.FrameCallback {
                     currentX += jitterX;
                     currentY += jitterY;
                 }
-                
                 path.lineTo(currentX, currentY);
             }
         }
@@ -2541,7 +2427,6 @@ class GameView extends View implements Choreographer.FrameCallback {
         public void draw(Canvas c, Paint core, Paint glow) {
             int a = (int)(alpha * 255);
             if (a > 255) a = 255; if (a < 0) a = 0;
-            
             glow.setAlpha(a);
             core.setAlpha(a);
             c.drawPath(path, glow);
@@ -2588,10 +2473,9 @@ class GameView extends View implements Choreographer.FrameCallback {
             bounceX *= 0.90f; 
             bounceY *= 0.90f; 
 
-            if (weatherType == 3) { // Snow Physics
+            if (weatherType == 3) { // Snow
                 float drift = (float)Math.sin(y * 0.01f + offset) * 50f * z;
                 x += (windSpeed * 0.1f * z + drift) * deltaTime;
-                
                 if (birdRect.contains((int)x, (int)y)) {
                     float dx = x - birdRect.centerX();
                     float dy = y - birdRect.centerY();
@@ -2602,8 +2486,7 @@ class GameView extends View implements Choreographer.FrameCallback {
                     x += (dx/dist) * 5f;
                     y += (dy/dist) * 5f;
                 }
-                
-            } else { // Rain Physics
+            } else { // Rain
                 x -= windSpeed * z * deltaTime;
             }
 
@@ -2625,11 +2508,8 @@ class GameView extends View implements Choreographer.FrameCallback {
                 paint.setStrokeWidth(size);
                 float run = -20f * z; 
                 float rise = length * (heavy ? 1.5f : 1.0f);
-                
                 canvas.drawLine(x, y, x + run, y + rise, paint);
-                
                 if (heavy) {
-                    // Cheap density hack: Draw duplicate lines offset slightly
                     canvas.drawLine(x + 50, y + 50, x + 50 + run, y + 50 + rise, paint);
                     canvas.drawLine(x - 30, y - 70, x - 30 + run, y - 70 + rise, paint);
                 }
@@ -2718,8 +2598,6 @@ class Pipe {
     }
 
     public Rect getTopBodyRect(float widthMultiplier) {
-        // Extend collision box infinitely upwards (negative Y)
-        // to prevent flying over the pipes.
         float top = -20000f; 
         float bottom = getCurrentTopPipeY() - pipeHeadHeight;
         float visualWidth = pipeBodyWidth * widthMultiplier;

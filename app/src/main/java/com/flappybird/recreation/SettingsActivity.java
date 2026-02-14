@@ -5,6 +5,7 @@ import android.content.DialogInterface;
 import android.content.SharedPreferences;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
+import android.graphics.BlurMaskFilter;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.ColorFilter;
@@ -15,8 +16,10 @@ import android.graphics.Matrix;
 import android.graphics.Paint;
 import android.graphics.Path;
 import android.graphics.PorterDuff;
+import android.graphics.PorterDuffColorFilter;
 import android.graphics.PorterDuffXfermode;
 import android.graphics.RadialGradient;
+import android.graphics.Rect;
 import android.graphics.RectF;
 import android.graphics.Shader;
 import android.os.Bundle;
@@ -31,7 +34,6 @@ import android.widget.FrameLayout;
 import android.widget.RadioButton;
 import android.widget.RadioGroup;
 import android.widget.Toast;
-import android.graphics.PorterDuffColorFilter;
 
 import androidx.annotation.Nullable;
 import androidx.appcompat.app.AppCompatActivity;
@@ -45,8 +47,8 @@ import com.google.android.material.materialswitch.MaterialSwitch;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Deque;
+import java.util.Iterator;
 import java.util.List;
-import java.util.Map;
 import java.util.Random;
 
 public class SettingsActivity extends AppCompatActivity {
@@ -98,6 +100,11 @@ public class SettingsActivity extends AppCompatActivity {
     public static final String PREF_GOLDEN_PIPE_BONUS = "pref_golden_pipe_bonus";
     public static final String PREF_MOTION_BLUR_ENABLED = "pref_motion_blur_enabled";
     public static final String PREF_MOTION_BLUR_STRENGTH = "pref_motion_blur_strength";
+    
+    // --- NEW PREFS ---
+    public static final String PREF_ORIGINAL_MODE_ENABLED = "pref_original_mode_enabled";
+    public static final String PREF_LIGHTNING_SCORES = "pref_lightning_scores";
+    public static final String PREF_MEGA_STRIKE_SCORE = "pref_mega_strike_score";
 
     public static final int DEFAULT_BIRD_COLOR = -1;
     public static final int DEFAULT_BACKGROUND = -1;
@@ -135,7 +142,7 @@ public class SettingsActivity extends AppCompatActivity {
     public static final boolean DEFAULT_JETPACK_MODE_ENABLED = false;
     public static final boolean DEFAULT_DRUNK_MODE_ENABLED = false;
     public static final float DEFAULT_DRUNK_MODE_STRENGTH = 0.0f;
-    public static final int DEFAULT_WEATHER_EFFECT = 0; // 0=off, 1=rain, 2=storm, 3=snow
+    public static final int DEFAULT_WEATHER_EFFECT = 0;
     public static final boolean DEFAULT_DYNAMIC_DAY_NIGHT_ENABLED = false;
     public static final boolean DEFAULT_SCREEN_SHAKE_ENABLED = false;
     public static final float DEFAULT_SCREEN_SHAKE_STRENGTH = 1.0f;
@@ -144,6 +151,10 @@ public class SettingsActivity extends AppCompatActivity {
     public static final int DEFAULT_GOLDEN_PIPE_BONUS = 10;
     public static final boolean DEFAULT_MOTION_BLUR_ENABLED = false;
     public static final float DEFAULT_MOTION_BLUR_STRENGTH = 1.0f;
+    
+    public static final boolean DEFAULT_ORIGINAL_MODE_ENABLED = false;
+    public static final String DEFAULT_LIGHTNING_SCORES = "11,34,79,210";
+    public static final int DEFAULT_MEGA_STRIKE_SCORE = 350;
 
     private SettingsPreviewView previewView;
     private SharedPreferences prefs;
@@ -151,11 +162,12 @@ public class SettingsActivity extends AppCompatActivity {
     private MaterialSwitch soundSwitch, noClipSwitch, wingAnimationSwitch, movingPipesSwitch, hideSettingsIconSwitch;
     private MaterialSwitch rainbowBirdSwitch, upsideDownSwitch, reversePipesSwitch, hapticFeedbackSwitch, birdTrailSwitch;
     private MaterialSwitch ghostModeSwitch, randomPipeColorsSwitch, infiniteFlapSwitch, jetpackModeSwitch, drunkModeSwitch;
-    private MaterialSwitch dayNightCycleSwitch, screenShakeSwitch, goldenPipeSwitch, motionBlurSwitch;
+    private MaterialSwitch dayNightCycleSwitch, screenShakeSwitch, goldenPipeSwitch, motionBlurSwitch, originalModeSwitch;
     private EditText opacityEditText, speedEditText, gravityEditText, jumpEditText, pipeGapEditText, pipeMoveTier1EditText, pipeMoveTier2EditText, hangDelayEditText;
     private EditText pipeSpacingEditText, birdHitboxEditText, pipeVariationEditText, scoreMultiplierEditText, pipeSpeedVariationEditText, birdSizeEditText;
     private EditText pipeWidthEditText, bgScrollEditText, groundScrollEditText, drunkModeStrengthEditText;
     private EditText screenShakeStrengthEditText, goldenPipeChanceEditText, goldenPipeBonusEditText, motionBlurStrengthEditText;
+    private EditText lightningScoresEditText, megaStrikeScoreEditText;
     private Button backButton, randomizeAllButton, resetAllButton, resetProfilesButton;
     private Button saveProfile1, loadProfile1, resetProfile1;
     private Button saveProfile2, loadProfile2, resetProfile2;
@@ -190,7 +202,7 @@ public class SettingsActivity extends AppCompatActivity {
     private void showDisclaimerDialog() {
         new MaterialAlertDialogBuilder(this)
                 .setTitle("Settings Disclaimer")
-                .setMessage("Welcome to the new settings menu! Adjusting these values, especially in the experimental and physics sections, can create weird, fun, or unstable gameplay. Save your favorite setups to profiles and use the 'Randomize All' button for chaotic fun! Proceed with caution.")
+                .setMessage("Adjusting settings can potentially make the game unstable. Proceed with caution.")
                 .setPositiveButton("I Understand", (dialog, which) -> {
                     prefs.edit().putBoolean(PREF_SETTINGS_DISCLAIMER_SHOWN, true).apply();
                     dialog.dismiss();
@@ -233,6 +245,7 @@ public class SettingsActivity extends AppCompatActivity {
         drunkModeSwitch = findViewById(R.id.switch_drunk_mode);
         dayNightCycleSwitch = findViewById(R.id.switch_day_night_cycle);
         screenShakeSwitch = findViewById(R.id.switch_screen_shake);
+        originalModeSwitch = findViewById(R.id.switch_original_mode);
 
         movingPipesSwitch = findViewById(R.id.switch_moving_pipes);
         randomPipeColorsSwitch = findViewById(R.id.switch_random_pipe_colors);
@@ -266,6 +279,8 @@ public class SettingsActivity extends AppCompatActivity {
         goldenPipeChanceEditText = findViewById(R.id.et_golden_pipe_chance);
         goldenPipeBonusEditText = findViewById(R.id.et_golden_pipe_bonus);
         motionBlurStrengthEditText = findViewById(R.id.et_motion_blur_strength);
+        lightningScoresEditText = findViewById(R.id.et_lightning_scores);
+        megaStrikeScoreEditText = findViewById(R.id.et_mega_strike_score);
     }
 
     private List<View> getAllSettingControls() {
@@ -293,6 +308,7 @@ public class SettingsActivity extends AppCompatActivity {
         controls.add(screenShakeSwitch);
         controls.add(goldenPipeSwitch);
         controls.add(motionBlurSwitch);
+        controls.add(originalModeSwitch);
         controls.add(opacityEditText);
         controls.add(speedEditText);
         controls.add(gravityEditText);
@@ -315,6 +331,8 @@ public class SettingsActivity extends AppCompatActivity {
         controls.add(goldenPipeChanceEditText);
         controls.add(goldenPipeBonusEditText);
         controls.add(motionBlurStrengthEditText);
+        controls.add(lightningScoresEditText);
+        controls.add(megaStrikeScoreEditText);
         return controls;
     }
 
@@ -357,6 +375,7 @@ public class SettingsActivity extends AppCompatActivity {
         screenShakeSwitch.setChecked(source.getBoolean(PREF_SCREEN_SHAKE_ENABLED, DEFAULT_SCREEN_SHAKE_ENABLED));
         goldenPipeSwitch.setChecked(source.getBoolean(PREF_GOLDEN_PIPE_ENABLED, DEFAULT_GOLDEN_PIPE_ENABLED));
         motionBlurSwitch.setChecked(source.getBoolean(PREF_MOTION_BLUR_ENABLED, DEFAULT_MOTION_BLUR_ENABLED));
+        originalModeSwitch.setChecked(source.getBoolean(PREF_ORIGINAL_MODE_ENABLED, DEFAULT_ORIGINAL_MODE_ENABLED));
 
         int pipeColor = source.getInt(PREF_PIPE_COLOR, DEFAULT_PIPE_COLOR);
         switch (pipeColor) {
@@ -393,6 +412,8 @@ public class SettingsActivity extends AppCompatActivity {
         goldenPipeChanceEditText.setText(String.valueOf(source.getInt(PREF_GOLDEN_PIPE_CHANCE, DEFAULT_GOLDEN_PIPE_CHANCE)));
         goldenPipeBonusEditText.setText(String.valueOf(source.getInt(PREF_GOLDEN_PIPE_BONUS, DEFAULT_GOLDEN_PIPE_BONUS)));
         motionBlurStrengthEditText.setText(String.valueOf(source.getFloat(PREF_MOTION_BLUR_STRENGTH, DEFAULT_MOTION_BLUR_STRENGTH)));
+        lightningScoresEditText.setText(source.getString(PREF_LIGHTNING_SCORES, DEFAULT_LIGHTNING_SCORES));
+        megaStrikeScoreEditText.setText(String.valueOf(source.getInt(PREF_MEGA_STRIKE_SCORE, DEFAULT_MEGA_STRIKE_SCORE)));
 
         updatePreview();
     }
@@ -421,6 +442,7 @@ public class SettingsActivity extends AppCompatActivity {
         editor.putBoolean(PREF_REVERSE_PIPES_ENABLED, reversePipesSwitch.isChecked());
         editor.putBoolean(PREF_INFINITE_FLAP_ENABLED, infiniteFlapSwitch.isChecked());
         editor.putBoolean(PREF_MOTION_BLUR_ENABLED, motionBlurSwitch.isChecked());
+        editor.putBoolean(PREF_ORIGINAL_MODE_ENABLED, originalModeSwitch.isChecked());
         editor.putInt(PREF_GAMEOVER_OPACITY, parseInt(opacityEditText, DEFAULT_GAMEOVER_OPACITY));
         editor.putFloat(PREF_GAME_SPEED, parseFloat(speedEditText, DEFAULT_GAME_SPEED));
         editor.putFloat(PREF_GRAVITY, parseFloat(gravityEditText, DEFAULT_GRAVITY));
@@ -443,6 +465,8 @@ public class SettingsActivity extends AppCompatActivity {
         editor.putInt(PREF_GOLDEN_PIPE_CHANCE, parseInt(goldenPipeChanceEditText, DEFAULT_GOLDEN_PIPE_CHANCE));
         editor.putInt(PREF_GOLDEN_PIPE_BONUS, parseInt(goldenPipeBonusEditText, DEFAULT_GOLDEN_PIPE_BONUS));
         editor.putFloat(PREF_MOTION_BLUR_STRENGTH, parseFloat(motionBlurStrengthEditText, DEFAULT_MOTION_BLUR_STRENGTH));
+        editor.putString(PREF_LIGHTNING_SCORES, lightningScoresEditText.getText().toString());
+        editor.putInt(PREF_MEGA_STRIKE_SCORE, parseInt(megaStrikeScoreEditText, DEFAULT_MEGA_STRIKE_SCORE));
         editor.apply();
     }
 
@@ -538,6 +562,25 @@ public class SettingsActivity extends AppCompatActivity {
             randomizeAllSettings();
             Toast.makeText(SettingsActivity.this, "Chaos engaged! All settings randomized.", Toast.LENGTH_SHORT).show();
         });
+        
+        originalModeSwitch.setOnCheckedChangeListener((buttonView, isChecked) -> {
+            if (isChecked) {
+                new MaterialAlertDialogBuilder(SettingsActivity.this)
+                    .setTitle("Enable Original Mode?")
+                    .setMessage("This will override physics, spacing, and animations to mathematically match the original v1.3 experience. Custom settings will be ignored while this mode is active.")
+                    .setPositiveButton("Enable", (dialog, which) -> {
+                         saveCurrentSettings();
+                         updatePreview();
+                    })
+                    .setNegativeButton("Cancel", (dialog, which) -> {
+                        buttonView.setChecked(false);
+                    })
+                    .show();
+            } else {
+                saveCurrentSettings();
+                updatePreview();
+            }
+        });
 
         TextWatcher universalTextWatcher = new TextWatcher() {
             @Override public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
@@ -549,10 +592,12 @@ public class SettingsActivity extends AppCompatActivity {
         };
 
         CompoundButton.OnCheckedChangeListener universalCheckListener = (buttonView, isChecked) -> {
-            saveCurrentSettings();
-            updatePreview();
-            if (buttonView.getId() == R.id.switch_day_night_cycle) {
-                updateBackgroundRadioGroupState(isChecked);
+            if (buttonView != originalModeSwitch) {
+                saveCurrentSettings();
+                updatePreview();
+                if (buttonView.getId() == R.id.switch_day_night_cycle) {
+                    updateBackgroundRadioGroupState(isChecked);
+                }
             }
         };
 
@@ -566,7 +611,9 @@ public class SettingsActivity extends AppCompatActivity {
 
         for (View v : getAllSettingControls()) {
             if (v instanceof MaterialSwitch) {
-                ((MaterialSwitch) v).setOnCheckedChangeListener(universalCheckListener);
+                if (v != originalModeSwitch) {
+                    ((MaterialSwitch) v).setOnCheckedChangeListener(universalCheckListener);
+                }
             } else if (v instanceof EditText) {
                 ((EditText)v).addTextChangedListener(universalTextWatcher);
             } else if (v instanceof RadioGroup) {
@@ -620,6 +667,7 @@ public class SettingsActivity extends AppCompatActivity {
         reversePipesSwitch.setChecked(DEFAULT_REVERSE_PIPES_ENABLED);
         infiniteFlapSwitch.setChecked(DEFAULT_INFINITE_FLAP_ENABLED);
         motionBlurSwitch.setChecked(DEFAULT_MOTION_BLUR_ENABLED);
+        originalModeSwitch.setChecked(DEFAULT_ORIGINAL_MODE_ENABLED);
 
         opacityEditText.setText(String.valueOf(DEFAULT_GAMEOVER_OPACITY));
         speedEditText.setText(String.valueOf(DEFAULT_GAME_SPEED));
@@ -643,10 +691,14 @@ public class SettingsActivity extends AppCompatActivity {
         goldenPipeChanceEditText.setText(String.valueOf(DEFAULT_GOLDEN_PIPE_CHANCE));
         goldenPipeBonusEditText.setText(String.valueOf(DEFAULT_GOLDEN_PIPE_BONUS));
         motionBlurStrengthEditText.setText(String.valueOf(DEFAULT_MOTION_BLUR_STRENGTH));
+        lightningScoresEditText.setText(DEFAULT_LIGHTNING_SCORES);
+        megaStrikeScoreEditText.setText(String.valueOf(DEFAULT_MEGA_STRIKE_SCORE));
     }
 
     private void randomizeAllSettings() {
         for (View v : getAllSettingControls()) {
+            if (v == originalModeSwitch) continue;
+            
             if (v instanceof MaterialSwitch) {
                 ((MaterialSwitch) v).setChecked(random.nextBoolean());
             } else if (v instanceof RadioGroup) {
@@ -657,9 +709,11 @@ public class SettingsActivity extends AppCompatActivity {
                 }
             } else if (v instanceof EditText) {
                 EditText et = (EditText) v;
-                if (et.getId() == R.id.et_opacity || et.getId() == R.id.et_golden_pipe_chance) {
+                if (et.getId() == R.id.et_lightning_scores) {
+                    et.setText(random.nextInt(20) + "," + random.nextInt(50) + "," + random.nextInt(100));
+                } else if (et.getId() == R.id.et_opacity || et.getId() == R.id.et_golden_pipe_chance) {
                     et.setText(String.valueOf(random.nextInt(101)));
-                } else if (et.getId() == R.id.et_score_multiplier || et.getId() == R.id.et_golden_pipe_bonus) {
+                } else if (et.getId() == R.id.et_score_multiplier || et.getId() == R.id.et_golden_pipe_bonus || et.getId() == R.id.et_mega_strike_score) {
                     et.setText(String.valueOf(random.nextInt(100)));
                 } else if (et.getId() == R.id.et_pipe_move_tier1 || et.getId() == R.id.et_pipe_move_tier2) {
                     et.setText(String.valueOf(random.nextInt(5001)));
@@ -729,6 +783,8 @@ public class SettingsActivity extends AppCompatActivity {
         previewView.setGhostMode(ghostModeSwitch.isChecked());
         previewView.setMotionBlur(motionBlurSwitch.isChecked(), parseFloat(motionBlurStrengthEditText, DEFAULT_MOTION_BLUR_STRENGTH));
         previewView.setDynamicDayNight(dayNightCycleSwitch.isChecked());
+        previewView.setBirdHitbox(parseFloat(birdHitboxEditText, DEFAULT_BIRD_HITBOX));
+        previewView.setOriginalMode(originalModeSwitch.isChecked());
     }
 
     @Override
@@ -751,6 +807,7 @@ public class SettingsActivity extends AppCompatActivity {
 
         private Choreographer choreographer;
         private boolean isRunning = false;
+        private boolean isReady = false; 
         private long lastFrameTimeNanos = 0;
         private int width, height;
 
@@ -760,23 +817,17 @@ public class SettingsActivity extends AppCompatActivity {
         private Bitmap currentBirdBitmap;
         private float groundX = 0, backgroundX = 0;
         private int groundHeight;
-        private Paint pixelPaint = new Paint();
-        private Paint pipePaint = new Paint();
-        private Paint birdPaint = new Paint();
-        private Paint goldenPaint = new Paint();
-        private Paint weatherPaint = new Paint();
-        private Paint lightningPaint = new Paint();
-        private Paint lightningGlowPaint = new Paint();
-        private Paint trailPaint = new Paint();
-        private Paint motionBlurPaint = new Paint();
-        private Paint nightBgPaint = new Paint();
-
+        
+        private Paint pixelPaint, pipePaint, birdPaint, goldenPaint, trailPaint, motionBlurPaint, nightBgPaint;
         private RectF groundDestRect = new RectF();
         private RectF pipeDestRect = new RectF();
         private Matrix birdMatrix = new Matrix();
+        private Matrix gradientMatrix = new Matrix();
+        private Shader goldenPipeShader;
 
         private float birdSize = 1.0f;
         private float pipeGapMultiplier = 1.0f;
+        private float birdHitboxMultiplier = 1.0f;
         private int birdColor = -1;
         private int background = -1;
         private int weather = 0;
@@ -796,51 +847,50 @@ public class SettingsActivity extends AppCompatActivity {
         private boolean isMotionBlur = false;
         private float motionBlurStrength = 1.0f;
         private boolean isDynamicDayNight = false;
+        private boolean isOriginalMode = false;
 
         private float birdX, birdY, baseBirdX;
+        private float hoverPhase = 0f; 
         private float pipeX;
         private float rainbowHue = 0;
         private float goldenHue = 0;
         private float drunkModePhase = 0f;
         private float dayNightCycle = 0f;
-        private List<float[]> weatherParticles = new ArrayList<>();
-        private List<LightningBolt> lightningBolts = new ArrayList<>();
+        
+        private WeatherSystem weatherSystem;
         private Deque<TrailParticle> birdTrail;
         private Random random = new Random();
         private BitmapFactory.Options options = new BitmapFactory.Options();
+        private Rect birdRect = new Rect();
 
         public SettingsPreviewView(Context context) {
             super(context);
-            init(context);
+            init();
         }
 
-        private void init(Context context) {
+        private void init() {
             options.inScaled = false;
-            pixelPaint.setFilterBitmap(false);
-            pixelPaint.setAntiAlias(false);
-            pipePaint.setFilterBitmap(false);
-            pipePaint.setAntiAlias(false);
-            birdPaint.setFilterBitmap(false);
-            birdPaint.setAntiAlias(false);
-            trailPaint.setFilterBitmap(false);
-            trailPaint.setAntiAlias(false);
-            nightBgPaint.setFilterBitmap(false);
-            nightBgPaint.setAntiAlias(false);
+            pixelPaint = new Paint(); pixelPaint.setFilterBitmap(false); pixelPaint.setAntiAlias(false);
+            pipePaint = new Paint(); pipePaint.setFilterBitmap(false); pipePaint.setAntiAlias(false);
+            birdPaint = new Paint(); birdPaint.setFilterBitmap(false); birdPaint.setAntiAlias(false);
+            trailPaint = new Paint(); trailPaint.setFilterBitmap(false); trailPaint.setAntiAlias(false);
+            nightBgPaint = new Paint(); nightBgPaint.setFilterBitmap(false); nightBgPaint.setAntiAlias(false);
+            
+            goldenPaint = new Paint();
+            goldenPaint.setFilterBitmap(false);
+            goldenPaint.setAntiAlias(false);
+            goldenPaint.setXfermode(new PorterDuffXfermode(PorterDuff.Mode.SRC_ATOP));
+            
+            int[] colors = {Color.argb(0, 255, 215, 0), Color.argb(150, 255, 255, 100), Color.argb(0, 255, 215, 0)};
+            float[] positions = {0, 0.5f, 1};
+            goldenPipeShader = new LinearGradient(0, 0, 100, 0, colors, positions, Shader.TileMode.MIRROR);
+            goldenPaint.setShader(goldenPipeShader);
 
-            weatherPaint.setColor(Color.WHITE);
-            weatherPaint.setStrokeWidth(2);
-
-            lightningPaint.setColor(Color.WHITE);
-            lightningPaint.setStrokeWidth(4);
-            lightningPaint.setStyle(Paint.Style.STROKE);
-            lightningPaint.setAntiAlias(true);
-
-            lightningGlowPaint.set(lightningPaint);
-            lightningGlowPaint.setStrokeWidth(15);
-            lightningGlowPaint.setXfermode(new PorterDuffXfermode(PorterDuff.Mode.SRC_ATOP));
-            lightningGlowPaint.setMaskFilter(new android.graphics.BlurMaskFilter(20, android.graphics.BlurMaskFilter.Blur.NORMAL));
+            motionBlurPaint = new Paint();
+            motionBlurPaint.setXfermode(new PorterDuffXfermode(PorterDuff.Mode.SRC_OVER));
 
             birdTrail = new ArrayDeque<>(15);
+            weatherSystem = new WeatherSystem();
             choreographer = Choreographer.getInstance();
         }
 
@@ -852,7 +902,6 @@ public class SettingsActivity extends AppCompatActivity {
             return Bitmap.createScaledBitmap(bitmap, newW, newH, false);
         }
 
-
         @Override
         protected void onSizeChanged(int w, int h, int oldw, int oldh) {
             super.onSizeChanged(w, h, oldw, oldh);
@@ -861,55 +910,57 @@ public class SettingsActivity extends AppCompatActivity {
             this.width = w;
             this.height = h;
 
-            Bitmap atlas = BitmapFactory.decodeResource(getContext().getResources(), R.drawable.atlas, options);
-            Bitmap unscaledBgDay = Bitmap.createBitmap(atlas, 0, 0, 288, 512);
-            Bitmap unscaledBgNight = Bitmap.createBitmap(atlas, (int)(0.28515625 * 1024), 0, 288, 512);
-            Bitmap unscaledLand = Bitmap.createBitmap(atlas, (int)(0.5703125 * 1024), 0, 336, 112);
-            atlas.recycle();
+            try {
+                Bitmap atlas = BitmapFactory.decodeResource(getContext().getResources(), R.drawable.atlas, options);
+                Bitmap unscaledBgDay = Bitmap.createBitmap(atlas, 0, 0, 288, 512);
+                Bitmap unscaledBgNight = Bitmap.createBitmap(atlas, (int)(0.28515625 * 1024), 0, 288, 512);
+                Bitmap unscaledLand = Bitmap.createBitmap(atlas, (int)(0.5703125 * 1024), 0, 336, 112);
+                atlas.recycle();
 
-            birdBitmaps[0][0] = BitmapFactory.decodeResource(getResources(), R.drawable.yellowbird_upflap, options);
-            birdBitmaps[0][1] = BitmapFactory.decodeResource(getResources(), R.drawable.yellowbird_midflap, options);
-            birdBitmaps[0][2] = BitmapFactory.decodeResource(getResources(), R.drawable.yellowbird_downflap, options);
-            birdBitmaps[1][0] = BitmapFactory.decodeResource(getResources(), R.drawable.bluebird_upflap, options);
-            birdBitmaps[1][1] = BitmapFactory.decodeResource(getResources(), R.drawable.bluebird_midflap, options);
-            birdBitmaps[1][2] = BitmapFactory.decodeResource(getResources(), R.drawable.bluebird_downflap, options);
-            birdBitmaps[2][0] = BitmapFactory.decodeResource(getResources(), R.drawable.redbird_upflap, options);
-            birdBitmaps[2][1] = BitmapFactory.decodeResource(getResources(), R.drawable.redbird_midflap, options);
-            birdBitmaps[2][2] = BitmapFactory.decodeResource(getResources(), R.drawable.redbird_downflap, options);
+                birdBitmaps[0][0] = BitmapFactory.decodeResource(getResources(), R.drawable.yellowbird_upflap, options);
+                birdBitmaps[0][1] = BitmapFactory.decodeResource(getResources(), R.drawable.yellowbird_midflap, options);
+                birdBitmaps[0][2] = BitmapFactory.decodeResource(getResources(), R.drawable.yellowbird_downflap, options);
+                birdBitmaps[1][0] = BitmapFactory.decodeResource(getResources(), R.drawable.bluebird_upflap, options);
+                birdBitmaps[1][1] = BitmapFactory.decodeResource(getResources(), R.drawable.bluebird_midflap, options);
+                birdBitmaps[1][2] = BitmapFactory.decodeResource(getResources(), R.drawable.bluebird_downflap, options);
+                birdBitmaps[2][0] = BitmapFactory.decodeResource(getResources(), R.drawable.redbird_upflap, options);
+                birdBitmaps[2][1] = BitmapFactory.decodeResource(getResources(), R.drawable.redbird_midflap, options);
+                birdBitmaps[2][2] = BitmapFactory.decodeResource(getResources(), R.drawable.redbird_downflap, options);
 
-            Bitmap unscaledPipeGreen = BitmapFactory.decodeResource(getResources(), R.drawable.pipe_green, options);
+                Bitmap unscaledPipeGreen = BitmapFactory.decodeResource(getResources(), R.drawable.pipe_green, options);
 
-            float scale = (float) this.height / unscaledBgDay.getHeight();
-            int bgWidth = (int) (unscaledBgDay.getWidth() * scale);
+                float scale = (float) this.height / unscaledBgDay.getHeight();
+                int bgWidth = (int) (unscaledBgDay.getWidth() * scale);
 
-            bgDayBitmap = Bitmap.createScaledBitmap(unscaledBgDay, bgWidth, this.height, false);
-            bgNightBitmap = Bitmap.createScaledBitmap(unscaledBgNight, bgWidth, this.height, false);
-            groundBitmap = scaleBitmap(unscaledLand, scale);
-            if(groundBitmap != null) groundHeight = groundBitmap.getHeight();
+                bgDayBitmap = Bitmap.createScaledBitmap(unscaledBgDay, bgWidth, this.height, false);
+                bgNightBitmap = Bitmap.createScaledBitmap(unscaledBgNight, bgWidth, this.height, false);
+                groundBitmap = scaleBitmap(unscaledLand, scale);
+                if(groundBitmap != null) groundHeight = groundBitmap.getHeight();
 
-            pipeUpBitmap = scaleBitmap(unscaledPipeGreen, scale);
-            if (pipeUpBitmap != null) {
-                Matrix flipMatrix = new Matrix();
-                flipMatrix.setScale(1, -1);
-                pipeDownBitmap = Bitmap.createBitmap(pipeUpBitmap, 0, 0, pipeUpBitmap.getWidth(), pipeUpBitmap.getHeight(), flipMatrix, true);
-            }
-
-            for(int i = 0; i < 3; i++){
-                for(int j=0; j<3; j++) {
-                    birdBitmaps[i][j] = scaleBitmap(birdBitmaps[i][j], scale);
+                pipeUpBitmap = scaleBitmap(unscaledPipeGreen, scale);
+                if (pipeUpBitmap != null) {
+                    Matrix flipMatrix = new Matrix();
+                    flipMatrix.setScale(1, -1);
+                    pipeDownBitmap = Bitmap.createBitmap(pipeUpBitmap, 0, 0, pipeUpBitmap.getWidth(), pipeUpBitmap.getHeight(), flipMatrix, true);
                 }
-            }
 
-            baseBirdX = this.width / 3f;
-            pipeX = this.width * 0.7f;
+                for(int i = 0; i < 3; i++){
+                    for(int j=0; j<3; j++) {
+                        birdBitmaps[i][j] = scaleBitmap(birdBitmaps[i][j], scale);
+                    }
+                }
+                
+                Pipe.initHitboxDimensions(scale);
+                weatherSystem.init(width, height, scale);
+                weatherSystem.setWeatherType(weather);
 
-            weatherParticles.clear();
-            for (int i=0; i < 100; i++) {
-                // x, y, ySpeed, size, xDrift
-                float size = (1.5f + random.nextFloat() * 2.5f);
-                float ySpeed = (0.8f + random.nextFloat()) * (weather == 3 ? 60f : 120f);
-                float xDrift = (random.nextFloat() - 0.5f) * 40f;
-                weatherParticles.add(new float[]{random.nextFloat() * width, random.nextFloat() * height, ySpeed, size, xDrift});
+                baseBirdX = this.width / 3f;
+                pipeX = this.width * 0.7f;
+                isReady = true;
+
+            } catch (Exception e) {
+                isReady = false;
+                e.printStackTrace();
             }
 
             resume();
@@ -920,7 +971,7 @@ public class SettingsActivity extends AppCompatActivity {
         public void setBirdColor(int color) { this.birdColor = color; }
         public void setBackground(int bg) { this.background = bg; }
         public void setRainbowBird(boolean isRainbow) { this.isRainbowBird = isRainbow; }
-        public void setWeather(int weather) { this.weather = weather; }
+        public void setWeather(int weather) { this.weather = weather; if(weatherSystem != null) weatherSystem.setWeatherType(weather); }
         public void setGoldenPipe(boolean isGolden) { this.isGoldenPipe = isGolden; }
         public void setBgScrollSpeed(float speed) { this.bgScrollSpeed = speed; }
         public void setGroundScrollSpeed(float speed) { this.groundScrollSpeed = speed; }
@@ -934,6 +985,8 @@ public class SettingsActivity extends AppCompatActivity {
         public void setGhostMode(boolean enabled) { this.isGhostMode = enabled; }
         public void setMotionBlur(boolean enabled, float strength) { isMotionBlur = enabled; motionBlurStrength = strength; }
         public void setDynamicDayNight(boolean enabled) { isDynamicDayNight = enabled; }
+        public void setBirdHitbox(float size) { this.birdHitboxMultiplier = size; }
+        public void setOriginalMode(boolean enabled) { this.isOriginalMode = enabled; }
 
         @Override
         public void doFrame(long frameTimeNanos) {
@@ -948,83 +1001,87 @@ public class SettingsActivity extends AppCompatActivity {
             lastFrameTimeNanos = frameTimeNanos;
             if (deltaTime > (1.0f / 30.0f)) deltaTime = (1.0f / 30.0f);
 
-            float basePipeSpeed = 100f * gameSpeed;
+            float currentGameSpeed = isOriginalMode ? 1.0f : gameSpeed;
+            float currentBgScroll = isOriginalMode ? 0.5f : bgScrollSpeed;
+            float currentGroundScroll = isOriginalMode ? 1.0f : groundScrollSpeed;
+            boolean currentReverse = isOriginalMode ? false : isReversePipes;
+
+            float basePipeSpeed = 100f * currentGameSpeed;
             float baseBgSpeed = basePipeSpeed * 0.5f;
-            float direction = isReversePipes ? -1 : 1;
+            float direction = currentReverse ? -1 : 1;
 
             pipeX -= (basePipeSpeed * direction * deltaTime);
-            if (isReversePipes) {
+            if (currentReverse) {
                 if (pipeX > width + pipeUpBitmap.getWidth()) pipeX = -pipeUpBitmap.getWidth();
             } else {
                 if (pipeX < -pipeUpBitmap.getWidth()) pipeX = width + pipeUpBitmap.getWidth();
             }
 
             if(currentBgBitmap != null) {
-                backgroundX -= (baseBgSpeed * bgScrollSpeed * direction * deltaTime);
+                backgroundX -= (baseBgSpeed * currentBgScroll * direction * deltaTime);
                 if (direction > 0 && backgroundX <= -currentBgBitmap.getWidth()) backgroundX += currentBgBitmap.getWidth();
                 if (direction < 0 && backgroundX >= currentBgBitmap.getWidth()) backgroundX -= currentBgBitmap.getWidth();
             }
 
             if (groundBitmap != null) {
-                groundX -= (basePipeSpeed * groundScrollSpeed * direction * deltaTime);
+                groundX -= (basePipeSpeed * currentGroundScroll * direction * deltaTime);
                 if (direction > 0 && groundX <= -groundBitmap.getWidth()) groundX += groundBitmap.getWidth();
                 if (direction < 0 && groundX >= groundBitmap.getWidth()) groundX -= groundBitmap.getWidth();
             }
 
-            baseBirdX = isReversePipes ? width * 2 / 3f : width / 3f;
-            birdY = (height - groundHeight) / 2f + (float) (Math.sin(System.currentTimeMillis() / 200.0) * 10);
+            baseBirdX = currentReverse ? width * 2 / 3f : width / 3f;
+            hoverPhase += deltaTime * 2.5f;
+            float hoverOffset = (float)Math.sin(hoverPhase) * 15f; 
+            birdY = (height - groundHeight) / 2f + hoverOffset;
 
-            if (isDrunkMode) {
+            if (isDrunkMode && !isOriginalMode) {
                 drunkModePhase += deltaTime * 2.0f;
                 float maxDrift = width * 0.15f * drunkModeStrength;
                 birdX = baseBirdX + ((float)Math.sin(drunkModePhase) * maxDrift);
             } else {
                 birdX = baseBirdX;
             }
+            
+            updateBirdRect();
 
-            if (isDynamicDayNight) {
+            if (isDynamicDayNight && !isOriginalMode) {
                 dayNightCycle = (dayNightCycle + deltaTime / 30.0f) % 1.0f;
             }
-
             rainbowHue = (rainbowHue + 150 * deltaTime) % 360;
             goldenHue = (goldenHue + 250 * deltaTime) % 360;
 
-            if (isBirdTrail) {
+            if (isBirdTrail && !isOriginalMode) {
                 if (birdTrail.size() >= 15) birdTrail.pollFirst();
-                birdTrail.add(new TrailParticle(birdX, birdY, 0, birdColor, (int)((System.currentTimeMillis()/150)%3), isRainbowBird ? rainbowHue : -1));
+                int frame = (int)((System.currentTimeMillis()/150)%3);
+                birdTrail.add(new TrailParticle(birdX, birdY, 0, birdColor, frame, isRainbowBird ? rainbowHue : -1));
             }
+            for(TrailParticle p : birdTrail) p.update(deltaTime);
 
-            if(weather > 0) {
-                for(float[] p : weatherParticles) {
-                    p[1] += p[2] * deltaTime;
-                    if (weather == 3) {
-                        p[0] += p[4] * deltaTime;
-                    }
-                    if(p[1] > height + 20) {
-                        p[1] = -20;
-                        p[0] = random.nextFloat() * width;
-                    }
-                    if (p[0] < -20) p[0] = width + 20;
-                    if (p[0] > width + 20) p[0] = -20;
-                }
+            if(weather > 0 && !isOriginalMode) {
+                float wind = basePipeSpeed * 0.1f;
+                weatherSystem.update(deltaTime, wind, 0, birdRect); 
             }
-
-            if (weather == 2 || weather == 3) {
-                if (random.nextInt(weather == 3 ? 100 : 150) == 0 && lightningBolts.isEmpty()) {
-                    lightningBolts.add(new LightningBolt(width, height));
-                }
-            }
-
-            for (int i = lightningBolts.size() - 1; i >= 0; i--) {
-                if (lightningBolts.get(i).isFinished()) {
-                    lightningBolts.remove(i);
-                } else {
-                    lightningBolts.get(i).update(deltaTime);
-                }
+            
+            if (weather == 2 && !isOriginalMode && random.nextInt(400) == 0) {
+                weatherSystem.triggerLightning(width, height);
             }
 
             invalidate();
             choreographer.postFrameCallback(this);
+        }
+        
+        private void updateBirdRect() {
+            int cBirdColor = birdColor;
+            if(cBirdColor == -1) cBirdColor = 0;
+            Bitmap b = birdBitmaps[cBirdColor][0];
+            if (b == null) return;
+            
+            float size = isOriginalMode ? 1.0f : birdSize;
+            float hitbox = isOriginalMode ? 1.0f : birdHitboxMultiplier;
+            
+            float w = b.getWidth() * size * hitbox;
+            float h = b.getHeight() * size * hitbox;
+            birdRect.set((int)(birdX - w/2), (int)(birdY - h/2), (int)(birdX + w/2), (int)(birdY + h/2));
         }
 
         private ColorFilter createPipeColorFilter(int pipeColorSetting) {
@@ -1044,10 +1101,9 @@ public class SettingsActivity extends AppCompatActivity {
         @Override
         protected void onDraw(Canvas canvas) {
             super.onDraw(canvas);
-            if (canvas == null || groundBitmap == null || pipeUpBitmap == null || pipeDownBitmap == null) return;
+            if (!isReady || canvas == null || groundBitmap == null || pipeUpBitmap == null || pipeDownBitmap == null) return;
 
-            if (isMotionBlur) {
-                motionBlurPaint.setXfermode(new PorterDuffXfermode(PorterDuff.Mode.SRC_OVER));
+            if (isMotionBlur && !isOriginalMode) {
                 motionBlurPaint.setAlpha((int)(255 / (Math.max(1f, motionBlurStrength) * 1.5f)));
                 canvas.drawPaint(motionBlurPaint);
             } else {
@@ -1056,21 +1112,15 @@ public class SettingsActivity extends AppCompatActivity {
 
             canvas.save();
 
-            if (isUpsideDown) {
+            boolean currentUpsideDown = isOriginalMode ? false : isUpsideDown;
+            if (currentUpsideDown) {
                 canvas.scale(1, -1, width / 2f, height / 2f);
             }
 
             int cBirdColor = birdColor;
             if(cBirdColor == -1) cBirdColor = (int)((System.currentTimeMillis()/1000) % 3);
 
-            int frame = (int)((System.currentTimeMillis()/150)%3);
-            currentBirdBitmap = birdBitmaps[cBirdColor][frame];
-            if (currentBirdBitmap == null) {
-                canvas.restore();
-                return;
-            }
-
-            if (isDynamicDayNight) {
+            if (isDynamicDayNight && !isOriginalMode) {
                 currentBgBitmap = bgDayBitmap;
             } else {
                 int cBg = background;
@@ -1078,30 +1128,39 @@ public class SettingsActivity extends AppCompatActivity {
                 currentBgBitmap = cBg == 0 ? bgDayBitmap : bgNightBitmap;
             }
 
-            if (currentBgBitmap == null) {
-                canvas.restore(); return;
-            }
-
-            float bgWidth = currentBgBitmap.getWidth();
-            float startX = backgroundX % bgWidth;
-            if(isReversePipes ? startX < 0 : startX > 0) startX += (isReversePipes ? 1 : -1) * bgWidth;
-            for (float x = startX; isReversePipes ? x > -bgWidth : x < width; x += (isReversePipes ? -1 : 1) * bgWidth) {
-                canvas.drawBitmap(currentBgBitmap, x, 0, pixelPaint);
-            }
-
-            if (isDynamicDayNight) {
-                float sineProgress = (float) (1 - Math.cos(dayNightCycle * 2 * Math.PI)) / 2;
-                nightBgPaint.setAlpha((int)(sineProgress * 255));
-                for (float x = startX; isReversePipes ? x > -bgWidth : x < width; x += (isReversePipes ? -1 : 1) * bgWidth) {
-                    canvas.drawBitmap(bgNightBitmap, x, 0, nightBgPaint);
+            boolean currentReverse = isOriginalMode ? false : isReversePipes;
+            
+            if (currentBgBitmap != null) {
+                float bgWidth = currentBgBitmap.getWidth();
+                float startBgX = backgroundX % bgWidth;
+                if (startBgX > 0) startBgX -= bgWidth; 
+                
+                for (float x = startBgX - bgWidth; x < width + bgWidth; x += bgWidth) {
+                    canvas.drawBitmap(currentBgBitmap, x, 0, pixelPaint);
                 }
             }
 
+            if (isDynamicDayNight && !isOriginalMode) {
+                float sineProgress = (float) (1 - Math.cos(dayNightCycle * 2 * Math.PI)) / 2;
+                nightBgPaint.setAlpha((int)(sineProgress * 255));
+                float bgWidth = bgNightBitmap.getWidth();
+                float startBgX = backgroundX % bgWidth;
+                if (startBgX > 0) startBgX -= bgWidth;
+                
+                for (float x = startBgX - bgWidth; x < width + bgWidth; x += bgWidth) {
+                    canvas.drawBitmap(bgNightBitmap, x, 0, nightBgPaint);
+                }
+            }
+            
+            if (weather > 0 && !isOriginalMode) weatherSystem.drawBack(canvas);
+
             pipePaint.setColorFilter(createPipeColorFilter(pipeColor));
-            float visualPipeWidth = pipeUpBitmap.getWidth() * pipeWidthMultiplier;
+            float visualPipeWidth = pipeUpBitmap.getWidth() * (isOriginalMode ? 1.0f : pipeWidthMultiplier);
             float pipeDrawX = pipeX - (visualPipeWidth - pipeUpBitmap.getWidth()) / 2f;
-            float baseGap = currentBirdBitmap.getHeight() * 2.5f;
-            float pipeGap = baseGap * pipeGapMultiplier;
+            
+            float birdH = birdBitmaps[0][0].getHeight();
+            float baseGap = birdH * 2.5f;
+            float pipeGap = baseGap * (isOriginalMode ? 1.0f : pipeGapMultiplier);
             float pipeCenterY = (height - groundHeight) / 2f;
 
             pipeDestRect.set(pipeDrawX, pipeCenterY - (pipeGap/2f) - pipeDownBitmap.getHeight(), pipeDrawX + visualPipeWidth, pipeCenterY - (pipeGap/2f));
@@ -1109,40 +1168,30 @@ public class SettingsActivity extends AppCompatActivity {
             pipeDestRect.set(pipeDrawX, pipeCenterY + (pipeGap/2f), pipeDrawX + visualPipeWidth, pipeCenterY + (pipeGap/2f) + pipeUpBitmap.getHeight());
             canvas.drawBitmap(pipeUpBitmap, null, pipeDestRect, pipePaint);
 
-            if(isGoldenPipe) {
-                int[] colors = {Color.argb(0, 255, 215, 0), Color.argb(150, 255, 255, 100), Color.argb(0, 255, 215, 0)};
-                float[] positions = {0, 0.5f, 1};
-                Matrix gradientMatrix = new Matrix();
+            if(isGoldenPipe && !isOriginalMode) {
                 gradientMatrix.setTranslate(goldenHue, 0);
-                Shader shader = new LinearGradient(pipeDrawX, 0, pipeDrawX + visualPipeWidth, 0, colors, positions, Shader.TileMode.MIRROR);
-                shader.setLocalMatrix(gradientMatrix);
-                goldenPaint.setShader(shader);
-
+                goldenPipeShader.setLocalMatrix(gradientMatrix);
                 pipeDestRect.set(pipeDrawX, pipeCenterY - (pipeGap/2f) - pipeDownBitmap.getHeight(), pipeDrawX + visualPipeWidth, pipeCenterY - (pipeGap/2f));
-                canvas.drawBitmap(pipeDownBitmap, null, pipeDestRect, goldenPaint);
+                canvas.drawRect(pipeDestRect, goldenPaint);
                 pipeDestRect.set(pipeDrawX, pipeCenterY + (pipeGap/2f), pipeDrawX + visualPipeWidth, pipeCenterY + (pipeGap/2f) + pipeUpBitmap.getHeight());
-                canvas.drawBitmap(pipeUpBitmap, null, pipeDestRect, goldenPaint);
-            }
-
-            for (LightningBolt bolt : lightningBolts) {
-                bolt.draw(canvas, lightningPaint, lightningGlowPaint);
+                canvas.drawRect(pipeDestRect, goldenPaint);
             }
 
             float groundDrawWidth = groundBitmap.getWidth();
             float groundTopY = height - groundHeight;
-            startX = groundX % groundDrawWidth;
-            if(isReversePipes ? startX < 0 : startX > 0) startX += (isReversePipes ? 1 : -1) * groundDrawWidth;
-            for (float x = startX; isReversePipes ? x > -groundDrawWidth : x < width; x += (isReversePipes ? -1 : 1) * groundDrawWidth) {
+            float startGroundX = groundX % groundDrawWidth;
+            if (startGroundX > 0) startGroundX -= groundDrawWidth;
+        
+            for (float x = startGroundX - groundDrawWidth; x < width + groundDrawWidth; x += groundDrawWidth) {
                 groundDestRect.set(x, groundTopY, x + groundDrawWidth, height);
                 canvas.drawBitmap(groundBitmap, null, groundDestRect, pixelPaint);
             }
 
-            if (isBirdTrail) {
+            if (isBirdTrail && !isOriginalMode) {
                 int i = 0;
                 for (TrailParticle particle : birdTrail) {
                     float progress = (float) i / birdTrail.size();
                     int alpha = (int) (progress * 100);
-
                     trailPaint.setColorFilter(null);
                     if (particle.rainbowHue != -1) {
                         ColorMatrix colorMatrix = new ColorMatrix();
@@ -1152,7 +1201,6 @@ public class SettingsActivity extends AppCompatActivity {
                         trailPaint.setColorFilter(new ColorMatrixColorFilter(colorMatrix));
                     }
                     trailPaint.setAlpha(alpha);
-
                     Bitmap trailBitmap = birdBitmaps[particle.colorIndex < 0 ? cBirdColor : particle.colorIndex][particle.frameIndex];
                     if (trailBitmap != null) {
                         birdMatrix.reset();
@@ -1166,30 +1214,27 @@ public class SettingsActivity extends AppCompatActivity {
                 }
             }
 
+            int frame = (int)((System.currentTimeMillis()/150)%3);
+            currentBirdBitmap = birdBitmaps[cBirdColor][frame];
             birdPaint.setColorFilter(null);
-            if(isRainbowBird) {
+            if(isRainbowBird && !isOriginalMode) {
                 ColorMatrix colorMatrix = new ColorMatrix();
                 colorMatrix.setRotate(0, rainbowHue);
                 colorMatrix.setRotate(1, rainbowHue);
                 colorMatrix.setRotate(2, rainbowHue);
                 birdPaint.setColorFilter(new ColorMatrixColorFilter(colorMatrix));
             }
-            birdPaint.setAlpha(isGhostMode ? 128 : 255);
+            birdPaint.setAlpha(isGhostMode && !isOriginalMode ? 128 : 255);
             birdMatrix.reset();
             birdMatrix.postTranslate(-currentBirdBitmap.getWidth() / 2f, -currentBirdBitmap.getHeight() / 2f);
-            birdMatrix.postScale(birdSize, birdSize, 0, 0);
+            float currentSize = isOriginalMode ? 1.0f : birdSize;
+            birdMatrix.postScale(currentSize, currentSize, 0, 0);
             birdMatrix.postTranslate(birdX, birdY);
             canvas.drawBitmap(currentBirdBitmap, birdMatrix, birdPaint);
 
-            if (weather > 0) {
-                weatherPaint.setAlpha(weather == 3 ? 220 : 150);
-                for(float[] p : weatherParticles) {
-                    if (weather == 1 || weather == 2) {
-                        canvas.drawLine(p[0], p[1], p[0], p[1] + 20, weatherPaint);
-                    } else if (weather == 3) {
-                        canvas.drawCircle(p[0], p[1], p[3], weatherPaint);
-                    }
-                }
+            if (weather > 0 && !isOriginalMode) {
+                weatherSystem.drawFront(canvas);
+                weatherSystem.drawLightingOverlay(canvas, width, height);
             }
 
             canvas.restore();
@@ -1214,73 +1259,194 @@ public class SettingsActivity extends AppCompatActivity {
             pause();
         }
 
+        // --- INNER CLASSES ---
+        
         static class TrailParticle {
             float x, y, rotation, rainbowHue;
             int colorIndex, frameIndex;
+            float lifetime = 0.5f;
 
             TrailParticle(float x, float y, float rotation, int colorIndex, int frameIndex, float rainbowHue) {
                 this.x = x; this.y = y; this.rotation = rotation;
                 this.colorIndex = colorIndex; this.frameIndex = frameIndex;
                 this.rainbowHue = rainbowHue;
             }
+            void update(float deltaTime) {
+                lifetime -= deltaTime;
+            }
+        }
+
+        static class WeatherSystem {
+            private WeatherParticle[] frontParticles;
+            private WeatherParticle[] backParticles;
+            private List<LightningBolt> bolts = new ArrayList<>();
+            private Random random = new Random();
+            
+            private Paint frontPaint, backPaint;
+            private Paint lightningPaint, lightningGlowPaint;
+            private Paint stormVignettePaint; 
+            private Paint flashTintPaint; 
+            private Paint vignettePaint;  
+            
+            private int currentWeatherType = 0;
+            private float lightningIntensity = 0f;
+            private float lightningDecay = 4.0f; 
+            
+            private int width, height;
+
+            public WeatherSystem() {
+                frontPaint = new Paint(); frontPaint.setColor(Color.WHITE); frontPaint.setAntiAlias(true);
+                backPaint = new Paint(); backPaint.setColor(Color.WHITE); backPaint.setAlpha(100); backPaint.setAntiAlias(true);
+                lightningPaint = new Paint(); lightningPaint.setColor(Color.WHITE); lightningPaint.setStyle(Paint.Style.STROKE);
+                lightningPaint.setStrokeCap(Paint.Cap.ROUND); lightningPaint.setStrokeJoin(Paint.Join.ROUND); lightningPaint.setAntiAlias(true);
+                lightningGlowPaint = new Paint(lightningPaint); lightningGlowPaint.setColor(Color.argb(255, 200, 230, 255));
+                lightningGlowPaint.setMaskFilter(new BlurMaskFilter(30, BlurMaskFilter.Blur.NORMAL));
+                stormVignettePaint = new Paint(); stormVignettePaint.setXfermode(new PorterDuffXfermode(PorterDuff.Mode.SRC_OVER));
+                flashTintPaint = new Paint(); flashTintPaint.setColor(Color.WHITE); flashTintPaint.setXfermode(new PorterDuffXfermode(PorterDuff.Mode.ADD));
+                vignettePaint = new Paint(); vignettePaint.setXfermode(new PorterDuffXfermode(PorterDuff.Mode.SRC_OVER));
+            }
+
+            public void init(int width, int height, float scale) {
+                this.width = width; this.height = height;
+                lightningPaint.setStrokeWidth(4 * scale);
+                lightningGlowPaint.setStrokeWidth(20 * scale);
+                int frontCount = 150; int backCount = 150;
+                frontParticles = new WeatherParticle[frontCount];
+                backParticles = new WeatherParticle[backCount];
+                for(int i=0; i<frontCount; i++) frontParticles[i] = new WeatherParticle(width, height, true);
+                for(int i=0; i<backCount; i++) backParticles[i] = new WeatherParticle(width, height, false);
+                RadialGradient snowVignette = new RadialGradient(width / 2f, height / 2f, width * 1.3f, new int[]{Color.TRANSPARENT, Color.argb(200, 230, 230, 250)}, new float[]{0.3f, 1.0f}, Shader.TileMode.CLAMP);
+                vignettePaint.setShader(snowVignette);
+                RadialGradient stormVignette = new RadialGradient(width / 2f, height / 2f, width * 1.3f, new int[]{Color.TRANSPARENT, Color.argb(200, 0, 0, 20)}, new float[]{0.3f, 1.0f}, Shader.TileMode.CLAMP);
+                stormVignettePaint.setShader(stormVignette);
+            }
+            
+            public void setWeatherType(int type) {
+                this.currentWeatherType = type;
+                if(frontParticles != null) for(WeatherParticle p : frontParticles) p.respawn(width, height, type);
+                if(backParticles != null) for(WeatherParticle p : backParticles) p.respawn(width, height, type);
+            }
+
+            public void triggerLightning(int width, int height) {
+                bolts.add(new LightningBolt(random.nextFloat() * width, -50, width, height * 0.8f));
+                lightningIntensity = 1.0f;
+            }
+
+            public void update(float deltaTime, float windSpeed, float birdVelocity, Rect birdRect) {
+                float backWind = windSpeed * 0.5f; 
+                for(WeatherParticle p : frontParticles) p.update(deltaTime, width, height, currentWeatherType, windSpeed, birdRect);
+                for(WeatherParticle p : backParticles) p.update(deltaTime, width, height, currentWeatherType, backWind, birdRect);
+                Iterator<LightningBolt> iter = bolts.iterator();
+                while(iter.hasNext()) {
+                    LightningBolt bolt = iter.next();
+                    bolt.update(deltaTime);
+                    if(bolt.isDead()) iter.remove();
+                }
+                if (lightningIntensity > 0) {
+                    lightningIntensity -= lightningDecay * deltaTime;
+                    if (lightningIntensity < 0) lightningIntensity = 0;
+                }
+            }
+
+            public void drawBack(Canvas canvas) {
+                for(WeatherParticle p : backParticles) p.draw(canvas, backPaint, currentWeatherType);
+            }
+            public void drawFront(Canvas canvas) {
+                for(WeatherParticle p : frontParticles) p.draw(canvas, frontPaint, currentWeatherType);
+            }
+            public void drawLightingOverlay(Canvas canvas, int width, int height) {
+                int overscan = 100; 
+                if (currentWeatherType == 2) canvas.drawRect(-overscan, -overscan, width + overscan, height + overscan, stormVignettePaint);
+                else if (currentWeatherType == 3) canvas.drawRect(-overscan, -overscan, width + overscan, height + overscan, vignettePaint);
+                for(LightningBolt bolt : bolts) bolt.draw(canvas, lightningPaint, lightningGlowPaint);
+                if (lightningIntensity > 0) {
+                    int alpha = (int)(lightningIntensity * 100); 
+                    flashTintPaint.setAlpha(alpha);
+                    canvas.drawRect(-overscan, -overscan, width + overscan, height + overscan, flashTintPaint);
+                }
+            }
         }
 
         static class LightningBolt {
-            private Path path;
-            private float lifetime = 0.4f;
-            private float alpha = 1.0f;
-            private float flashDuration = 0.1f;
-            private float x, y, radius;
-            private Paint flashPaint = new Paint();
-            private Random random = new Random();
-
-            LightningBolt(int screenWidth, int screenHeight) {
-                path = new Path();
-                float startX = random.nextFloat() * screenWidth;
-                path.moveTo(startX, 0);
-
-                this.x = startX; this.y = 0;
-                this.radius = screenWidth/4f;
-
-                float currentY = 0;
-                while (currentY < screenHeight) {
-                    float nextX = startX + (random.nextFloat() - 0.5f) * 80;
-                    float nextY = currentY + random.nextFloat() * (screenHeight / 5f);
-                    path.lineTo(nextX, nextY);
-                    currentY = nextY;
-
-                    if (random.nextInt(5) == 0) {
-                        path.moveTo(nextX, nextY);
-                        path.lineTo(nextX + (random.nextFloat() - 0.5f) * 100, nextY + random.nextFloat() * (screenHeight / 6f));
-                        path.moveTo(nextX, nextY);
+            private Path path = new Path();
+            private float life = 0.25f; private float maxLife = 0.25f; private float alpha = 1.0f;
+            public LightningBolt(float startX, float startY, float width, float height) {
+                generate(startX, startY, height);
+            }
+            private void generate(float x, float y, float targetHeight) {
+                path.reset(); path.moveTo(x, y);
+                float currentX = x; float currentY = y;
+                Random r = new Random();
+                while(currentY < targetHeight) {
+                    float segmentLen = 30 + r.nextFloat() * 50;
+                    currentY += segmentLen;
+                    currentX += (r.nextFloat() - 0.5f) * 80;
+                    path.lineTo(currentX, currentY);
+                    if (r.nextBoolean()) {
+                        float branchX = currentX + (r.nextFloat() - 0.5f) * 100;
+                        float branchY = currentY + (50 + r.nextFloat() * 50);
+                        path.lineTo(branchX, branchY);
+                        path.moveTo(currentX, currentY);
                     }
                 }
-                flashPaint.setStyle(Paint.Style.FILL);
             }
-
-            void update(float deltaTime) {
-                lifetime -= deltaTime;
-                alpha = Math.max(0, (lifetime / 0.3f));
+            public void update(float dt) { life -= dt; alpha = life / maxLife; }
+            public boolean isDead() { return life <= 0; }
+            public void draw(Canvas c, Paint core, Paint glow) {
+                int a = (int)(alpha * 255); if (a > 255) a = 255; if (a < 0) a = 0;
+                glow.setAlpha(a); core.setAlpha(a);
+                c.drawPath(path, glow); c.drawPath(path, core);
             }
+        }
 
-            boolean isFinished() {
-                return lifetime <= 0;
+        static class WeatherParticle {
+            float x, y, z, ySpeed, size, length, offset, bounceX = 0, bounceY = 0;
+            private static Random random = new Random();
+            WeatherParticle(int screenWidth, int screenHeight, boolean isFront) {
+                if (isFront) z = 1.0f + random.nextFloat() * 0.5f; else z = 0.5f + random.nextFloat() * 0.5f;
+                respawn(screenWidth, screenHeight, 0);
+                y = random.nextFloat() * screenHeight;
             }
-
-            void draw(Canvas canvas, Paint mainPaint, Paint glowPaint) {
-                if (alpha <= 0) return;
-
-                if (lifetime > (0.4f - flashDuration)) {
-                    int flashAlpha = (int)(200 * alpha);
-                    flashPaint.setShader(new RadialGradient(x, y, radius,
-                            Color.argb(flashAlpha, 200, 200, 255), Color.TRANSPARENT, Shader.TileMode.CLAMP));
-                    canvas.drawPaint(flashPaint);
+            void respawn(int screenWidth, int screenHeight, int weatherType) {
+                x = random.nextFloat() * screenWidth; y = -50 - random.nextFloat() * 50;
+                bounceX = 0; bounceY = 0; offset = random.nextFloat() * 100f;
+                if (weatherType == 3) { size = (2f + random.nextFloat() * 4f) * z; ySpeed = (30f + random.nextFloat() * 40f) * z; }
+                else { size = (1.5f + random.nextFloat()) * z; length = (30f + random.nextFloat() * 40f) * z; ySpeed = (700f + random.nextFloat() * 300f) * z; }
+            }
+            void update(float deltaTime, int screenWidth, int screenHeight, int weatherType, float windSpeed, Rect birdRect) {
+                y += ySpeed * deltaTime;
+                x += bounceX * deltaTime; y += bounceY * deltaTime;
+                bounceX *= 0.90f; bounceY *= 0.90f; 
+                if (weatherType == 3) {
+                    float drift = (float)Math.sin(y * 0.01f + offset) * 50f * z;
+                    x += (windSpeed * 0.1f * z + drift) * deltaTime;
+                    if (birdRect.contains((int)x, (int)y)) {
+                        float dx = x - birdRect.centerX(); float dy = y - birdRect.centerY();
+                        float dist = (float)Math.sqrt(dx*dx + dy*dy); if (dist < 1) dist = 1;
+                        bounceX = (dx / dist) * 200f; bounceY = -Math.abs(ySpeed) * 0.8f;
+                        x += (dx/dist) * 5f; y += (dy/dist) * 5f;
+                    }
+                } else { x -= windSpeed * z * deltaTime; }
+                if (y > screenHeight + length || x < -100 || x > screenWidth + 100) respawn(screenWidth, screenHeight, weatherType);
+            }
+            void draw(Canvas canvas, Paint paint, int weatherType) {
+                if (weatherType == 3) {
+                    int alpha = (int)(180 * z); if (alpha > 255) alpha = 255; paint.setAlpha(alpha);
+                    canvas.drawCircle(x, y, size, paint);
+                } else {
+                    int alpha = (int)(160 * z); if (alpha > 255) alpha = 255; paint.setAlpha(alpha);
+                    paint.setStrokeWidth(size);
+                    float run = -20f * z; float rise = length;
+                    canvas.drawLine(x, y, x + run, y + rise, paint);
                 }
-
-                mainPaint.setAlpha((int)(255 * alpha));
-                glowPaint.setAlpha((int)(150 * alpha));
-                canvas.drawPath(path, glowPaint);
-                canvas.drawPath(path, mainPaint);
+            }
+        }
+        
+        static class Pipe {
+            private static float pipeHeadWidth, pipeHeadHeight, pipeBodyWidth, pipeBodyOffsetX;
+            public static void initHitboxDimensions(float scale) {
+                pipeHeadWidth = 52 * scale; pipeHeadHeight = 24 * scale; pipeBodyWidth = 48 * scale;
+                pipeBodyOffsetX = (pipeHeadWidth - pipeBodyWidth) / 2.0f;
             }
         }
     }

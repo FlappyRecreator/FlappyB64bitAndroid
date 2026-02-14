@@ -39,6 +39,17 @@ android:icon="@mipmap/launcher"
 			android:name=".DebugActivity"
 			android:screenOrientation="portrait"
 			android:theme="@style/AppTheme.DebugActivity" />
+		<provider
+			android:name="androidx.startup.InitializationProvider"
+			android:authorities="com.flappybird.recreation.androidx-startup"
+			android:exported="false">
+			<meta-data
+				android:name="androidx.lifecycle.ProcessLifecycleInitializer"
+				android:value="androidx.startup" />
+			<meta-data
+				android:name="androidx.emoji2.text.EmojiCompatInitializer"
+				android:value="androidx.startup" />
+		</provider>
 		<uses-library
 			android:name="org.apache.http.legacy"
 			android:required="false" />
