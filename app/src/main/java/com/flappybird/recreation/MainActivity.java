@@ -668,6 +668,9 @@ class GameView extends View implements Choreographer.FrameCallback {
     }
 
     private ColorFilter createPipeColorFilter(int pipeColorSetting) {
+        if(settingReversePipesEnabled && pipeColorSetting == 0) {
+            return new PorterDuffColorFilter(0xFFD05050, PorterDuff.Mode.MULTIPLY);
+        }
         switch (pipeColorSetting) {
             case 1: return new PorterDuffColorFilter(0xFFD05050, PorterDuff.Mode.MULTIPLY); // Red
             case 2: return new PorterDuffColorFilter(0xFF6080E0, PorterDuff.Mode.MULTIPLY); // Blue
