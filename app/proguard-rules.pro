@@ -1,4 +1,0 @@
--repackageclasses
--ignorewarnings
--dontwarn
--dontnote
