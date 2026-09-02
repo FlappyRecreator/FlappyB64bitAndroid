@@ -1,0 +1,17 @@
+# Gradle
+.gradle/
+build/
+local.properties
+
+# 签名密钥 —— 切勿提交
+*.keystore
+*.jks
+keystore.properties
+
+# 系统/编辑器
+.DS_Store
+.idea/
+*.iml
+captures/
+.externalNativeBuild/
+.cxx/

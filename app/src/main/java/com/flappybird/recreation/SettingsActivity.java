@@ -201,9 +201,9 @@ public class SettingsActivity extends AppCompatActivity {
 
     private void showDisclaimerDialog() {
         new MaterialAlertDialogBuilder(this)
-                .setTitle("Settings Disclaimer")
-                .setMessage("Adjusting settings can potentially make the game unstable. Proceed with caution.")
-                .setPositiveButton("I Understand", (dialog, which) -> {
+                .setTitle("设置免责声明")
+                .setMessage("调整设置可能会导致游戏不稳定，请谨慎操作。")
+                .setPositiveButton("我知道了", (dialog, which) -> {
                     prefs.edit().putBoolean(PREF_SETTINGS_DISCLAIMER_SHOWN, true).apply();
                     dialog.dismiss();
                 })
@@ -534,45 +534,45 @@ public class SettingsActivity extends AppCompatActivity {
         setupProfileListeners(3, saveProfile3, loadProfile3, resetProfile3);
 
         resetAllButton.setOnClickListener(v -> new MaterialAlertDialogBuilder(SettingsActivity.this)
-                .setTitle("Reset All Settings")
-                .setMessage("Are you sure you want to reset all current settings to their defaults? This will not affect your saved profiles.")
-                .setPositiveButton("Reset", (dialog, which) -> {
+                .setTitle("重置所有设置")
+                .setMessage("确定要将所有当前设置重置为默认值吗？这不会影响你已保存的存档。")
+                .setPositiveButton("重置", (dialog, which) -> {
                     prefs.edit().clear().apply();
                     resetUiToDefaults();
                     saveCurrentSettings();
                     updatePreview();
-                    Toast.makeText(SettingsActivity.this, "All settings have been reset to default.", Toast.LENGTH_SHORT).show();
+                    Toast.makeText(SettingsActivity.this, "所有设置已重置为默认值。", Toast.LENGTH_SHORT).show();
                 })
-                .setNegativeButton("Cancel", null)
+                .setNegativeButton("取消", null)
                 .show());
 
         resetProfilesButton.setOnClickListener(v -> new MaterialAlertDialogBuilder(SettingsActivity.this)
-                .setTitle("Reset All Profiles")
-                .setMessage("Are you sure you want to delete all 3 of your saved profiles? This cannot be undone.")
-                .setPositiveButton("Reset", (dialog, which) -> {
+                .setTitle("重置所有存档")
+                .setMessage("确定要删除全部 3 个已保存的存档吗？此操作无法撤销。")
+                .setPositiveButton("重置", (dialog, which) -> {
                     for (int i = 1; i <= 3; i++) {
                         getSharedPreferences("FlappyBirdProfile_" + i, MODE_PRIVATE).edit().clear().apply();
                     }
-                    Toast.makeText(SettingsActivity.this, "All profiles have been reset.", Toast.LENGTH_SHORT).show();
+                    Toast.makeText(SettingsActivity.this, "所有存档已重置。", Toast.LENGTH_SHORT).show();
                 })
-                .setNegativeButton("Cancel", null)
+                .setNegativeButton("取消", null)
                 .show());
 
         randomizeAllButton.setOnClickListener(v -> {
             randomizeAllSettings();
-            Toast.makeText(SettingsActivity.this, "Chaos engaged! All settings randomized.", Toast.LENGTH_SHORT).show();
+            Toast.makeText(SettingsActivity.this, "混乱开启！所有设置已随机化。", Toast.LENGTH_SHORT).show();
         });
-        
+
         originalModeSwitch.setOnCheckedChangeListener((buttonView, isChecked) -> {
             if (isChecked) {
                 new MaterialAlertDialogBuilder(SettingsActivity.this)
-                    .setTitle("Enable Original Mode?")
-                    .setMessage("This will override physics, spacing, and animations to mathematically match the original v1.3 experience. Custom settings will be ignored while this mode is active.")
-                    .setPositiveButton("Enable", (dialog, which) -> {
+                    .setTitle("启用原版模式？")
+                    .setMessage("这将覆盖物理、间距和动画效果，以在数值上还原原版 v1.3 的体验。启用该模式时，自定义设置将被忽略。")
+                    .setPositiveButton("启用", (dialog, which) -> {
                          saveCurrentSettings();
                          updatePreview();
                     })
-                    .setNegativeButton("Cancel", (dialog, which) -> {
+                    .setNegativeButton("取消", (dialog, which) -> {
                         buttonView.setChecked(false);
                     })
                     .show();
@@ -736,29 +736,29 @@ public class SettingsActivity extends AppCompatActivity {
             SharedPreferences.Editor profileEditor = profilePrefs.edit();
             profileEditor.clear();
             saveSettingsToEditor(profileEditor);
-            Toast.makeText(SettingsActivity.this, "Profile " + profileNum + " saved", Toast.LENGTH_SHORT).show();
+            Toast.makeText(SettingsActivity.this, "存档 " + profileNum + " 已保存", Toast.LENGTH_SHORT).show();
         });
 
         loadBtn.setOnClickListener(v -> {
             SharedPreferences profilePrefs = getSharedPreferences(profilePrefsName, MODE_PRIVATE);
             if(profilePrefs.getAll().isEmpty()){
-                Toast.makeText(SettingsActivity.this, "Profile " + profileNum + " is empty", Toast.LENGTH_SHORT).show();
+                Toast.makeText(SettingsActivity.this, "存档 " + profileNum + " 为空", Toast.LENGTH_SHORT).show();
                 return;
             }
             loadSettingsFromSource(profilePrefs);
             saveCurrentSettings();
-            Toast.makeText(SettingsActivity.this, "Profile " + profileNum + " loaded", Toast.LENGTH_SHORT).show();
+            Toast.makeText(SettingsActivity.this, "存档 " + profileNum + " 已加载", Toast.LENGTH_SHORT).show();
         });
 
         resetBtn.setOnClickListener(v -> new MaterialAlertDialogBuilder(SettingsActivity.this)
-                .setTitle("Reset Profile " + profileNum)
-                .setMessage("Are you sure you want to delete all settings saved in this profile?")
-                .setPositiveButton("Reset", (dialog, which) -> {
+                .setTitle("重置存档 " + profileNum)
+                .setMessage("确定要删除此存档中保存的所有设置吗？")
+                .setPositiveButton("重置", (dialog, which) -> {
                     SharedPreferences profilePrefs = getSharedPreferences(profilePrefsName, MODE_PRIVATE);
                     profilePrefs.edit().clear().apply();
-                    Toast.makeText(SettingsActivity.this, "Profile " + profileNum + " reset", Toast.LENGTH_SHORT).show();
+                    Toast.makeText(SettingsActivity.this, "存档 " + profileNum + " 已重置", Toast.LENGTH_SHORT).show();
                 })
-                .setNegativeButton("Cancel", null)
+                .setNegativeButton("取消", null)
                 .show());
     }
 
