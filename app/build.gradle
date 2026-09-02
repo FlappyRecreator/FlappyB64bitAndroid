@@ -2,6 +2,13 @@ plugins {
 	id 'com.android.application'
 }
 
+// 从项目根目录的 keystore.properties 读取签名配置（请勿提交到版本库）
+def keystorePropertiesFile = rootProject.file("keystore.properties")
+def keystoreProperties = new Properties()
+if (keystorePropertiesFile.exists()) {
+	keystoreProperties.load(new FileInputStream(keystorePropertiesFile))
+}
+
 android {
 	compileSdk 34
 	
@@ -16,14 +23,30 @@ android {
 		versionName "1.5 beta2"
 	}
 	
+	signingConfigs {
+		release {
+			if (keystorePropertiesFile.exists()) {
+				storeFile rootProject.file(keystoreProperties['storeFile'])
+				storePassword keystoreProperties['storePassword']
+				keyAlias keystoreProperties['keyAlias']
+				keyPassword keystoreProperties['keyPassword']
+			}
+		}
+	}
+
 	buildTypes {
 		release {
 			minifyEnabled false
 			proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+			if (keystorePropertiesFile.exists()) {
+				signingConfig signingConfigs.release
+			}
 		}
 	}
 	buildFeatures {
-		 viewBinding true
+		// 关闭 ViewBinding：代码未使用，且 settings.xml 视图过多，
+		// 生成的 SettingsBinding 构造器会超出 JVM 255 参数上限
+		viewBinding false
 	}
 }
 
