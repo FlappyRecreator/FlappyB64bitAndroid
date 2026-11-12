@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Fusion Pixel Font 没有粗体变体，flappy_bold 作为别名指向 flappy_font -->
+<font-family
+	xmlns:android="http://schemas.android.com/apk/res/android"
+	xmlns:app="http://schemas.android.com/apk/res-auto">
+	<font
+		android:font="@font/flappy_font"
+		android:fontStyle="normal"
+		android:fontWeight="700"
+		app:font="@font/flappy_font"
+		app:fontStyle="normal"
+		app:fontWeight="700" />
+</font-family>

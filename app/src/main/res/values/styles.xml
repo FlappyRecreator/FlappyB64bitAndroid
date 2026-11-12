@@ -1,5 +1,7 @@
 <resources>
-    <style name="AppTheme" parent="Theme.Material3Expressive.DayNight.NoActionBar">
+    <!-- 注：原工程引用的 Material3Expressive 主题需要 material 1.14+，
+         当前依赖为 1.12.0，故改用标准 Material3 主题 -->
+    <style name="AppTheme" parent="Theme.Material3.DayNight.NoActionBar">
         <item name="android:statusBarColor">@android:color/transparent</item>
         <item name="android:navigationBarColor">@android:color/transparent</item>
         <item name="android:windowLightStatusBar">?attr/isLightTheme</item>
@@ -8,9 +10,9 @@
         <item name="android:windowFullscreen">true</item>
         <item name="android:windowContentOverlay">@null</item>
     </style>
-    <style name="AppTheme.AppBarOverlay" parent="ThemeOverlay.Material3Expressive">
+    <style name="AppTheme.AppBarOverlay" parent="ThemeOverlay.Material3">
     </style>
-    <style name="AppTheme.PopupOverlay" parent="ThemeOverlay.Material3Expressive">
+    <style name="AppTheme.PopupOverlay" parent="ThemeOverlay.Material3">
     </style>
     <style name="AppTheme.DebugActivity" parent="AppTheme">
         <item name="windowActionBar">true</item>
