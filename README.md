@@ -6,7 +6,7 @@ An unofficial fan recreation of Flappy Bird for modern Android devices.
   <img src="https://github.com/user-attachments/assets/fd685be8-0166-4b06-a90b-afc2388b7258" alt="Flappy Bird 64-bit screenshot" width="295">
 </p>
 
-<p align="center"><b>Current version: 1.5</b></p>
+<p align="center"><b>Please give me a star!</b></p>
 
 ---
 
