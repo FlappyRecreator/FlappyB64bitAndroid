@@ -12,7 +12,7 @@ below are the ones that apply.
 
 - You may view, study, build and play this project for personal,
   non-commercial use.
-- You may fork it on GitHub and submit improvements through pull requests.
+- You may fork it on GitHub and submit improvements through pull requests though I normally won't accept any.
 - You may not sell it, monetize it or publish it anywhere else.
 - The Flappy Bird name, characters, artwork and sounds are not mine and
   are not covered by this license.
