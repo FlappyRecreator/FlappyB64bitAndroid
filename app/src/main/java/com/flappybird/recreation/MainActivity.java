@@ -52,6 +52,7 @@ import androidx.core.view.WindowInsetsControllerCompat;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Random;
 import java.util.Set;
 import java.util.concurrent.ExecutorService;
@@ -147,7 +148,6 @@ class GameView extends View implements Choreographer.FrameCallback {
     private static final float ROTATION_UP_SPEED_PER_SEC = 6.0f * TARGET_FPS;
     private static final float ROTATION_DOWN_SPEED_PER_SEC = 2.5f * TARGET_FPS;
     private static final float DEATH_ROTATION_SPEED_PER_SEC = 2.8f * TARGET_FPS;
-    private static final float DEATH_GRAVITY_MULTIPLIER = 1.5f;
     private static final float BIRD_HITBOX_PADDING_X = 0.10f;
     private static final float BIRD_HITBOX_PADDING_Y = 0.10f;
     private static final float BIRD_BOB_AMPLITUDE = 6f;
@@ -187,6 +187,16 @@ class GameView extends View implements Choreographer.FrameCallback {
     private static final float BUTTON_PRESS_SPEED = 25f;
     private static final float TRANSITION_FADE_SPEED_PER_SEC = 800.0f;
     private static final float FLASH_DECAY_PER_SEC = 1500f;
+    private static final int[] CRASH_FLASH_COLORS = {Color.WHITE, 0xFFFF3B30, 0xFFFFD23F, Color.BLACK};
+    private static final float FIXED_STEP_SEC = 1.0f / 60.0f;
+    private static final int MAX_FIXED_STEPS = 8;
+    private static final float PIXEL_STEP_EPSILON = 0.001f;
+    private static final float CLASSIC_TILT_KICK_PER_SEC = -600f;
+    private static final float CLASSIC_TILT_PULL_PER_SEC2 = 1440f;
+    private static final float SQUARE_HITBOX_SIZE = 20f;
+    private static final float FPS_REFRESH_SEC = 0.5f;
+    private static final float FPS_DIGIT_SCALE = 0.8f;
+    private static final int MIN_DAY_NIGHT_SEC = 5;
     private static final float FLAP_ANIMATION_TIMEOUT_SEC = 0.480f;
     private static final float WING_FRAME_SEC_PLAYING = 0.075f;
     private static final float WING_FRAME_SEC_IDLE = 0.150f;
@@ -209,7 +219,6 @@ class GameView extends View implements Choreographer.FrameCallback {
     private static final int WEATHER_STORM = 2;
     private static final int WEATHER_SNOW = 3;
     private static final int APOCALYPSE_SCORE = 600;
-    private static final float DAY_NIGHT_CYCLE_SEC = 120.0f;
     private static final float REFERENCE_SCALE = 4.5f;
     private static final float SMOKE_PER_SEC = 0.50f * TARGET_FPS;
     private static final float BURNT_SPARKS_PER_SEC = 0.40f * TARGET_FPS;
@@ -221,6 +230,15 @@ class GameView extends View implements Choreographer.FrameCallback {
     private static final int MAX_SPARK_PARTICLES = 192;
     private static final int MAX_ELECTRICITY_SEGMENTS = 96;
     private static final int HUE_FILTER_STEPS = 120;
+    private static final int MAX_EXTRA_LIVES = 9;
+    private static final float INVULNERABLE_SEC = 2.0f;
+    private static final float LIFE_ICON_SCALE = 0.6f;
+    private static final float PAUSE_BUTTON_SIZE = 22f;
+    private static final float PILOT_STEP_SEC = 1.0f / 60.0f;
+    private static final int PILOT_STEPS = 96;
+    private static final float PILOT_CRASH_COST = 1000f;
+    private static final float PILOT_FLAP_COOLDOWN_SEC = 0.12f;
+    private static final int[] PILOT_WAITS = {0, 3, 6, 9, 12, 16, 20, 25, 30, 38, 45};
     private static final float MOTION_BLUR_SHUTTER_SEC = 1.0f / 48.0f;
     private static final float MOTION_BLUR_MAX_STRENGTH = 10.0f;
     private static final float MOTION_BLUR_MAX_LENGTH = 48.0f;
@@ -254,6 +272,9 @@ class GameView extends View implements Choreographer.FrameCallback {
     private Paint pixelPaint, birdPaint, smoothPaint, trailPaint, smokePaint, sparkPaint;
     private Paint nightBgPaint, goldenPipePaint, electricityPipePaint, electricityGlowPaint;
     private Paint transitionPaint, flashPaint, darkenPaint;
+    private Paint hudPlatePaint, hudIconPaint, hitboxPaint;
+    private final Path hudIconPath = new Path();
+    private final RectF hudRect = new RectF();
     private Shader goldenPipeShader;
     private ColorFilter burntColorFilter;
     private final ColorFilter[] pipeColorFilters = new ColorFilter[PIPE_COLOR_COUNT];
@@ -350,6 +371,7 @@ class GameView extends View implements Choreographer.FrameCallback {
     private final Rect playButtonRect = new Rect();
     private final Rect scoreButtonRect = new Rect();
     private final Rect settingsButtonRect = new Rect();
+    private final Rect pauseButtonRect = new Rect();
     private Rect pressedButtonRect = null;
     private float playBtnProgress = 0, playBtnTarget = 0;
     private float scoreBtnProgress = 0, scoreBtnTarget = 0;
@@ -361,6 +383,13 @@ class GameView extends View implements Choreographer.FrameCallback {
     private boolean isFadingOut = false;
     private boolean isRestarting = false;
     private float flashAlpha = 0;
+    private int flashColor = Color.WHITE;
+    private float flashPeak = 0f, flashElapsed = 0f, flashLengthSec = 1f;
+    private boolean flashSharp = false;
+    private float birdTiltVelocity = 0f;
+    private float fpsTimer = 0f;
+    private int fpsFrames = 0, shownFps = 0;
+    private float stepAccumulator = 0f;
     private float shakeTimer = 0f;
     private float currentShakeMagnitude = 0f;
     private float rainbowHue = 0f;
@@ -378,6 +407,12 @@ class GameView extends View implements Choreographer.FrameCallback {
     private boolean isMegaStrike = false;
     private boolean hasTriggeredMegaStrike = false;
     private boolean isBirdBurnt = false;
+
+    private int livesLeft = 0;
+    private float invulnerableTimer = 0f;
+    private boolean isPaused = false;
+    private int difficultyScore = -1;
+    private float pilotFrameDelta = 1.0f / TARGET_FPS;
     private float burntTimer = 0f;
     private float pipeElectrificationTimer = 0f;
 
@@ -414,13 +449,25 @@ class GameView extends View implements Choreographer.FrameCallback {
     private boolean settingInfiniteFlapEnabled, settingJetpackModeEnabled, settingDrunkModeEnabled;
     private boolean settingDynamicDayNightEnabled, settingScreenShakeEnabled, settingGoldenPipeEnabled;
     private boolean settingMotionBlurEnabled;
+    private boolean settingCrashFlashEnabled, settingFixedStepEnabled, settingCeilingEnabled, settingBirdTiltEnabled;
+    private int settingCrashFlashColor, settingCrashFlashStrength, settingCrashFlashLengthMs;
+    private int settingMaxTiltUp, settingMaxTiltDown, settingScorePoint;
+    private float settingMaxFallSpeed, settingTiltSpeed;
+    private boolean settingPixelStepsEnabled, settingFlapLimitEnabled, settingShowHitboxes, settingShowFps;
+    private int settingTiltStyle, settingHitboxShape, settingGapPlacement, settingCrashFlashFade;
+    private int settingBirdPosition, settingStartHeight, settingSoundVolume, settingWeatherVolume;
+    private int settingDayNightSeconds, settingRampMinGap;
+    private float settingCrashGravity, settingWingSpeed, settingRampTopSpeed;
+    private boolean settingAutopilotEnabled, settingPauseButtonEnabled, settingAutoPauseEnabled;
+    private int settingExtraLives, settingSpeedRampPercent, settingGapShrinkPercent, settingBirdHue;
+    private int settingMedalBronze, settingMedalSilver, settingMedalGold, settingMedalPlatinum;
     private final Set<Integer> settingLightningScores = new HashSet<>();
     private int settingMegaStrikeScore = DEFAULT_MEGA_STRIKE_SCORE;
 
     public GameView(Context context) {
         super(context);
         prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
-        highScore = prefs.getInt(PREF_HIGH_SCORE, 0);
+        highScore = intPref(prefs.getAll(), PREF_HIGH_SCORE, 0);
         vibrator = ContextCompat.getSystemService(context, Vibrator.class);
         weatherSystem = new WeatherSystem(random);
 
@@ -473,6 +520,13 @@ class GameView extends View implements Choreographer.FrameCallback {
         transitionPaint = newOverlayPaint(Color.BLACK);
         flashPaint = newOverlayPaint(Color.WHITE);
         darkenPaint = newOverlayPaint(Color.BLACK);
+
+        hudPlatePaint = new Paint();
+        hudPlatePaint.setColor(Color.BLACK);
+        hudIconPaint = new Paint();
+        hudIconPaint.setColor(Color.WHITE);
+        hudIconPaint.setAntiAlias(true);
+        hitboxPaint = newStrokePaint(0xFFFF3B30);
 
         goldenPipePaint = newPixelPaint();
         goldenPipePaint.setXfermode(new PorterDuffXfermode(PorterDuff.Mode.SRC_ATOP));
@@ -545,54 +599,119 @@ class GameView extends View implements Choreographer.FrameCallback {
     }
 
     private void loadSettings() {
-        settingBirdColor = prefs.getInt(PREF_BIRD_COLOR, DEFAULT_BIRD_COLOR);
-        settingBackground = prefs.getInt(PREF_BACKGROUND, DEFAULT_BACKGROUND);
-        settingSoundEnabled = prefs.getBoolean(PREF_SOUND_ENABLED, DEFAULT_SOUND_ENABLED);
-        settingWingAnimationEnabled = prefs.getBoolean(PREF_WING_ANIMATION_ENABLED, DEFAULT_WING_ANIMATION_ENABLED);
-        settingPipeColor = prefs.getInt(PREF_PIPE_COLOR, DEFAULT_PIPE_COLOR);
-        settingHideSettingsIcon = prefs.getBoolean(PREF_HIDE_SETTINGS_ICON, DEFAULT_HIDE_SETTINGS_ICON);
-        settingGameOverOpacity = prefs.getInt(PREF_GAMEOVER_OPACITY, DEFAULT_GAMEOVER_OPACITY);
-        settingGameSpeed = prefs.getFloat(PREF_GAME_SPEED, DEFAULT_GAME_SPEED);
-        settingGravity = prefs.getFloat(PREF_GRAVITY, DEFAULT_GRAVITY);
-        settingJumpStrength = prefs.getFloat(PREF_JUMP_STRENGTH, DEFAULT_JUMP_STRENGTH);
-        settingPipeGap = prefs.getFloat(PREF_PIPE_GAP, DEFAULT_PIPE_GAP);
-        settingBirdHangDelay = prefs.getFloat(PREF_BIRD_HANG_DELAY, DEFAULT_BIRD_HANG_DELAY);
-        settingPipeSpacing = prefs.getFloat(PREF_PIPE_SPACING, DEFAULT_PIPE_SPACING);
-        settingBirdHitbox = prefs.getFloat(PREF_BIRD_HITBOX, DEFAULT_BIRD_HITBOX);
-        settingMovingPipesEnabled = prefs.getBoolean(PREF_MOVING_PIPES_ENABLED, DEFAULT_MOVING_PIPES_ENABLED);
-        settingPipeMoveTier1 = prefs.getInt(PREF_PIPE_MOVE_TIER_1_SCORE, DEFAULT_PIPE_MOVE_TIER_1_SCORE);
-        settingPipeMoveTier2 = prefs.getInt(PREF_PIPE_MOVE_TIER_2_SCORE, DEFAULT_PIPE_MOVE_TIER_2_SCORE);
-        settingNoClipEnabled = prefs.getBoolean(PREF_NO_CLIP_ENABLED, DEFAULT_NO_CLIP_ENABLED);
-        settingRainbowBirdEnabled = prefs.getBoolean(PREF_RAINBOW_BIRD_ENABLED, DEFAULT_RAINBOW_BIRD_ENABLED);
-        settingUpsideDownEnabled = prefs.getBoolean(PREF_UPSIDE_DOWN_ENABLED, DEFAULT_UPSIDE_DOWN_ENABLED);
-        settingReversePipesEnabled = prefs.getBoolean(PREF_REVERSE_PIPES_ENABLED, DEFAULT_REVERSE_PIPES_ENABLED);
-        settingPipeVariation = prefs.getFloat(PREF_PIPE_VARIATION, DEFAULT_PIPE_VARIATION);
-        settingScoreMultiplier = prefs.getInt(PREF_SCORE_MULTIPLIER, DEFAULT_SCORE_MULTIPLIER);
-        settingHapticFeedbackEnabled = prefs.getBoolean(PREF_HAPTIC_FEEDBACK_ENABLED, DEFAULT_HAPTIC_FEEDBACK_ENABLED);
-        settingBirdTrailEnabled = prefs.getBoolean(PREF_BIRD_TRAIL_ENABLED, DEFAULT_BIRD_TRAIL_ENABLED);
-        settingGhostModeEnabled = prefs.getBoolean(PREF_GHOST_MODE_ENABLED, DEFAULT_GHOST_MODE_ENABLED);
-        settingPipeSpeedVariation = prefs.getFloat(PREF_PIPE_SPEED_VARIATION, DEFAULT_PIPE_SPEED_VARIATION);
-        settingBirdSize = prefs.getFloat(PREF_BIRD_SIZE, DEFAULT_BIRD_SIZE);
-        settingPipeWidth = prefs.getFloat(PREF_PIPE_WIDTH, DEFAULT_PIPE_WIDTH);
-        settingBgScrollSpeed = prefs.getFloat(PREF_BG_SCROLL_SPEED, DEFAULT_BG_SCROLL_SPEED);
-        settingGroundScrollSpeed = prefs.getFloat(PREF_GROUND_SCROLL_SPEED, DEFAULT_GROUND_SCROLL_SPEED);
-        settingRandomPipeColorsEnabled = prefs.getBoolean(PREF_RANDOM_PIPE_COLORS_ENABLED, DEFAULT_RANDOM_PIPE_COLORS_ENABLED);
-        settingInfiniteFlapEnabled = prefs.getBoolean(PREF_INFINITE_FLAP_ENABLED, DEFAULT_INFINITE_FLAP_ENABLED);
-        settingJetpackModeEnabled = prefs.getBoolean(PREF_JETPACK_MODE_ENABLED, DEFAULT_JETPACK_MODE_ENABLED);
-        settingDrunkModeEnabled = prefs.getBoolean(PREF_DRUNK_MODE_ENABLED, DEFAULT_DRUNK_MODE_ENABLED);
-        settingDrunkModeStrength = prefs.getFloat(PREF_DRUNK_MODE_STRENGTH, DEFAULT_DRUNK_MODE_STRENGTH);
-        settingWeatherEffect = prefs.getInt(PREF_WEATHER_EFFECT, DEFAULT_WEATHER_EFFECT);
-        settingDynamicDayNightEnabled = prefs.getBoolean(PREF_DYNAMIC_DAY_NIGHT_ENABLED, DEFAULT_DYNAMIC_DAY_NIGHT_ENABLED);
-        settingScreenShakeEnabled = prefs.getBoolean(PREF_SCREEN_SHAKE_ENABLED, DEFAULT_SCREEN_SHAKE_ENABLED);
-        settingScreenShakeStrength = prefs.getFloat(PREF_SCREEN_SHAKE_STRENGTH, DEFAULT_SCREEN_SHAKE_STRENGTH);
-        settingGoldenPipeEnabled = prefs.getBoolean(PREF_GOLDEN_PIPE_ENABLED, DEFAULT_GOLDEN_PIPE_ENABLED);
-        settingGoldenPipeChance = prefs.getInt(PREF_GOLDEN_PIPE_CHANCE, DEFAULT_GOLDEN_PIPE_CHANCE);
-        settingGoldenPipeBonus = prefs.getInt(PREF_GOLDEN_PIPE_BONUS, DEFAULT_GOLDEN_PIPE_BONUS);
-        settingMegaStrikeScore = prefs.getInt(PREF_MEGA_STRIKE_SCORE, DEFAULT_MEGA_STRIKE_SCORE);
-        settingMotionBlurEnabled = prefs.getBoolean(PREF_MOTION_BLUR_ENABLED, DEFAULT_MOTION_BLUR_ENABLED);
-        settingMotionBlurStrength = prefs.getFloat(PREF_MOTION_BLUR_STRENGTH, DEFAULT_MOTION_BLUR_STRENGTH);
+        Map<String, ?> stored = prefs.getAll();
+        settingBirdColor = intPref(stored, PREF_BIRD_COLOR, DEFAULT_BIRD_COLOR);
+        settingBackground = intPref(stored, PREF_BACKGROUND, DEFAULT_BACKGROUND);
+        settingSoundEnabled = flagPref(stored, PREF_SOUND_ENABLED, DEFAULT_SOUND_ENABLED);
+        settingWingAnimationEnabled = flagPref(stored, PREF_WING_ANIMATION_ENABLED, DEFAULT_WING_ANIMATION_ENABLED);
+        settingPipeColor = intPref(stored, PREF_PIPE_COLOR, DEFAULT_PIPE_COLOR);
+        settingHideSettingsIcon = flagPref(stored, PREF_HIDE_SETTINGS_ICON, DEFAULT_HIDE_SETTINGS_ICON);
+        settingGameOverOpacity = intPref(stored, PREF_GAMEOVER_OPACITY, DEFAULT_GAMEOVER_OPACITY);
+        settingGameSpeed = floatPref(stored, PREF_GAME_SPEED, DEFAULT_GAME_SPEED);
+        settingGravity = floatPref(stored, PREF_GRAVITY, DEFAULT_GRAVITY);
+        settingJumpStrength = floatPref(stored, PREF_JUMP_STRENGTH, DEFAULT_JUMP_STRENGTH);
+        settingPipeGap = floatPref(stored, PREF_PIPE_GAP, DEFAULT_PIPE_GAP);
+        settingBirdHangDelay = floatPref(stored, PREF_BIRD_HANG_DELAY, DEFAULT_BIRD_HANG_DELAY);
+        settingPipeSpacing = floatPref(stored, PREF_PIPE_SPACING, DEFAULT_PIPE_SPACING);
+        settingBirdHitbox = floatPref(stored, PREF_BIRD_HITBOX, DEFAULT_BIRD_HITBOX);
+        settingMovingPipesEnabled = flagPref(stored, PREF_MOVING_PIPES_ENABLED, DEFAULT_MOVING_PIPES_ENABLED);
+        settingPipeMoveTier1 = intPref(stored, PREF_PIPE_MOVE_TIER_1_SCORE, DEFAULT_PIPE_MOVE_TIER_1_SCORE);
+        settingPipeMoveTier2 = intPref(stored, PREF_PIPE_MOVE_TIER_2_SCORE, DEFAULT_PIPE_MOVE_TIER_2_SCORE);
+        settingNoClipEnabled = flagPref(stored, PREF_NO_CLIP_ENABLED, DEFAULT_NO_CLIP_ENABLED);
+        settingRainbowBirdEnabled = flagPref(stored, PREF_RAINBOW_BIRD_ENABLED, DEFAULT_RAINBOW_BIRD_ENABLED);
+        settingUpsideDownEnabled = flagPref(stored, PREF_UPSIDE_DOWN_ENABLED, DEFAULT_UPSIDE_DOWN_ENABLED);
+        settingReversePipesEnabled = flagPref(stored, PREF_REVERSE_PIPES_ENABLED, DEFAULT_REVERSE_PIPES_ENABLED);
+        settingPipeVariation = floatPref(stored, PREF_PIPE_VARIATION, DEFAULT_PIPE_VARIATION);
+        settingScoreMultiplier = intPref(stored, PREF_SCORE_MULTIPLIER, DEFAULT_SCORE_MULTIPLIER);
+        settingHapticFeedbackEnabled = flagPref(stored, PREF_HAPTIC_FEEDBACK_ENABLED, DEFAULT_HAPTIC_FEEDBACK_ENABLED);
+        settingBirdTrailEnabled = flagPref(stored, PREF_BIRD_TRAIL_ENABLED, DEFAULT_BIRD_TRAIL_ENABLED);
+        settingGhostModeEnabled = flagPref(stored, PREF_GHOST_MODE_ENABLED, DEFAULT_GHOST_MODE_ENABLED);
+        settingPipeSpeedVariation = floatPref(stored, PREF_PIPE_SPEED_VARIATION, DEFAULT_PIPE_SPEED_VARIATION);
+        settingBirdSize = floatPref(stored, PREF_BIRD_SIZE, DEFAULT_BIRD_SIZE);
+        settingPipeWidth = floatPref(stored, PREF_PIPE_WIDTH, DEFAULT_PIPE_WIDTH);
+        settingBgScrollSpeed = floatPref(stored, PREF_BG_SCROLL_SPEED, DEFAULT_BG_SCROLL_SPEED);
+        settingGroundScrollSpeed = floatPref(stored, PREF_GROUND_SCROLL_SPEED, DEFAULT_GROUND_SCROLL_SPEED);
+        settingRandomPipeColorsEnabled = flagPref(stored, PREF_RANDOM_PIPE_COLORS_ENABLED, DEFAULT_RANDOM_PIPE_COLORS_ENABLED);
+        settingInfiniteFlapEnabled = flagPref(stored, PREF_INFINITE_FLAP_ENABLED, DEFAULT_INFINITE_FLAP_ENABLED);
+        settingJetpackModeEnabled = flagPref(stored, PREF_JETPACK_MODE_ENABLED, DEFAULT_JETPACK_MODE_ENABLED);
+        settingDrunkModeEnabled = flagPref(stored, PREF_DRUNK_MODE_ENABLED, DEFAULT_DRUNK_MODE_ENABLED);
+        settingDrunkModeStrength = floatPref(stored, PREF_DRUNK_MODE_STRENGTH, DEFAULT_DRUNK_MODE_STRENGTH);
+        settingWeatherEffect = intPref(stored, PREF_WEATHER_EFFECT, DEFAULT_WEATHER_EFFECT);
+        settingDynamicDayNightEnabled = flagPref(stored, PREF_DYNAMIC_DAY_NIGHT_ENABLED, DEFAULT_DYNAMIC_DAY_NIGHT_ENABLED);
+        settingScreenShakeEnabled = flagPref(stored, PREF_SCREEN_SHAKE_ENABLED, DEFAULT_SCREEN_SHAKE_ENABLED);
+        settingScreenShakeStrength = floatPref(stored, PREF_SCREEN_SHAKE_STRENGTH, DEFAULT_SCREEN_SHAKE_STRENGTH);
+        settingGoldenPipeEnabled = flagPref(stored, PREF_GOLDEN_PIPE_ENABLED, DEFAULT_GOLDEN_PIPE_ENABLED);
+        settingGoldenPipeChance = intPref(stored, PREF_GOLDEN_PIPE_CHANCE, DEFAULT_GOLDEN_PIPE_CHANCE);
+        settingGoldenPipeBonus = intPref(stored, PREF_GOLDEN_PIPE_BONUS, DEFAULT_GOLDEN_PIPE_BONUS);
+        settingMegaStrikeScore = intPref(stored, PREF_MEGA_STRIKE_SCORE, DEFAULT_MEGA_STRIKE_SCORE);
+        settingExtraLives = intPref(stored, PREF_EXTRA_LIVES, DEFAULT_EXTRA_LIVES);
+        settingAutopilotEnabled = flagPref(stored, PREF_AUTOPILOT_ENABLED, DEFAULT_AUTOPILOT_ENABLED);
+        settingPauseButtonEnabled = flagPref(stored, PREF_PAUSE_BUTTON_ENABLED, DEFAULT_PAUSE_BUTTON_ENABLED);
+        settingAutoPauseEnabled = flagPref(stored, PREF_AUTO_PAUSE_ENABLED, DEFAULT_AUTO_PAUSE_ENABLED);
+        settingSpeedRampPercent = intPref(stored, PREF_SPEED_RAMP, DEFAULT_SPEED_RAMP);
+        settingGapShrinkPercent = intPref(stored, PREF_GAP_SHRINK, DEFAULT_GAP_SHRINK);
+        settingBirdHue = intPref(stored, PREF_BIRD_HUE, DEFAULT_BIRD_HUE);
+        settingMedalBronze = intPref(stored, PREF_MEDAL_BRONZE_SCORE, DEFAULT_MEDAL_BRONZE_SCORE);
+        settingMedalSilver = intPref(stored, PREF_MEDAL_SILVER_SCORE, DEFAULT_MEDAL_SILVER_SCORE);
+        settingMedalGold = intPref(stored, PREF_MEDAL_GOLD_SCORE, DEFAULT_MEDAL_GOLD_SCORE);
+        settingMedalPlatinum = intPref(stored, PREF_MEDAL_PLATINUM_SCORE, DEFAULT_MEDAL_PLATINUM_SCORE);
+        settingMotionBlurEnabled = flagPref(stored, PREF_MOTION_BLUR_ENABLED, DEFAULT_MOTION_BLUR_ENABLED);
+        settingMotionBlurStrength = floatPref(stored, PREF_MOTION_BLUR_STRENGTH, DEFAULT_MOTION_BLUR_STRENGTH);
+        settingCrashFlashEnabled = flagPref(stored, PREF_CRASH_FLASH_ENABLED, DEFAULT_CRASH_FLASH_ENABLED);
+        settingCrashFlashColor = intPref(stored, PREF_CRASH_FLASH_COLOR, DEFAULT_CRASH_FLASH_COLOR);
+        settingCrashFlashStrength = intPref(stored, PREF_CRASH_FLASH_STRENGTH, DEFAULT_CRASH_FLASH_STRENGTH);
+        settingCrashFlashLengthMs = intPref(stored, PREF_CRASH_FLASH_LENGTH, DEFAULT_CRASH_FLASH_LENGTH);
+        settingFixedStepEnabled = flagPref(stored, PREF_FIXED_STEP_ENABLED, DEFAULT_FIXED_STEP_ENABLED);
+        settingMaxFallSpeed = floatPref(stored, PREF_MAX_FALL_SPEED, DEFAULT_MAX_FALL_SPEED);
+        settingCeilingEnabled = flagPref(stored, PREF_CEILING_ENABLED, DEFAULT_CEILING_ENABLED);
+        settingBirdTiltEnabled = flagPref(stored, PREF_BIRD_TILT_ENABLED, DEFAULT_BIRD_TILT_ENABLED);
+        settingMaxTiltUp = intPref(stored, PREF_MAX_TILT_UP, DEFAULT_MAX_TILT_UP);
+        settingMaxTiltDown = intPref(stored, PREF_MAX_TILT_DOWN, DEFAULT_MAX_TILT_DOWN);
+        settingTiltSpeed = floatPref(stored, PREF_TILT_SPEED, DEFAULT_TILT_SPEED);
+        settingScorePoint = intPref(stored, PREF_SCORE_POINT, DEFAULT_SCORE_POINT);
+        settingPixelStepsEnabled = flagPref(stored, PREF_PIXEL_STEPS_ENABLED, DEFAULT_PIXEL_STEPS_ENABLED);
+        settingTiltStyle = intPref(stored, PREF_TILT_STYLE, DEFAULT_TILT_STYLE);
+        settingFlapLimitEnabled = flagPref(stored, PREF_FLAP_LIMIT_ENABLED, DEFAULT_FLAP_LIMIT_ENABLED);
+        settingHitboxShape = intPref(stored, PREF_HITBOX_SHAPE, DEFAULT_HITBOX_SHAPE);
+        settingGapPlacement = intPref(stored, PREF_GAP_PLACEMENT, DEFAULT_GAP_PLACEMENT);
+        settingCrashFlashFade = intPref(stored, PREF_CRASH_FLASH_FADE, DEFAULT_CRASH_FLASH_FADE);
+        settingCrashGravity = floatPref(stored, PREF_CRASH_GRAVITY, DEFAULT_CRASH_GRAVITY);
+        settingBirdPosition = intPref(stored, PREF_BIRD_POSITION, DEFAULT_BIRD_POSITION);
+        settingStartHeight = intPref(stored, PREF_START_HEIGHT, DEFAULT_START_HEIGHT);
+        settingWingSpeed = floatPref(stored, PREF_WING_SPEED, DEFAULT_WING_SPEED);
+        settingSoundVolume = intPref(stored, PREF_SOUND_VOLUME, DEFAULT_SOUND_VOLUME);
+        settingWeatherVolume = intPref(stored, PREF_WEATHER_VOLUME, DEFAULT_WEATHER_VOLUME);
+        settingDayNightSeconds = intPref(stored, PREF_DAY_NIGHT_LENGTH, DEFAULT_DAY_NIGHT_LENGTH);
+        settingShowHitboxes = flagPref(stored, PREF_SHOW_HITBOXES, DEFAULT_SHOW_HITBOXES);
+        settingShowFps = flagPref(stored, PREF_SHOW_FPS, DEFAULT_SHOW_FPS);
+        settingRampTopSpeed = floatPref(stored, PREF_RAMP_TOP_SPEED, DEFAULT_RAMP_TOP_SPEED);
+        settingRampMinGap = intPref(stored, PREF_RAMP_MIN_GAP, DEFAULT_RAMP_MIN_GAP);
 
-        parseLightningScores(prefs.getString(PREF_LIGHTNING_SCORES, DEFAULT_LIGHTNING_SCORES));
+        parseLightningScores(textPref(stored, PREF_LIGHTNING_SCORES, DEFAULT_LIGHTNING_SCORES));
+    }
+
+    private static int intPref(Map<String, ?> stored, String key, int fallback) {
+        Object value = stored.get(key);
+        if (!(value instanceof Number)) return fallback;
+        float number = ((Number) value).floatValue();
+        return Float.isNaN(number) || Float.isInfinite(number) ? fallback : ((Number) value).intValue();
+    }
+
+    private static float floatPref(Map<String, ?> stored, String key, float fallback) {
+        Object value = stored.get(key);
+        if (!(value instanceof Number)) return fallback;
+        float number = ((Number) value).floatValue();
+        return Float.isNaN(number) || Float.isInfinite(number) ? fallback : number;
+    }
+
+    private static boolean flagPref(Map<String, ?> stored, String key, boolean fallback) {
+        Object value = stored.get(key);
+        return value instanceof Boolean ? (Boolean) value : fallback;
+    }
+
+    private static String textPref(Map<String, ?> stored, String key, String fallback) {
+        Object value = stored.get(key);
+        return value instanceof String ? (String) value : fallback;
     }
 
     private void parseLightningScores(String list) {
@@ -889,10 +1008,14 @@ class GameView extends View implements Choreographer.FrameCallback {
         weatherSystem.setHeavyRain(false);
 
         speedVariation = 1.0f + (random.nextFloat() - 0.5f) * 2 * settingPipeSpeedVariation;
+        score = 0;
         applyTuning();
 
         baseBirdX = gameplayBirdX;
         isRestarting = false;
+        isPaused = false;
+        livesLeft = Math.max(0, Math.min(MAX_EXTRA_LIVES, settingExtraLives));
+        invulnerableTimer = 0f;
         hasTier1Triggered = false;
         hasTier2Triggered = false;
         pipeMoveStartTime = -1;
@@ -951,6 +1074,7 @@ class GameView extends View implements Choreographer.FrameCallback {
         if (settingUpsideDownEnabled) birdY = screenHeight - birdY;
         birdVelocityY = 0;
         birdRotation = 0;
+        birdTiltVelocity = 0f;
         birdFrame = 0;
 
         spawnPipes();
@@ -967,12 +1091,24 @@ class GameView extends View implements Choreographer.FrameCallback {
         float pipeDirection = settingReversePipesEnabled ? -1 : 1;
         gravityPerSec = baseGravityPerSec * settingGravity * gravityDirection;
         flapVelocityPerSec = baseFlapVelocityPerSec * settingJumpStrength * gravityDirection;
-        pipeSpeedPerSec = basePipeSpeedPerSec * settingGameSpeed * speedVariation * pipeDirection;
+        float tensOfPoints = Math.max(0, score) / 10f;
+        float topSpeed = Math.max(1f, settingRampTopSpeed);
+        float smallestGap = Math.max(10, Math.min(100, settingRampMinGap)) / 100f;
+        float speedRamp = Math.min(topSpeed, 1f + Math.max(0, settingSpeedRampPercent) / 100f * tensOfPoints);
+        float gapSqueeze = Math.max(smallestGap, 1f - Math.max(0, settingGapShrinkPercent) / 100f * tensOfPoints);
+        difficultyScore = score;
+
+        pipeSpeedPerSec = basePipeSpeedPerSec * settingGameSpeed * speedVariation * pipeDirection * speedRamp;
         rotationDelayThresholdPerSec = baseRotationDelayThresholdPerSec * settingBirdHangDelay;
 
-        pipeGap = (int) (UNSCALED_BIRD_HEIGHT_FOR_GAP * scale * PIPE_GAP_BIRD_HEIGHT_MULTIPLIER * settingPipeGap);
+        pipeGap = (int) (UNSCALED_BIRD_HEIGHT_FOR_GAP * scale * PIPE_GAP_BIRD_HEIGHT_MULTIPLIER * settingPipeGap * gapSqueeze);
         pipeSpacing = Math.max(1, (int) (unscaledBgDay.getWidth() * PIPE_SPACING_FACTOR * scale * settingPipeSpacing));
-        gameplayBirdX = settingReversePipesEnabled ? screenWidth * 2 / 3f : screenWidth / 3f;
+        if (settingBirdPosition == DEFAULT_BIRD_POSITION) {
+            gameplayBirdX = settingReversePipesEnabled ? screenWidth * 2 / 3f : screenWidth / 3f;
+        } else {
+            float share = Math.max(10, Math.min(90, settingBirdPosition)) / 100f;
+            gameplayBirdX = screenWidth * (settingReversePipesEnabled ? 1f - share : share);
+        }
     }
 
     private int requiredPipeCount() {
@@ -1021,7 +1157,12 @@ class GameView extends View implements Choreographer.FrameCallback {
     }
 
     private void randomizePipe(Pipe pipe) {
-        pipe.resetHeight(pipeGap, getPlayableHeight() - groundHeight, systemBarTop, settingPipeVariation);
+        int playHeight = getPlayableHeight() - groundHeight;
+        if (settingGapPlacement == GAP_PLACEMENT_CLASSIC) {
+            pipe.resetHeightClassic(pipeGap, playHeight, systemBarTop, settingPipeVariation, scale);
+        } else {
+            pipe.resetHeight(pipeGap, playHeight, systemBarTop, settingPipeVariation);
+        }
         pipe.isScored = false;
 
         int color = settingRandomPipeColorsEnabled ? random.nextInt(PIPE_COLOR_COUNT) : settingPipeColor;
@@ -1031,12 +1172,17 @@ class GameView extends View implements Choreographer.FrameCallback {
     }
 
     private void update(float realDeltaTime) {
+        if (isPaused) return;
         clock += realDeltaTime;
         float gameDeltaTime = realDeltaTime * timeDilation;
         GameState stateBefore = gameState;
         float birdXBefore = birdX, birdYBefore = birdY, birdRotationBefore = birdRotation;
 
-        if (flashAlpha > 0) flashAlpha = Math.max(0f, flashAlpha - FLASH_DECAY_PER_SEC * realDeltaTime);
+        if (flashAlpha > 0) {
+            flashElapsed += realDeltaTime;
+            float left = Math.max(0f, 1f - flashElapsed / flashLengthSec);
+            flashAlpha = flashPeak * (flashSharp ? left * left * left * left * left : left);
+        }
         updateButtonAnimations(realDeltaTime);
         updateCinematicSequence(realDeltaTime);
         updateScrolling(gameDeltaTime);
@@ -1062,7 +1208,7 @@ class GameView extends View implements Choreographer.FrameCallback {
                 break;
             case WAITING:
                 birdX = baseBirdX;
-                birdY = idleBirdY();
+                birdY = waitingBirdY();
                 if (settingUpsideDownEnabled) birdY = screenHeight - birdY;
                 birdRotation = 0;
                 break;
@@ -1167,11 +1313,15 @@ class GameView extends View implements Choreographer.FrameCallback {
             boolean recentlyFlapped = clock - lastFlapTime < FLAP_ANIMATION_TIMEOUT_SEC;
             boolean flapping = (settingWingAnimationEnabled && (settingInfiniteFlapEnabled || recentlyFlapped))
                     || (settingJetpackModeEnabled && isScreenPressed);
-            birdFrame = flapping ? (int) (clock / WING_FRAME_SEC_PLAYING) % birdBitmaps.length : 1;
+            birdFrame = flapping ? (int) (clock / (WING_FRAME_SEC_PLAYING / wingSpeed())) % birdBitmaps.length : 1;
         } else if (gameState == GameState.HOME || gameState == GameState.TRANSITION_TO_WAITING
                 || gameState == GameState.WAITING) {
-            birdFrame = settingWingAnimationEnabled ? (int) (clock / WING_FRAME_SEC_IDLE) % birdBitmaps.length : 1;
+            birdFrame = settingWingAnimationEnabled ? (int) (clock / (WING_FRAME_SEC_IDLE / wingSpeed())) % birdBitmaps.length : 1;
         }
+    }
+
+    private float wingSpeed() {
+        return Math.max(0.1f, Math.min(10f, settingWingSpeed));
     }
 
     private boolean isApocalypse() {
@@ -1226,7 +1376,8 @@ class GameView extends View implements Choreographer.FrameCallback {
         updateParticles(gameDeltaTime);
 
         if (settingDynamicDayNightEnabled && (gameState == GameState.PLAYING || gameState == GameState.WAITING)) {
-            dayNightCycleProgress = (dayNightCycleProgress + gameDeltaTime / DAY_NIGHT_CYCLE_SEC) % 1.0f;
+            float cycleSec = Math.max(MIN_DAY_NIGHT_SEC, settingDayNightSeconds);
+            dayNightCycleProgress = (dayNightCycleProgress + gameDeltaTime / cycleSec) % 1.0f;
         }
     }
 
@@ -1240,7 +1391,7 @@ class GameView extends View implements Choreographer.FrameCallback {
             trailStart = (trailStart + 1) % MAX_TRAIL_PARTICLES;
         }
         birdTrail[index].set(birdX, birdY, birdRotation, currentBirdColor, birdFrame,
-                settingRainbowBirdEnabled ? rainbowHue : -1);
+                settingRainbowBirdEnabled ? rainbowHue : (settingBirdHue != 0 ? settingBirdHue : -1));
     }
 
     private void spawnSmoke(float x, float y) {
@@ -1280,20 +1431,59 @@ class GameView extends View implements Choreographer.FrameCallback {
         return playAreaCenterY() + (float) (Math.sin(clock * BIRD_BOB_SPEED) * BIRD_BOB_AMPLITUDE * scale);
     }
 
+    private float waitingBirdY() {
+        if (settingStartHeight == DEFAULT_START_HEIGHT) return idleBirdY();
+        float share = 1f - Math.max(10, Math.min(90, settingStartHeight)) / 100f;
+        float anchor = systemBarTop + (getPlayableHeight() - groundHeight) * share;
+        return anchor + (float) (Math.sin(clock * BIRD_BOB_SPEED) * BIRD_BOB_AMPLITUDE * scale);
+    }
+
+    private boolean pixelSteps() {
+        return settingPixelStepsEnabled && settingFixedStepEnabled && timeDilation == 1.0f;
+    }
+
+    private float moveBird(float y, float travel) {
+        if (!pixelSteps()) return y + travel;
+        float source = (y - systemBarTop + travel) / scale;
+        float snapped = settingUpsideDownEnabled
+                ? (float) Math.ceil(source - PIXEL_STEP_EPSILON)
+                : (float) Math.floor(source + PIXEL_STEP_EPSILON);
+        return systemBarTop + snapped * scale;
+    }
+
+    private float hitboxHalfHeight() {
+        float multiplier = Math.max(0.0f, settingBirdHitbox) * settingBirdSize / 2f;
+        if (settingHitboxShape == HITBOX_SHAPE_SQUARE) return SQUARE_HITBOX_SIZE * scale * multiplier;
+        return birdBitmaps[1].getHeight() * (1.0f - 2.0f * BIRD_HITBOX_PADDING_Y) * multiplier;
+    }
+
+    private boolean canFlapAt(float y) {
+        if (!settingFlapLimitEnabled || settingUpsideDownEnabled) return true;
+        return y - hitboxHalfHeight() >= systemBarTop;
+    }
+
+    private void kickTilt() {
+        birdTiltVelocity = CLASSIC_TILT_KICK_PER_SEC * Math.max(0.05f, settingTiltSpeed);
+    }
+
     private float birdHalfHeight(int frame) {
         return (birdBitmaps[frame].getHeight() * settingBirdSize) / 2f;
     }
 
     private void updatePlaying(float realDeltaTime, float gameDeltaTime) {
+        if (invulnerableTimer > 0) invulnerableTimer -= gameDeltaTime;
+        if (settingAutopilotEnabled) runAutopilot(gameDeltaTime);
+
         if (settingJetpackModeEnabled && isScreenPressed) {
             float thrust = jetpackThrustPerSec * settingJumpStrength * (settingUpsideDownEnabled ? -1 : 1);
             birdVelocityY -= thrust * gameDeltaTime;
+            kickTilt();
         }
 
-        birdVelocityY += gravityPerSec * gameDeltaTime;
-        birdY += birdVelocityY * gameDeltaTime;
+        birdVelocityY = capFall(birdVelocityY + gravityPerSec * gameDeltaTime);
+        birdY = moveBird(birdY, birdVelocityY * gameDeltaTime);
 
-        if (!settingNoClipEnabled && !settingUpsideDownEnabled) {
+        if (!settingNoClipEnabled && !settingUpsideDownEnabled && settingCeilingEnabled) {
             float halfHeight = birdHalfHeight(birdFrame);
             float ceiling = systemBarTop - halfHeight - halfHeight * CEILING_OVERSHOOT;
             if (birdY < ceiling) {
@@ -1312,19 +1502,78 @@ class GameView extends View implements Choreographer.FrameCallback {
 
         if (settingWeatherEffect == WEATHER_STORM) updateStorm(realDeltaTime);
 
+        updateTilt(gameDeltaTime);
+    }
+
+    private float fallLimit() {
+        return Math.abs(baseFlapVelocityPerSec) * settingMaxFallSpeed;
+    }
+
+    private float capFall(float velocity) {
+        if (settingMaxFallSpeed <= 0f) return velocity;
+        float limit = fallLimit();
+        return settingUpsideDownEnabled ? Math.max(-limit, velocity) : Math.min(limit, velocity);
+    }
+
+    private float tiltUpLimit() {
+        return settingBirdTiltEnabled ? Math.max(0, Math.min(90, settingMaxTiltUp)) : 0f;
+    }
+
+    private float tiltDownLimit() {
+        return settingBirdTiltEnabled ? Math.max(0, Math.min(90, settingMaxTiltDown)) : 0f;
+    }
+
+    private void updateTilt(float dt) {
+        if (!settingBirdTiltEnabled) {
+            birdRotation = 0f;
+            return;
+        }
+        float speed = Math.max(0.05f, settingTiltSpeed);
+        float up = tiltUpLimit();
+        float down = tiltDownLimit();
+        if (settingTiltStyle == TILT_STYLE_CLASSIC) {
+            float side = settingUpsideDownEnabled ? -1f : 1f;
+            float angle = birdRotation * side + birdTiltVelocity * dt;
+            birdTiltVelocity += CLASSIC_TILT_PULL_PER_SEC2 * speed * speed * dt;
+            birdRotation = Math.max(-up, Math.min(down, angle)) * side;
+            return;
+        }
         if (settingUpsideDownEnabled) {
             if (birdVelocityY > 0) {
-                birdRotation = Math.min(25f, birdRotation + ROTATION_UP_SPEED_PER_SEC * gameDeltaTime);
+                birdRotation = Math.min(up, birdRotation + ROTATION_UP_SPEED_PER_SEC * speed * dt);
             } else if (birdVelocityY < -rotationDelayThresholdPerSec) {
-                birdRotation = Math.max(-90f, birdRotation - ROTATION_DOWN_SPEED_PER_SEC * gameDeltaTime);
+                birdRotation = Math.max(-down, birdRotation - ROTATION_DOWN_SPEED_PER_SEC * speed * dt);
             }
         } else {
             if (birdVelocityY < 0) {
-                birdRotation = Math.max(-25f, birdRotation - ROTATION_UP_SPEED_PER_SEC * gameDeltaTime);
+                birdRotation = Math.max(-up, birdRotation - ROTATION_UP_SPEED_PER_SEC * speed * dt);
             } else if (birdVelocityY > rotationDelayThresholdPerSec) {
-                birdRotation = Math.min(90f, birdRotation + ROTATION_DOWN_SPEED_PER_SEC * gameDeltaTime);
+                birdRotation = Math.min(down, birdRotation + ROTATION_DOWN_SPEED_PER_SEC * speed * dt);
             }
         }
+    }
+
+    private void startFlash(int color, float alpha, float lengthSec, boolean sharp) {
+        if (alpha <= 0f) return;
+        if (flashAlpha > 0f && flashColor != color && flashAlpha > alpha) return;
+        flashColor = color;
+        flashPeak = Math.min(255f, alpha);
+        flashAlpha = flashPeak;
+        flashLengthSec = Math.max(0.01f, lengthSec);
+        flashElapsed = 0f;
+        flashSharp = sharp;
+    }
+
+    private void startCrashFlash(float share) {
+        if (!settingCrashFlashEnabled) return;
+        int index = settingCrashFlashColor >= 0 && settingCrashFlashColor < CRASH_FLASH_COLORS.length ? settingCrashFlashColor : 0;
+        float strength = Math.max(0, Math.min(100, settingCrashFlashStrength)) / 100f;
+        startFlash(CRASH_FLASH_COLORS[index], 255f * strength * share, Math.max(10, settingCrashFlashLengthMs) / 1000f,
+                settingCrashFlashFade == FLASH_FADE_SHARP);
+    }
+
+    private void startLightningFlash() {
+        startFlash(Color.WHITE, 255f, 255f / FLASH_DECAY_PER_SEC, false);
     }
 
     private void updateStorm(float realDeltaTime) {
@@ -1342,7 +1591,7 @@ class GameView extends View implements Choreographer.FrameCallback {
     }
 
     private void updateTransitionToWaiting(float dt) {
-        birdY = idleBirdY();
+        birdY = isFadingOut ? idleBirdY() : waitingBirdY();
         if (settingUpsideDownEnabled) birdY = screenHeight - birdY;
         birdRotation = 0;
 
@@ -1372,12 +1621,15 @@ class GameView extends View implements Choreographer.FrameCallback {
         boolean gaveUpWaiting = !isOnGround && clock - gameOverTime > GAME_OVER_MAX_FALL_SEC;
 
         if (!isOnGround && !gaveUpWaiting) {
-            birdVelocityY += (gravityPerSec * DEATH_GRAVITY_MULTIPLIER) * dt;
-            birdY += birdVelocityY * dt;
-            if (settingUpsideDownEnabled) {
-                if (birdRotation > -90) birdRotation -= DEATH_ROTATION_SPEED_PER_SEC * dt;
+            birdVelocityY = capFall(birdVelocityY + (gravityPerSec * Math.max(0f, settingCrashGravity)) * dt);
+            birdY = moveBird(birdY, birdVelocityY * dt);
+            float deathAngle = tiltDownLimit();
+            if (settingTiltStyle == TILT_STYLE_CLASSIC) {
+                updateTilt(dt);
+            } else if (settingUpsideDownEnabled) {
+                birdRotation = Math.max(-deathAngle, birdRotation - DEATH_ROTATION_SPEED_PER_SEC * dt);
             } else {
-                if (birdRotation < 90) birdRotation += DEATH_ROTATION_SPEED_PER_SEC * dt;
+                birdRotation = Math.min(deathAngle, birdRotation + DEATH_ROTATION_SPEED_PER_SEC * dt);
             }
             birdHitGroundTime = -1;
             return;
@@ -1386,10 +1638,10 @@ class GameView extends View implements Choreographer.FrameCallback {
         if (isOnGround) {
             if (settingUpsideDownEnabled) {
                 birdY = systemBarTop + halfHeight;
-                birdRotation = -90f;
+                birdRotation = -tiltDownLimit();
             } else {
                 birdY = groundTop - halfHeight;
-                birdRotation = 90f;
+                birdRotation = tiltDownLimit();
             }
         }
         birdFrame = 1;
@@ -1515,7 +1767,15 @@ class GameView extends View implements Choreographer.FrameCallback {
                         pipesAreStopping, stopDecay, waveLength);
             }
 
-            boolean passedBird = settingReversePipesEnabled ? pipe.x > birdX : pipe.x + pipe.width < birdX;
+            float scoreShare = settingScorePoint == SCORE_POINT_START ? 0f : settingScorePoint == SCORE_POINT_MIDDLE ? 0.5f : 1f;
+            boolean passedBird;
+            if (settingScorePoint == SCORE_POINT_CLASSIC) {
+                passedBird = settingReversePipesEnabled ? pipe.x + pipe.width >= birdRect.right : pipe.x <= birdRect.left;
+            } else {
+                passedBird = settingReversePipesEnabled
+                        ? pipe.x + pipe.width * (1f - scoreShare) > birdX
+                        : pipe.x + pipe.width * scoreShare < birdX;
+            }
             if (!pipe.isScored && passedBird) {
                 pipe.isScored = true;
                 score += settingScoreMultiplier;
@@ -1531,6 +1791,9 @@ class GameView extends View implements Choreographer.FrameCallback {
                 randomizePipe(pipe);
             }
         }
+
+        boolean difficultyGrows = settingSpeedRampPercent > 0 || settingGapShrinkPercent > 0;
+        if (difficultyGrows && score != difficultyScore) applyTuning();
     }
 
     private void updatePipeMotion(float dt) {
@@ -1580,6 +1843,10 @@ class GameView extends View implements Choreographer.FrameCallback {
         float baseHitboxWidth = currentBirdBitmap.getWidth() * (1.0f - 2.0f * BIRD_HITBOX_PADDING_X);
         float baseHitboxHeight = currentBirdBitmap.getHeight() * (1.0f - 2.0f * BIRD_HITBOX_PADDING_Y);
         float hitboxMultiplier = Math.max(0.0f, settingBirdHitbox);
+        if (settingHitboxShape == HITBOX_SHAPE_SQUARE) {
+            baseHitboxWidth = SQUARE_HITBOX_SIZE * scale;
+            baseHitboxHeight = SQUARE_HITBOX_SIZE * scale;
+        }
         float halfWidth = baseHitboxWidth * hitboxMultiplier * settingBirdSize / 2f;
         float halfHeight = baseHitboxHeight * hitboxMultiplier * settingBirdSize / 2f;
         birdRect.set((int) (birdX - halfWidth), (int) (birdY - halfHeight),
@@ -1591,38 +1858,186 @@ class GameView extends View implements Choreographer.FrameCallback {
         float halfHeight = birdHalfHeight(birdFrame);
         float groundTop = groundTopY();
 
-        if (settingUpsideDownEnabled) {
-            if (birdRect.bottom >= groundTop || birdY - halfHeight <= systemBarTop) {
+        boolean hitFloor = settingUpsideDownEnabled ? birdRect.bottom >= groundTop : birdY + halfHeight >= groundTop;
+        boolean hitRoof = settingUpsideDownEnabled && birdY - halfHeight <= systemBarTop;
+        if (hitFloor || hitRoof) {
+            if (!surviveHit()) {
                 gameOver();
                 return;
             }
-        } else if (birdY + halfHeight >= groundTop) {
-            gameOver();
+            float bounce = Math.max(Math.abs(flapVelocityPerSec), Math.abs(baseFlapVelocityPerSec) * 0.5f);
+            if (hitFloor) {
+                birdY = Math.min(birdY, groundTop - halfHeight - 1f);
+                birdVelocityY = -bounce;
+            } else {
+                birdY = Math.max(birdY, systemBarTop + halfHeight + 1f);
+                birdVelocityY = bounce;
+            }
+            kickTilt();
             return;
         }
 
+        if (invulnerableTimer > 0) return;
         for (int i = 0; i < pipes.size(); i++) {
             Pipe pipe = pipes.get(i);
             if (Rect.intersects(birdRect, pipe.getTopHeadRect(settingPipeWidth))
                     || Rect.intersects(birdRect, pipe.getTopBodyRect(settingPipeWidth))
                     || Rect.intersects(birdRect, pipe.getBottomHeadRect(pipeGap, settingPipeWidth))
                     || Rect.intersects(birdRect, pipe.getBottomBodyRect(pipeGap, settingPipeWidth))) {
-                gameOver();
+                if (!surviveHit()) gameOver();
                 return;
             }
         }
+    }
+
+    private boolean surviveHit() {
+        if (invulnerableTimer > 0) return true;
+        if (livesLeft <= 0) return false;
+        livesLeft--;
+        invulnerableTimer = INVULNERABLE_SEC;
+        startCrashFlash(150f / 255f);
+        playSound(soundHit);
+        triggerShake(5.0f, 0.3f);
+        return true;
+    }
+
+    private float gapTopOf(Pipe pipe) {
+        return pipe.getTopPipeY() + pipe.height;
+    }
+
+    private float gapTopAt(Pipe pipe, float shift, float time) {
+        if (!settingMovingPipesEnabled || !pipesAreMoving || pipesAreStopping) return gapTopOf(pipe);
+        float counter = pipeAnimationCounter + pipeAnimationSpeed * TARGET_FPS * time;
+        float phase = ((pipe.x - shift) / (PIPE_WAVE_LENGTH * fxScale)) * (float) Math.PI;
+        return pipe.topPipeY + (float) Math.sin(counter + phase) * currentPipeMoveRange;
+    }
+
+    private Pipe nextPipeAhead(float shift, float halfWidth, float pilotX) {
+        Pipe best = null;
+        float bestDistance = Float.MAX_VALUE;
+        for (int i = 0; i < pipes.size(); i++) {
+            Pipe pipe = pipes.get(i);
+            float visualWidth = pipe.width * settingPipeWidth;
+            float left = pipe.x - shift - (visualWidth - pipe.width) / 2f;
+            float distance = settingReversePipesEnabled
+                    ? (pilotX + halfWidth) - left
+                    : (left + visualWidth) - (pilotX - halfWidth);
+            if (distance >= 0f && distance < bestDistance) {
+                bestDistance = distance;
+                best = pipe;
+            }
+        }
+        return best;
+    }
+
+    private boolean pilotWantsLift(float y, float velocity, float top, float halfHeight) {
+        if (settingJetpackModeEnabled) {
+            float side = settingUpsideDownEnabled ? -1f : 1f;
+            float aim = (top + pipeGap / 2f) * side;
+            float position = y * side;
+            float speed = velocity * side;
+            float pull = Math.abs(gravityPerSec);
+            float push = Math.abs(jetpackThrustPerSec * settingJumpStrength) - pull;
+            float rest;
+            if (speed < 0f) rest = pull > 0f ? position - speed * speed / (2f * pull) : -Float.MAX_VALUE;
+            else rest = push > 0f ? position + speed * speed / (2f * push) : Float.MAX_VALUE;
+            return rest > aim;
+        }
+        float margin = pipeGap * 0.14f;
+        return settingUpsideDownEnabled
+                ? y < top + halfHeight + margin
+                : y > top + pipeGap - halfHeight - margin;
+    }
+
+    private float flightCost(boolean liftNow, int waitSteps, float halfWidth, float halfHeight) {
+        boolean flipped = settingUpsideDownEnabled;
+        float groundTop = groundTopY();
+        float thrust = jetpackThrustPerSec * settingJumpStrength * (flipped ? -1 : 1);
+        float y = birdY;
+        float velocity = birdVelocityY;
+        float sinceFlap = (float) (clock - lastFlapTime);
+        float drift = Math.min(screenWidth, referenceWidth()) * 0.15f * settingDrunkModeStrength;
+        float cost = 0f;
+
+        for (int step = 0; step < PILOT_STEPS; step++) {
+            float time = PILOT_STEP_SEC * step;
+            float shift = pipeSpeedPerSec * time;
+            float pilotX = settingDrunkModeEnabled
+                    ? baseBirdX + (float) Math.sin(drunkModePhase + 2.0f * (time + PILOT_STEP_SEC)) * drift
+                    : birdX;
+            Pipe next = nextPipeAhead(shift, halfWidth, pilotX);
+            float top = next != null ? gapTopAt(next, shift, time) : playAreaCenterY() - pipeGap / 2f;
+            float bottom = top + pipeGap;
+
+            boolean lift;
+            if (step == 0) lift = liftNow;
+            else if (step <= waitSteps) lift = settingJetpackModeEnabled && liftNow;
+            else lift = pilotWantsLift(y, velocity, top, halfHeight);
+            if (settingJetpackModeEnabled) {
+                if (lift) velocity -= thrust * PILOT_STEP_SEC;
+            } else if (lift && sinceFlap > PILOT_FLAP_COOLDOWN_SEC && canFlapAt(y)) {
+                velocity = flapVelocityPerSec;
+                sinceFlap = 0f;
+            }
+            float nextVelocity = velocity + gravityPerSec * PILOT_STEP_SEC;
+            float cappedVelocity = capFall(nextVelocity);
+            if (pixelSteps()) y = moveBird(y, cappedVelocity * PILOT_STEP_SEC);
+            else if (cappedVelocity != nextVelocity) y += cappedVelocity * PILOT_STEP_SEC;
+            else y += velocity * PILOT_STEP_SEC + gravityPerSec * PILOT_STEP_SEC * (PILOT_STEP_SEC + pilotFrameDelta) / 2f;
+            velocity = cappedVelocity;
+            sinceFlap += PILOT_STEP_SEC;
+
+            boolean crashed = y + halfHeight > groundTop || (flipped && y - halfHeight < systemBarTop);
+            float ceiling = systemBarTop - halfHeight * (1f + CEILING_OVERSHOOT);
+            if (!flipped && settingCeilingEnabled && y < ceiling) {
+                y = ceiling;
+                if (velocity < 0f) velocity = 0f;
+            }
+            if (next != null && !crashed) {
+                float visualWidth = next.width * settingPipeWidth;
+                float left = next.x - shift - (visualWidth - next.width) / 2f;
+                boolean inside = pilotX + halfWidth > left && pilotX - halfWidth < left + visualWidth;
+                crashed = inside && (y - halfHeight < top || y + halfHeight > bottom);
+            }
+            if (crashed) return cost + PILOT_CRASH_COST - step;
+            cost += Math.abs(y - (top + bottom) / 2f) / Math.max(1, pipeGap) * 0.01f;
+        }
+        return cost;
+    }
+
+    private float bestFlightCost(boolean liftNow, float halfWidth, float halfHeight) {
+        float best = Float.MAX_VALUE;
+        for (int wait : PILOT_WAITS) {
+            best = Math.min(best, flightCost(liftNow, wait, halfWidth, halfHeight));
+            if (best < 1f) break;
+        }
+        return best;
+    }
+
+    private void runAutopilot(float frameDelta) {
+        pilotFrameDelta = frameDelta;
+        Bitmap sprite = birdBitmaps[1];
+        float halfWidth = sprite.getWidth() * settingBirdSize * 0.5f;
+        float halfHeight = sprite.getHeight() * settingBirdSize * 0.5f;
+        boolean canAct = settingJetpackModeEnabled || clock - lastFlapTime > PILOT_FLAP_COOLDOWN_SEC;
+        boolean lift = canAct
+                && bestFlightCost(true, halfWidth, halfHeight) < bestFlightCost(false, halfWidth, halfHeight);
+        if (settingJetpackModeEnabled) isScreenPressed = lift;
+        else if (lift) flap();
     }
 
     private void gameOver() {
         if (gameState != GameState.PLAYING) return;
         gameState = GameState.GAME_OVER;
         gameOverTime = clock;
+        isPaused = false;
+        invulnerableTimer = 0f;
 
         cinematicPhase = 0;
         cameraZoom = 1.0f;
         timeDilation = 1.0f;
 
-        flashAlpha = 255f;
+        startCrashFlash(1f);
         stopWeatherSounds();
         playSound(soundHit);
         triggerShake(5.0f, 0.4f);
@@ -1633,10 +2048,10 @@ class GameView extends View implements Choreographer.FrameCallback {
             prefs.edit().putInt(PREF_HIGH_SCORE, highScore).apply();
         }
 
-        if (score >= 40) currentMedal = MEDAL_PLATINUM;
-        else if (score >= 30) currentMedal = MEDAL_GOLD;
-        else if (score >= 20) currentMedal = MEDAL_SILVER;
-        else if (score >= 10) currentMedal = MEDAL_BRONZE;
+        if (score >= settingMedalPlatinum) currentMedal = MEDAL_PLATINUM;
+        else if (score >= settingMedalGold) currentMedal = MEDAL_GOLD;
+        else if (score >= settingMedalSilver) currentMedal = MEDAL_SILVER;
+        else if (score >= settingMedalBronze) currentMedal = MEDAL_BRONZE;
         else currentMedal = MEDAL_NONE;
 
         displayedScore = 0;
@@ -1707,7 +2122,7 @@ class GameView extends View implements Choreographer.FrameCallback {
         triggerShake(15.0f, 0.8f);
         isBirdBurnt = true;
         burntTimer = 10.0f;
-        flashAlpha = 255;
+        startLightningFlash();
     }
 
     private void triggerMegaStrike() {
@@ -1719,7 +2134,7 @@ class GameView extends View implements Choreographer.FrameCallback {
         isBirdBurnt = true;
         burntTimer = 20.0f;
         pipeElectrificationTimer = 20.0f;
-        flashAlpha = 255;
+        startLightningFlash();
     }
 
     private void triggerShake(float magnitude, float duration) {
@@ -1768,13 +2183,16 @@ class GameView extends View implements Choreographer.FrameCallback {
         canvas.restore();
 
         drawHud(canvas);
+        if (settingShowFps) drawFps(canvas);
+        if (isPaused) drawPauseOverlay(canvas);
 
         if (transitionAlpha > 0) {
             transitionPaint.setAlpha((int) transitionAlpha);
             canvas.drawRect(0, 0, screenWidth, screenHeight, transitionPaint);
         }
         if (flashAlpha > 0) {
-            flashPaint.setAlpha((int) flashAlpha);
+            flashPaint.setColor(flashColor);
+            flashPaint.setAlpha(Math.max(0, Math.min(255, (int) flashAlpha)));
             canvas.drawRect(0, 0, screenWidth, screenHeight, flashPaint);
         }
     }
@@ -1800,6 +2218,7 @@ class GameView extends View implements Choreographer.FrameCallback {
 
         drawBirdTrail(canvas);
         drawBird(canvas);
+        if (settingShowHitboxes) drawHitboxes(canvas, !pipesHidden);
 
         for (int i = 0; i < sparkCount; i++) {
             sparkParticles[i].draw(canvas, sparkPaint);
@@ -1809,6 +2228,36 @@ class GameView extends View implements Choreographer.FrameCallback {
             weatherSystem.drawFront(canvas);
             weatherSystem.drawLightingOverlay(canvas);
         }
+    }
+
+    private void drawHitboxes(Canvas canvas, boolean withPipes) {
+        hitboxPaint.setStrokeWidth(Math.max(2f, scale * 0.5f));
+        canvas.drawRect(birdRect.left, birdRect.top, birdRect.right, birdRect.bottom, hitboxPaint);
+        if (!withPipes) return;
+        float groundTop = groundTopY();
+        for (int i = 0; i < pipes.size(); i++) {
+            Pipe pipe = pipes.get(i);
+            float reach = pipe.width * Math.max(1f, settingPipeWidth);
+            if (pipe.x + reach < 0 || pipe.x - reach > screenWidth) continue;
+            drawHitbox(canvas, pipe.getTopHeadRect(settingPipeWidth), groundTop);
+            drawHitbox(canvas, pipe.getTopBodyRect(settingPipeWidth), groundTop);
+            drawHitbox(canvas, pipe.getBottomHeadRect(pipeGap, settingPipeWidth), groundTop);
+            drawHitbox(canvas, pipe.getBottomBodyRect(pipeGap, settingPipeWidth), groundTop);
+        }
+    }
+
+    private void drawHitbox(Canvas canvas, Rect rect, float groundTop) {
+        float top = Math.max(rect.top, -screenHeight);
+        float bottom = Math.min(rect.bottom, groundTop);
+        if (bottom > top) canvas.drawRect(rect.left, top, rect.right, bottom, hitboxPaint);
+    }
+
+    private void drawFps(Canvas canvas) {
+        float digitHeight = smallNumberBitmaps[0].getHeight() * FPS_DIGIT_SCALE;
+        float digitWidth = smallNumberBitmaps[0].getWidth() * FPS_DIGIT_SCALE;
+        float right = safeInsetLeft + cornerMargin + digitWidth * 3f;
+        float bottom = systemBarTop + cornerMargin + digitHeight;
+        drawScoreWithImagesRightAligned(canvas, shownFps, right, bottom, smallNumberBitmaps, FPS_DIGIT_SCALE);
     }
 
     private void drawBackground(Canvas canvas) {
@@ -1997,9 +2446,11 @@ class GameView extends View implements Choreographer.FrameCallback {
         ColorFilter filter = null;
         if (isBirdBurnt) filter = burntColorFilter;
         else if (settingRainbowBirdEnabled) filter = hueFilter(rainbowHue);
+        else if (settingBirdHue != 0) filter = hueFilter(settingBirdHue);
         birdPaint.setColorFilter(filter);
 
         int alpha = settingGhostModeEnabled ? 128 : 255;
+        if (invulnerableTimer > 0 && ((int) (clock * 10)) % 2 == 0) alpha = alpha * 2 / 5;
         Bitmap currentBirdBitmap = birdBitmaps[birdFrame];
         float halfSpan = (currentBirdBitmap.getWidth() + currentBirdBitmap.getHeight()) * Math.abs(settingBirdSize) / 2f;
         float rotationTravel = (float) Math.toRadians(Math.abs(birdBlurRotation)) * halfSpan / 2f;
@@ -2057,7 +2508,10 @@ class GameView extends View implements Choreographer.FrameCallback {
                 drawCenteredBitmap(canvas, getReadyBitmap, -(int) (getPlayableHeight() * 0.15));
                 break;
             case PLAYING:
-                drawScoreWithImages(canvas, score, screenWidth / 2, systemBarTop + (int) (getPlayableHeight() * 0.15));
+                int scoreCenterY = systemBarTop + (int) (getPlayableHeight() * 0.15);
+                drawScoreWithImages(canvas, score, screenWidth / 2, scoreCenterY);
+                drawLives(canvas, scoreCenterY + numberBitmaps[0].getHeight() / 2f + 6f * scale);
+                if (settingPauseButtonEnabled && !isPaused) drawPauseButton(canvas);
                 break;
             case GAME_OVER:
             case PANEL_SLIDING:
@@ -2067,6 +2521,51 @@ class GameView extends View implements Choreographer.FrameCallback {
                 if (gameState == GameState.PANEL_SLIDING) drawGameOverScreen(canvas);
                 break;
         }
+    }
+
+    private void drawLives(Canvas canvas, float top) {
+        if (livesLeft <= 0) return;
+        Bitmap icon = birdBitmaps[1];
+        float iconWidth = icon.getWidth() * LIFE_ICON_SCALE;
+        float iconHeight = icon.getHeight() * LIFE_ICON_SCALE;
+        float gap = iconWidth * 0.25f;
+        float x = (screenWidth - (livesLeft * iconWidth + (livesLeft - 1) * gap)) / 2f;
+        for (int i = 0; i < livesLeft; i++) {
+            hudRect.set(x, top, x + iconWidth, top + iconHeight);
+            canvas.drawBitmap(icon, null, hudRect, pixelPaint);
+            x += iconWidth + gap;
+        }
+    }
+
+    private void drawPauseButton(Canvas canvas) {
+        int size = Math.max(1, Math.round(PAUSE_BUTTON_SIZE * scale));
+        int right = (int) (screenWidth - safeInsetRight - cornerMargin);
+        int top = (int) (systemBarTop + cornerMargin);
+        pauseButtonRect.set(right - size, top, right, top + size);
+
+        hudPlatePaint.setAlpha(90);
+        canvas.drawRect(pauseButtonRect.left, pauseButtonRect.top, pauseButtonRect.right, pauseButtonRect.bottom, hudPlatePaint);
+        float bar = size * 0.18f;
+        float inset = size * 0.26f;
+        hudIconPaint.setAlpha(235);
+        canvas.drawRect(pauseButtonRect.left + inset, top + inset, pauseButtonRect.left + inset + bar, top + size - inset, hudIconPaint);
+        canvas.drawRect(pauseButtonRect.right - inset - bar, top + inset, pauseButtonRect.right - inset, top + size - inset, hudIconPaint);
+    }
+
+    private void drawPauseOverlay(Canvas canvas) {
+        hudPlatePaint.setAlpha(110);
+        canvas.drawRect(0, 0, screenWidth, screenHeight, hudPlatePaint);
+
+        float half = Math.min(screenWidth, screenHeight) * 0.09f;
+        float centerX = screenWidth / 2f;
+        float centerY = playAreaCenterY();
+        hudIconPath.reset();
+        hudIconPath.moveTo(centerX - half * 0.8f, centerY - half);
+        hudIconPath.lineTo(centerX + half, centerY);
+        hudIconPath.lineTo(centerX - half * 0.8f, centerY + half);
+        hudIconPath.lineTo(centerX - half * 0.8f, centerY - half);
+        hudIconPaint.setAlpha(235);
+        canvas.drawPath(hudIconPath, hudIconPaint);
     }
 
     private void drawButton(Canvas canvas, Bitmap bitmap, RectF destRect, float offset, Paint paint) {
@@ -2323,6 +2822,12 @@ class GameView extends View implements Choreographer.FrameCallback {
                 if (displayedScore == score && playButtonRect.contains(x, y)) pressedButtonRect = playButtonRect;
                 if (isGameOverIconAnimationDone && settingsButtonRect.contains(x, y)) pressedButtonRect = settingsButtonRect;
             }
+        } else if (isPaused) {
+            isPaused = false;
+            updateWeatherSounds();
+            handleGameplayTap();
+        } else if (gameState == GameState.PLAYING && settingPauseButtonEnabled && pauseButtonRect.contains(x, y)) {
+            pauseGame();
         } else {
             handleGameplayTap();
         }
@@ -2339,13 +2844,23 @@ class GameView extends View implements Choreographer.FrameCallback {
     }
 
     private void handleGameplayTap() {
+        if (isPaused) return;
+        boolean playerFlaps = !settingJetpackModeEnabled && !settingAutopilotEnabled;
         if (gameState == GameState.WAITING) {
             gameState = GameState.PLAYING;
             updateWeatherSounds();
-            if (!settingJetpackModeEnabled) flap();
+            if (playerFlaps) flap();
         } else if (gameState == GameState.PLAYING) {
-            if (!settingJetpackModeEnabled) flap();
+            if (playerFlaps) flap();
         }
+    }
+
+    private void pauseGame() {
+        if (gameState != GameState.PLAYING) return;
+        isPaused = true;
+        isScreenPressed = false;
+        stopWeatherSounds();
+        invalidate();
     }
 
     private void onFingerUp(int x, int y) {
@@ -2390,9 +2905,11 @@ class GameView extends View implements Choreographer.FrameCallback {
     }
 
     private void flap() {
+        if (!canFlapAt(birdY)) return;
         birdVelocityY = flapVelocityPerSec;
+        kickTilt();
         playSound(soundWing);
-        if (settingHapticFeedbackEnabled) {
+        if (settingHapticFeedbackEnabled && !settingAutopilotEnabled) {
             performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY);
         }
         lastFlapTime = clock;
@@ -2445,11 +2962,14 @@ class GameView extends View implements Choreographer.FrameCallback {
     }
 
     private void updateWeatherSounds() {
-        boolean inRound = gameState == GameState.PLAYING || gameState == GameState.WAITING;
+        boolean inRound = (gameState == GameState.PLAYING && !isPaused) || gameState == GameState.WAITING;
         boolean audible = settingSoundEnabled && hostResumed && inRound;
         boolean rain = audible && (settingWeatherEffect == WEATHER_RAIN || settingWeatherEffect == WEATHER_STORM);
         boolean storm = audible && settingWeatherEffect == WEATHER_STORM;
+        float volume = Math.max(0, Math.min(100, settingWeatherVolume)) / 100f;
         try {
+            if (rain && rainSoundPlayer != null) rainSoundPlayer.setVolume(volume, volume);
+            if (storm && stormSoundPlayer != null) stormSoundPlayer.setVolume(volume, volume);
             setLoopPlaying(rainSoundPlayer, rain);
             setLoopPlaying(stormSoundPlayer, storm);
         } catch (IllegalStateException e) {
@@ -2471,7 +2991,9 @@ class GameView extends View implements Choreographer.FrameCallback {
         final ExecutorService executor = soundExecutor;
         if (!settingSoundEnabled || !hostResumed || soundId == 0) return;
         if (pool == null || executor == null || executor.isShutdown()) return;
-        executor.execute(() -> pool.play(soundId, 1, 1, 0, 0, 1));
+        final float volume = Math.max(0, Math.min(100, settingSoundVolume)) / 100f;
+        if (volume <= 0f) return;
+        executor.execute(() -> pool.play(soundId, volume, volume, 0, 0, 1));
     }
 
     public void resume() {
@@ -2493,6 +3015,7 @@ class GameView extends View implements Choreographer.FrameCallback {
     public void pause() {
         hostResumed = false;
         isScreenPressed = false;
+        if (settingAutoPauseEnabled) pauseGame();
         cancelButtonPress();
         stopLoop();
         removeCallbacks(playDieSound);
@@ -2503,6 +3026,7 @@ class GameView extends View implements Choreographer.FrameCallback {
         if (isRunning) return;
         isRunning = true;
         lastFrameTimeNanos = 0;
+        stepAccumulator = 0f;
         choreographer.postFrameCallback(this);
     }
 
@@ -2530,7 +3054,26 @@ class GameView extends View implements Choreographer.FrameCallback {
         float deltaTime = (frameTimeNanos - lastFrameTimeNanos) / 1_000_000_000.0f;
         lastFrameTimeNanos = frameTimeNanos;
         if (deltaTime <= 0) return;
-        update(Math.min(deltaTime, MAX_FRAME_DELTA_SEC));
+        fpsFrames++;
+        fpsTimer += deltaTime;
+        if (fpsTimer >= FPS_REFRESH_SEC) {
+            shownFps = Math.min(999, Math.round(fpsFrames / fpsTimer));
+            fpsFrames = 0;
+            fpsTimer = 0f;
+        }
+        if (settingFixedStepEnabled) {
+            stepAccumulator += Math.min(deltaTime, FIXED_STEP_SEC * MAX_FIXED_STEPS);
+            int steps = 0;
+            while (stepAccumulator >= FIXED_STEP_SEC && steps < MAX_FIXED_STEPS) {
+                update(FIXED_STEP_SEC);
+                stepAccumulator -= FIXED_STEP_SEC;
+                steps++;
+            }
+            if (steps == 0) return;
+        } else {
+            stepAccumulator = 0f;
+            update(Math.min(deltaTime, MAX_FRAME_DELTA_SEC));
+        }
         invalidate();
     }
 
@@ -2972,6 +3515,8 @@ class Pipe {
     private static final int UNSCALED_HEAD_WIDTH = 52;
     private static final int UNSCALED_HEAD_HEIGHT = 24;
     private static final int UNSCALED_BODY_WIDTH = 48;
+    private static final float CLASSIC_GAP_BOTTOM_CENTER = 270f;
+    private static final float CLASSIC_GAP_BOTTOM_SPREAD = 180f;
     private static final float BASE_MARGIN_PERCENT = 0.08f;
     private static final float FAR_OFF_SCREEN = 20000f;
 
@@ -3019,6 +3564,15 @@ class Pipe {
         } else {
             this.topPipeY = random.nextInt(availableRange) + margin + topOffset;
         }
+        this.currentYOffset = 0;
+    }
+
+    public void resetHeightClassic(int pipeGap, int playAreaHeight, int topOffset, float variationMultiplier, float scale) {
+        float spread = CLASSIC_GAP_BOTTOM_SPREAD * Math.max(0f, variationMultiplier);
+        float bottom = (CLASSIC_GAP_BOTTOM_CENTER + (random.nextFloat() - 0.5f) * spread) * scale;
+        int lowest = playAreaHeight - pipeGap;
+        int top = Math.round(bottom) - pipeGap;
+        this.topPipeY = (lowest <= 0 ? lowest / 2 : Math.max(0, Math.min(lowest, top))) + topOffset;
         this.currentYOffset = 0;
     }
 
