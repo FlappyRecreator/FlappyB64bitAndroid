@@ -1,49 +1,150 @@
-# License
+# Flappy Bird 64-bit Source-Available License
 
-This project is a **fan-made**, non-commercial recreation of the original *Flappy Bird* game. It is provided strictly for **educational, archival, and personal use only**.
-
-> ⚠️ This codebase may reference or resemble or use intellectual property owned by Dong Nguyen and .GEARS, the original creators of *Flappy Bird*. This project is **not affiliated with, endorsed by, or connected to** the original creators in any way.
-
----
-
-## ⚖️ Usage Terms
-
-By accessing, downloading, or using any part of this repository, you agree to the following conditions:
-
-- **Non-Commercial Only**: You may **not** use this codebase, in whole or in part, in any commercial product, service, monetized project, or revenue-generating endeavor.
-- **Personal Use Only**: This code is provided for **personal learning, study, or experimentation only**. Public distribution (outside of forks or pull requests to this repository) is **not allowed**.
-- **No Claim of Ownership**: You **may not** claim authorship or ownership of any part of the visual, audio, or gameplay assets that are similar to or derived from the original *Flappy Bird*.
-- **Source-Available, Not Open Source**: This repository is **not** licensed under any recognized open-source license. It is **source-available**: you may view, fork, and help contribute under these usage terms, but redistribution outside GitHub or derivative publication is **prohibited** due to this being a remake of something that may be copyrighted.
-- **At Your Own Risk**: You assume all responsibility for your use of this code. The maintainers accept **no liability** for any outcomes, legal or otherwise, resulting from its use or misuse. This project was made purely for educational purposes and the intent to keep the popular Flappy Bird game alive.
+Copyright (c) 2026 [Breathe]. All rights reserved,
+except as stated below.
 
 ---
 
-## ❗ Contribution Policy
+## Summary
 
-Contributions are welcome but subject to the following:
+This summary is a plain-language overview for convenience. The full terms
+below are the ones that apply.
 
-- All contributions are made **voluntarily** and do **not** transfer any ownership or rights to the contributor.
-- Submitted code must comply with the same **non-commercial** and **non-ownership** principles stated above.
+- You may view, study, build and play this project for personal,
+  non-commercial use.
+- You may fork it on GitHub and submit improvements through pull requests.
+- You may not sell it, monetize it or publish it anywhere else.
+- The Flappy Bird name, characters, artwork and sounds are not mine and
+  are not covered by this license.
+- The project is provided as is, without any warranty.
 
 ---
 
-## 🛑 Final Reminder
+## 1. Definitions
 
-This project exists to **preserve, study, and enjoy** a piece of gaming history in a private, respectful, and legally cautious context. It is **not intended for release, promotion, or profit**. This app was primarily built for educational purposes and nostalgia.
+- **"Author"** means me, the creator and maintainer of this repository.
+- **"Software"** means the source code, build files and documentation in
+  this repository that were written by the Author or contributed to this
+  repository.
+- **"Third-Party Materials"** means the name "Flappy Bird" and any
+  characters, artwork, sound effects, trademarks or other materials owned
+  by Dong Nguyen, .GEARS or any other rights holder.
+- **"You"** means any person or organization that accesses, downloads or
+  uses any part of this repository.
 
 ---
 
-In more simple terms:
+## 2. What You May Do
 
-This project is a fan-made recreation of the original Flappy Bird game and exists for educational and personal use purposes only.  
-  
-Please be advised that portions of this code may potentially infringe upon the intellectual property rights of the original Flappy Bird, which is owned by its original creator. As such, this code should **not** be used in any commercial or serious projects. It is intended solely for **personal, non-commercial use**.  
-  
-This repository is **not** open-source in the formal sense. It is **source-available**: you are free to view, study, and even fork the code. You may also submit improvements or modifications. However, neither you nor the maintainers claim ownership of the underlying intellectual property.  
-  
-By using this codebase, you acknowledge that:  
-- You are using it at your own discretion and risk.  
-- You will not use it in any project that could result in legal or commercial conflicts.  
-- Any contributions you make are voluntary and subject to the same non-ownership principle.  
-  
-In short: Feel free to explore, tinker, and help improve/contribute to this 64-bit Java version of Flappy Bird for your own learning or enjoyment — just keep it personal.  
+Subject to the terms of this license, you may:
+
+- View and study the Software.
+- Download, build and run the Software on your own devices for personal,
+  non-commercial use.
+- Modify the Software for your own personal, non-commercial use.
+- Fork this repository on GitHub, as permitted by GitHub's Terms of
+  Service, and submit pull requests to this repository.
+
+---
+
+## 3. What You May Not Do
+
+You may not:
+
+- Use the Software, in whole or in part, in any product, service or project
+  that is sold, monetized or generates revenue, including through ads,
+  in-app purchases, subscriptions or paid downloads.
+- Publish or distribute the Software, or any app built from it, outside of
+  GitHub forks of this repository. This includes app stores, file hosting
+  sites, mirrors and modified versions.
+- Remove or change this license, the copyright notice or the legal notices
+  in this repository.
+- Claim that you created the Software or any of the Third-Party Materials.
+- Present the Software, or any version of it, as official or as endorsed
+  by the Author, Dong Nguyen, .GEARS or any other rights holder.
+
+---
+
+## 4. Third-Party Materials
+
+This project is an unofficial fan recreation. It is not affiliated with,
+endorsed by or sponsored by Dong Nguyen, .GEARS or any current owner of the
+Flappy Bird name.
+
+All Third-Party Materials remain the property of their respective owners.
+This license does not cover them and does not grant you any right to use
+them. The Author claims no ownership of any Third-Party Materials.
+
+---
+
+## 5. Contributions
+
+By submitting a contribution to this repository, you confirm that:
+
+- The contribution is your own work, or you have the right to submit it.
+- It does not include any code, artwork, audio or other material that you
+  do not have the right to share.
+- You grant the Author a free, non-exclusive, worldwide and permanent right
+  to use, modify and distribute your contribution as part of this project.
+- Your contribution will be covered by the same terms as the rest of the
+  Software.
+
+Contributions are voluntary and unpaid. The Author may accept, change,
+decline or remove any contribution at any time.
+
+---
+
+## 6. Requests From Rights Holders
+
+If you hold rights to any material in this repository and would like it
+changed or removed, please contact me through an issue on this repository
+or through my GitHub profile. I will review every request in good faith and
+respond promptly. I may change or remove any part of this project at any
+time without notice.
+
+---
+
+## 7. No Warranty
+
+THE SOFTWARE IS PROVIDED "AS IS," WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT.
+
+---
+
+## 8. Limitation of Liability
+
+TO THE FULLEST EXTENT PERMITTED BY LAW, THE AUTHOR WILL NOT BE LIABLE FOR
+ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN CONTRACT, TORT OR
+OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR ITS
+USE. YOU ARE RESPONSIBLE FOR HOW YOU USE THE SOFTWARE.
+
+---
+
+## 9. Termination
+
+Your rights under this license end automatically if you break any of its
+terms. If that happens, you must stop using the Software and delete any
+copies you have.
+
+---
+
+## 10. Changes to This License
+
+I may update this license at any time. The version in this repository at
+the time you access or use the Software is the one that applies.
+
+---
+
+## 11. General
+
+- If any part of this license is found to be unenforceable, the rest of it
+  remains in effect.
+- All rights not expressly granted in this license are reserved by the
+  Author.
+
+---
+
+Thank you for respecting this project and the original game that inspired
+it. This project exists out of appreciation for Flappy Bird and a wish to
+keep it playable on modern devices.
