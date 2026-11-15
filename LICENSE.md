@@ -1,6 +1,6 @@
 # Flappy Bird 64-bit Source-Available License
 
-Copyright (c) 2026 [Breathe]. All rights reserved,
+Copyright (c) 2026 Breathe. All rights reserved,
 except as stated below.
 
 ---
@@ -16,6 +16,8 @@ below are the ones that apply.
 - You may not sell it, monetize it or publish it anywhere else.
 - The Flappy Bird name, characters, artwork and sounds are not mine and
   are not covered by this license.
+- If the original creator or any rights holder asks, I will take this
+  project down or transfer it to them, free of charge.
 - The project is provided as is, without any warranty.
 
 ---
@@ -88,19 +90,34 @@ By submitting a contribution to this repository, you confirm that:
   to use, modify and distribute your contribution as part of this project.
 - Your contribution will be covered by the same terms as the rest of the
   Software.
+- You agree that the Author may transfer these rights to the original
+  creator or a rights holder as described in Section 6.
 
 Contributions are voluntary and unpaid. The Author may accept, change,
 decline or remove any contribution at any time.
 
 ---
 
-## 6. Requests From Rights Holders
+## 6. Respect for the Original Creator and Rights Holders
 
-If you hold rights to any material in this repository and would like it
-changed or removed, please contact me through an issue on this repository
-or through my GitHub profile. I will review every request in good faith and
-respond promptly. I may change or remove any part of this project at any
-time without notice.
+This project was made out of deep respect for Dong Nguyen, the creator of
+Flappy Bird, and for anyone who currently owns the Flappy Bird name or its
+original assets.
+
+If the original creator or any rights holder has a concern about this
+project, I will cooperate fully and in good faith. Upon request, I will:
+
+- Change or remove any part of the project, or
+- Take down the entire project, including this repository and all builds I
+  have published, and
+- If they would like, transfer to them, free of charge, any rights I hold
+  in the Software.
+
+To make a request, please contact me through an issue on this repository or
+through my GitHub profile. I will respond as quickly as I can.
+
+I may also change or remove any part of this project at any time without
+notice.
 
 ---
 
@@ -146,5 +163,6 @@ the time you access or use the Software is the one that applies.
 ---
 
 Thank you for respecting this project and the original game that inspired
-it. This project exists out of appreciation for Flappy Bird and a wish to
-keep it playable on modern devices.
+it. Flappy Bird belongs to its creator and rights holders, and this project
+will always defer to their wishes. It exists only out of appreciation for
+the game and a wish to keep it playable on modern devices.
