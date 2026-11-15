@@ -178,6 +178,20 @@ class GameView extends View implements Choreographer.FrameCallback {
     private static final int SCORE_PANEL_HIGH_SCORE_Y_OFFSET = 98;
     private static final int SCORE_PANEL_MEDAL_X_OFFSET = 32;
     private static final int SCORE_PANEL_MEDAL_Y_OFFSET = 43;
+    private static final int SCORE_PANEL_NEW_X_OFFSET = 142;
+    private static final int SCORE_PANEL_NEW_Y_OFFSET = 60;
+    private static final int MENU_TITLE_Y = 150;
+    private static final int MENU_BIRD_Y = 228;
+    private static final int MENU_RATE_Y = 270;
+    private static final int MENU_BUTTONS_Y = 340;
+    private static final int ATLAS_RATE_X = 924, ATLAS_RATE_Y = 0, ATLAS_RATE_WIDTH = 74, ATLAS_RATE_HEIGHT = 48;
+    private static final int ATLAS_RESUME_X = 668, ATLAS_RESUME_Y = 284, ATLAS_RESUME_WIDTH = 26, ATLAS_RESUME_HEIGHT = 28;
+    private static final float RESUME_BUTTON_SHARE = 0.15f;
+    private static final float PAUSE_FADE_SEC = 0.16f;
+    private static final int PAUSE_DIM_ALPHA = 120;
+    private static final int ATLAS_NEW_X = 224, ATLAS_NEW_Y = 1002, ATLAS_NEW_WIDTH = 32, ATLAS_NEW_HEIGHT = 14;
+    private static final String LEADERBOARD_MESSAGE = "Leaderboard unavailable. Try again later.";
+    private static final String RATE_MESSAGE = "Rating unavailable. Try again later.";
     private static final float PLATINUM_OFFSET_X = -1.0f;
     private static final float PLATINUM_OFFSET_Y = 1.0f;
     private static final float GOLD_OFFSET_X = -1.0f;
@@ -238,6 +252,8 @@ class GameView extends View implements Choreographer.FrameCallback {
     private static final int PILOT_STEPS = 96;
     private static final float PILOT_CRASH_COST = 1000f;
     private static final float PILOT_FLAP_COOLDOWN_SEC = 0.12f;
+    private static final float PILOT_MARGIN = 0.1f;
+    private static final float PILOT_MARGIN_FIXED_STEP = 0.04f;
     private static final int[] PILOT_WAITS = {0, 3, 6, 9, 12, 16, 20, 25, 30, 38, 45};
     private static final float MOTION_BLUR_SHUTTER_SEC = 1.0f / 48.0f;
     private static final float MOTION_BLUR_MAX_STRENGTH = 10.0f;
@@ -305,6 +321,7 @@ class GameView extends View implements Choreographer.FrameCallback {
     private final Bitmap[][] unscaledAllBirdBitmaps = new Bitmap[3][3];
     private Bitmap unscaledTextReady, unscaledTextGameOver, unscaledScorePanel, unscaledButtonPlay;
     private Bitmap unscaledButtonScore, unscaledTitle, unscaledCopyright, unscaledButtonSettings;
+    private Bitmap unscaledButtonRate, unscaledNewLabel, unscaledButtonResume;
     private final Bitmap[] unscaledMedalsBitmaps = new Bitmap[4];
     private final Bitmap[] unscaledNumberBitmaps = new Bitmap[10];
 
@@ -314,6 +331,7 @@ class GameView extends View implements Choreographer.FrameCallback {
     private final Bitmap[] birdBitmaps = new Bitmap[3];
     private Bitmap getReadyBitmap, gameOverBitmap, scorePanelBitmap, playButtonBitmap;
     private Bitmap scoreButtonBitmap, titleBitmap, copyrightBitmap, settingsButtonBitmap;
+    private Bitmap rateButtonBitmap, newLabelBitmap;
     private final Bitmap[] medalBitmaps = new Bitmap[4];
     private final Bitmap[] numberBitmaps = new Bitmap[10];
     private final Bitmap[] smallNumberBitmaps = new Bitmap[10];
@@ -371,6 +389,15 @@ class GameView extends View implements Choreographer.FrameCallback {
     private final Rect playButtonRect = new Rect();
     private final Rect scoreButtonRect = new Rect();
     private final Rect settingsButtonRect = new Rect();
+    private final Rect rateButtonRect = new Rect();
+    private final RectF rateButtonDestRect = new RectF();
+    private final RectF newLabelDestRect = new RectF();
+    private final RectF resumeDestRect = new RectF();
+    private float pauseFade = 0f;
+    private float rateBtnProgress = 0, rateBtnTarget = 0;
+    private boolean isNewBest = false;
+    private int previousBest = 0;
+    private boolean settingClassicMenuEnabled;
     private final Rect pauseButtonRect = new Rect();
     private Rect pressedButtonRect = null;
     private float playBtnProgress = 0, playBtnTarget = 0;
@@ -600,12 +627,19 @@ class GameView extends View implements Choreographer.FrameCallback {
 
     private void loadSettings() {
         Map<String, ?> stored = prefs.getAll();
+        int storedBest = Math.max(0, intPref(stored, PREF_HIGH_SCORE, 0));
+        if (storedBest != highScore) {
+            highScore = storedBest;
+            previousBest = storedBest;
+            isNewBest = false;
+        }
         settingBirdColor = intPref(stored, PREF_BIRD_COLOR, DEFAULT_BIRD_COLOR);
         settingBackground = intPref(stored, PREF_BACKGROUND, DEFAULT_BACKGROUND);
         settingSoundEnabled = flagPref(stored, PREF_SOUND_ENABLED, DEFAULT_SOUND_ENABLED);
         settingWingAnimationEnabled = flagPref(stored, PREF_WING_ANIMATION_ENABLED, DEFAULT_WING_ANIMATION_ENABLED);
         settingPipeColor = intPref(stored, PREF_PIPE_COLOR, DEFAULT_PIPE_COLOR);
         settingHideSettingsIcon = flagPref(stored, PREF_HIDE_SETTINGS_ICON, DEFAULT_HIDE_SETTINGS_ICON);
+        settingClassicMenuEnabled = flagPref(stored, PREF_CLASSIC_MENU_ENABLED, DEFAULT_CLASSIC_MENU_ENABLED);
         settingGameOverOpacity = intPref(stored, PREF_GAMEOVER_OPACITY, DEFAULT_GAMEOVER_OPACITY);
         settingGameSpeed = floatPref(stored, PREF_GAME_SPEED, DEFAULT_GAME_SPEED);
         settingGravity = floatPref(stored, PREF_GRAVITY, DEFAULT_GRAVITY);
@@ -729,6 +763,16 @@ class GameView extends View implements Choreographer.FrameCallback {
         return Bitmap.createBitmap(source, x, y, w, h);
     }
 
+    private Bitmap extractOptional(Bitmap source, int x, int y, int w, int h) {
+        if (x + w > source.getWidth() || y + h > source.getHeight()) return null;
+        try {
+            return Bitmap.createBitmap(source, x, y, w, h);
+        } catch (IllegalArgumentException e) {
+            Log.w(TAG, "Atlas sprite missing at " + x + "," + y);
+            return null;
+        }
+    }
+
     private int loc(double coord, int dim) {
         return (int) (coord * dim);
     }
@@ -759,6 +803,9 @@ class GameView extends View implements Choreographer.FrameCallback {
         unscaledMedalsBitmaps[MEDAL_GOLD] = extract(atlas, loc(0.23632812, ATLAS_WIDTH), loc(0.55078125, ATLAS_HEIGHT), 48, 48);
         unscaledMedalsBitmaps[MEDAL_SILVER] = extract(atlas, loc(0.21875, ATLAS_WIDTH), loc(0.8847656, ATLAS_HEIGHT), 44, 48);
         unscaledMedalsBitmaps[MEDAL_BRONZE] = extract(atlas, loc(0.21875, ATLAS_WIDTH), loc(0.9316406, ATLAS_HEIGHT), 44, 48);
+        unscaledButtonRate = extractOptional(atlas, ATLAS_RATE_X, ATLAS_RATE_Y, ATLAS_RATE_WIDTH, ATLAS_RATE_HEIGHT);
+        unscaledNewLabel = extractOptional(atlas, ATLAS_NEW_X, ATLAS_NEW_Y, ATLAS_NEW_WIDTH, ATLAS_NEW_HEIGHT);
+        unscaledButtonResume = extractOptional(atlas, ATLAS_RESUME_X, ATLAS_RESUME_Y, ATLAS_RESUME_WIDTH, ATLAS_RESUME_HEIGHT);
         atlas.recycle();
 
         unscaledPipeGreen = BitmapFactory.decodeResource(getResources(), R.drawable.pipe_green, options);
@@ -829,6 +876,8 @@ class GameView extends View implements Choreographer.FrameCallback {
         titleBitmap = rescale(titleBitmap, unscaledTitle, scale);
         copyrightBitmap = rescale(copyrightBitmap, unscaledCopyright, scale);
         scoreButtonBitmap = rescale(scoreButtonBitmap, unscaledButtonScore, scale);
+        rateButtonBitmap = rescale(rateButtonBitmap, unscaledButtonRate, scale);
+        newLabelBitmap = rescale(newLabelBitmap, unscaledNewLabel, scale);
         getReadyBitmap = rescale(getReadyBitmap, unscaledTextReady, scale);
         gameOverBitmap = rescale(gameOverBitmap, unscaledTextGameOver, scale);
         scorePanelBitmap = rescale(scorePanelBitmap, unscaledScorePanel, scale);
@@ -1056,6 +1105,8 @@ class GameView extends View implements Choreographer.FrameCallback {
 
         playBtnProgress = 0;
         scoreBtnProgress = 0;
+        rateBtnProgress = 0;
+        isNewBest = false;
         settingsBtnProgress = 0;
         okBtnProgress = 0;
         gameOverSettingsBtnProgress = 0;
@@ -1172,7 +1223,10 @@ class GameView extends View implements Choreographer.FrameCallback {
     }
 
     private void update(float realDeltaTime) {
-        if (isPaused) return;
+        if (isPaused) {
+            pauseFade = Math.min(1f, pauseFade + realDeltaTime / PAUSE_FADE_SEC);
+            return;
+        }
         clock += realDeltaTime;
         float gameDeltaTime = realDeltaTime * timeDilation;
         GameState stateBefore = gameState;
@@ -1196,11 +1250,7 @@ class GameView extends View implements Choreographer.FrameCallback {
             case HOME:
                 baseBirdX = screenWidth / 2f;
                 birdX = baseBirdX;
-                birdY = idleBirdY();
-                if (settingUpsideDownEnabled) {
-                    birdY += getPlayableHeight() * 0.18f;
-                    birdY = screenHeight - birdY;
-                }
+                birdY = homeBirdY();
                 birdRotation = 0;
                 break;
             case TRANSITION_TO_WAITING:
@@ -1297,6 +1347,7 @@ class GameView extends View implements Choreographer.FrameCallback {
         float pressSpeed = BUTTON_PRESS_SPEED * dt;
         playBtnProgress += (playBtnTarget - playBtnProgress) * pressSpeed;
         scoreBtnProgress += (scoreBtnTarget - scoreBtnProgress) * pressSpeed;
+        rateBtnProgress += (rateBtnTarget - rateBtnProgress) * pressSpeed;
         settingsBtnProgress += (settingsBtnTarget - settingsBtnProgress) * pressSpeed;
         okBtnProgress += (okBtnTarget - okBtnProgress) * pressSpeed;
         gameOverSettingsBtnProgress += (gameOverSettingsBtnTarget - gameOverSettingsBtnProgress) * pressSpeed;
@@ -1431,6 +1482,24 @@ class GameView extends View implements Choreographer.FrameCallback {
         return playAreaCenterY() + (float) (Math.sin(clock * BIRD_BOB_SPEED) * BIRD_BOB_AMPLITUDE * scale);
     }
 
+    private boolean classicMenu() {
+        return settingClassicMenuEnabled && rateButtonBitmap != null;
+    }
+
+    private float homeBirdY() {
+        float bob = (float) (Math.sin(clock * BIRD_BOB_SPEED) * BIRD_BOB_AMPLITUDE * scale);
+        if (classicMenu()) {
+            float onScreen = systemBarTop + MENU_BIRD_Y * scale + bob;
+            return settingUpsideDownEnabled ? screenHeight - onScreen : onScreen;
+        }
+        float y = idleBirdY();
+        if (settingUpsideDownEnabled) {
+            y += getPlayableHeight() * 0.18f;
+            y = screenHeight - y;
+        }
+        return y;
+    }
+
     private float waitingBirdY() {
         if (settingStartHeight == DEFAULT_START_HEIGHT) return idleBirdY();
         float share = 1f - Math.max(10, Math.min(90, settingStartHeight)) / 100f;
@@ -1455,6 +1524,12 @@ class GameView extends View implements Choreographer.FrameCallback {
         float multiplier = Math.max(0.0f, settingBirdHitbox) * settingBirdSize / 2f;
         if (settingHitboxShape == HITBOX_SHAPE_SQUARE) return SQUARE_HITBOX_SIZE * scale * multiplier;
         return birdBitmaps[1].getHeight() * (1.0f - 2.0f * BIRD_HITBOX_PADDING_Y) * multiplier;
+    }
+
+    private float hitboxHalfWidth() {
+        float multiplier = Math.max(0.0f, settingBirdHitbox) * settingBirdSize / 2f;
+        if (settingHitboxShape == HITBOX_SHAPE_SQUARE) return SQUARE_HITBOX_SIZE * scale * multiplier;
+        return birdBitmaps[1].getWidth() * (1.0f - 2.0f * BIRD_HITBOX_PADDING_X) * multiplier;
     }
 
     private boolean canFlapAt(float y) {
@@ -1591,8 +1666,12 @@ class GameView extends View implements Choreographer.FrameCallback {
     }
 
     private void updateTransitionToWaiting(float dt) {
-        birdY = isFadingOut ? idleBirdY() : waitingBirdY();
-        if (settingUpsideDownEnabled) birdY = screenHeight - birdY;
+        if (isFadingOut && classicMenu()) {
+            birdY = homeBirdY();
+        } else {
+            birdY = isFadingOut ? idleBirdY() : waitingBirdY();
+            if (settingUpsideDownEnabled) birdY = screenHeight - birdY;
+        }
         birdRotation = 0;
 
         if (isFadingOut) {
@@ -1957,11 +2036,12 @@ class GameView extends View implements Choreographer.FrameCallback {
         float velocity = birdVelocityY;
         float sinceFlap = (float) (clock - lastFlapTime);
         float drift = Math.min(screenWidth, referenceWidth()) * 0.15f * settingDrunkModeStrength;
+        float bodyHalf = Math.max(halfHeight, birdHalfHeight(1));
         float cost = 0f;
 
         for (int step = 0; step < PILOT_STEPS; step++) {
             float time = PILOT_STEP_SEC * step;
-            float shift = pipeSpeedPerSec * time;
+            float shift = pipeSpeedPerSec * (settingFixedStepEnabled ? time + PILOT_STEP_SEC : time);
             float pilotX = settingDrunkModeEnabled
                     ? baseBirdX + (float) Math.sin(drunkModePhase + 2.0f * (time + PILOT_STEP_SEC)) * drift
                     : birdX;
@@ -1987,8 +2067,8 @@ class GameView extends View implements Choreographer.FrameCallback {
             velocity = cappedVelocity;
             sinceFlap += PILOT_STEP_SEC;
 
-            boolean crashed = y + halfHeight > groundTop || (flipped && y - halfHeight < systemBarTop);
-            float ceiling = systemBarTop - halfHeight * (1f + CEILING_OVERSHOOT);
+            boolean crashed = y + bodyHalf > groundTop || (flipped && y - bodyHalf < systemBarTop);
+            float ceiling = systemBarTop - bodyHalf * (1f + CEILING_OVERSHOOT);
             if (!flipped && settingCeilingEnabled && y < ceiling) {
                 y = ceiling;
                 if (velocity < 0f) velocity = 0f;
@@ -2017,8 +2097,9 @@ class GameView extends View implements Choreographer.FrameCallback {
     private void runAutopilot(float frameDelta) {
         pilotFrameDelta = frameDelta;
         Bitmap sprite = birdBitmaps[1];
-        float halfWidth = sprite.getWidth() * settingBirdSize * 0.5f;
-        float halfHeight = sprite.getHeight() * settingBirdSize * 0.5f;
+        float margin = settingFixedStepEnabled ? PILOT_MARGIN_FIXED_STEP : PILOT_MARGIN;
+        float halfWidth = hitboxHalfWidth() + sprite.getWidth() * settingBirdSize * margin;
+        float halfHeight = hitboxHalfHeight() + sprite.getHeight() * settingBirdSize * margin;
         boolean canAct = settingJetpackModeEnabled || clock - lastFlapTime > PILOT_FLAP_COOLDOWN_SEC;
         boolean lift = canAct
                 && bestFlightCost(true, halfWidth, halfHeight) < bestFlightCost(false, halfWidth, halfHeight);
@@ -2043,7 +2124,9 @@ class GameView extends View implements Choreographer.FrameCallback {
         triggerShake(5.0f, 0.4f);
         postDelayed(playDieSound, 300);
 
-        if (score > highScore) {
+        previousBest = highScore;
+        isNewBest = score > highScore;
+        if (isNewBest) {
             highScore = score;
             prefs.edit().putInt(PREF_HIGH_SCORE, highScore).apply();
         }
@@ -2553,18 +2636,36 @@ class GameView extends View implements Choreographer.FrameCallback {
     }
 
     private void drawPauseOverlay(Canvas canvas) {
-        hudPlatePaint.setAlpha(110);
+        float fade = 1f - (1f - pauseFade) * (1f - pauseFade);
+        hudPlatePaint.setAlpha(Math.round(PAUSE_DIM_ALPHA * fade));
         canvas.drawRect(0, 0, screenWidth, screenHeight, hudPlatePaint);
 
-        float half = Math.min(screenWidth, screenHeight) * 0.09f;
+        float height = Math.min(screenWidth, screenHeight) * RESUME_BUTTON_SHARE * (0.85f + 0.15f * fade);
+        float width = height * ATLAS_RESUME_WIDTH / ATLAS_RESUME_HEIGHT;
         float centerX = screenWidth / 2f;
         float centerY = playAreaCenterY();
+        resumeDestRect.set(centerX - width / 2f, centerY - height / 2f, centerX + width / 2f, centerY + height / 2f);
+        int alpha = Math.round(255 * fade);
+
+        if (unscaledButtonResume != null) {
+            pixelPaint.setAlpha(alpha);
+            canvas.drawBitmap(unscaledButtonResume, null, resumeDestRect, pixelPaint);
+            pixelPaint.setAlpha(255);
+            return;
+        }
+
+        float radius = width * 0.18f;
+        hudPlatePaint.setAlpha(Math.round(170 * fade));
+        canvas.drawRoundRect(resumeDestRect, radius, radius, hudPlatePaint);
+        float side = width * 0.42f;
+        float triangleHeight = side * 0.866f;
+        float left = centerX - triangleHeight / 3f;
         hudIconPath.reset();
-        hudIconPath.moveTo(centerX - half * 0.8f, centerY - half);
-        hudIconPath.lineTo(centerX + half, centerY);
-        hudIconPath.lineTo(centerX - half * 0.8f, centerY + half);
-        hudIconPath.lineTo(centerX - half * 0.8f, centerY - half);
-        hudIconPaint.setAlpha(235);
+        hudIconPath.moveTo(left, centerY - side / 2f);
+        hudIconPath.lineTo(left + triangleHeight, centerY);
+        hudIconPath.lineTo(left, centerY + side / 2f);
+        hudIconPath.close();
+        hudIconPaint.setAlpha(Math.round(240 * fade));
         canvas.drawPath(hudIconPath, hudIconPaint);
     }
 
@@ -2603,7 +2704,8 @@ class GameView extends View implements Choreographer.FrameCallback {
     }
 
     private void drawHomeScreen(Canvas canvas) {
-        float titleY = getPlayableHeight() * 0.22f + systemBarTop;
+        boolean classic = classicMenu();
+        float titleY = classic ? systemBarTop + MENU_TITLE_Y * scale : getPlayableHeight() * 0.22f + systemBarTop;
         drawFitted(canvas, titleBitmap, titleY);
 
         if (settingsButtonBitmap != null) {
@@ -2629,7 +2731,9 @@ class GameView extends View implements Choreographer.FrameCallback {
         float totalNewWidth = newPlayWidth + newScoreWidth + newGap;
         float playBtnX = (screenWidth - totalNewWidth) / 2f;
         float scoreBtnX = playBtnX + newPlayWidth + newGap;
-        float buttonsY = titleY + titleBitmap.getHeight() + getPlayableHeight() * 0.18f;
+        float buttonsY = classic
+                ? systemBarTop + MENU_BUTTONS_Y * scale
+                : titleY + titleBitmap.getHeight() + getPlayableHeight() * 0.18f;
 
         playButtonRect.set((int) playBtnX, (int) buttonsY, (int) (playBtnX + newPlayWidth), (int) (buttonsY + newPlayHeight));
         scoreButtonRect.set((int) scoreBtnX, (int) buttonsY, (int) (scoreBtnX + newScoreWidth), (int) (buttonsY + newScoreHeight));
@@ -2639,6 +2743,18 @@ class GameView extends View implements Choreographer.FrameCallback {
         float scaledPressOffsetY = pressOffsetY * scaleCorrection;
         drawButton(canvas, playButtonBitmap, playButtonDestRect, playBtnProgress * scaledPressOffsetY, pixelPaint);
         drawButton(canvas, scoreButtonBitmap, scoreButtonDestRect, scoreBtnProgress * scaledPressOffsetY, pixelPaint);
+
+        if (classic) {
+            float rateWidth = rateButtonBitmap.getWidth() * scaleCorrection;
+            float rateHeight = rateButtonBitmap.getHeight() * scaleCorrection;
+            float rateX = (screenWidth - rateWidth) / 2f;
+            float rateY = systemBarTop + MENU_RATE_Y * scale;
+            rateButtonRect.set((int) rateX, (int) rateY, (int) (rateX + rateWidth), (int) (rateY + rateHeight));
+            rateButtonDestRect.set(rateButtonRect);
+            drawButton(canvas, rateButtonBitmap, rateButtonDestRect, rateBtnProgress * scaledPressOffsetY, pixelPaint);
+        } else {
+            rateButtonRect.setEmpty();
+        }
 
         float copyrightHeight = copyrightBitmap.getHeight() * fitToWidth(copyrightBitmap.getWidth());
         drawFitted(canvas, copyrightBitmap, groundTopY() + (groundHeight - copyrightHeight) / 2f);
@@ -2666,9 +2782,17 @@ class GameView extends View implements Choreographer.FrameCallback {
         float scoreY = panelY + (SCORE_PANEL_CURRENT_SCORE_Y_OFFSET * scale * scaleCorrection);
         float highScoreY = panelY + (SCORE_PANEL_HIGH_SCORE_Y_OFFSET * scale * scaleCorrection);
         drawScoreWithImagesRightAligned(canvas, displayedScore, panelRightEdge, scoreY, smallNumberBitmaps, scaleCorrection);
-        drawScoreWithImagesRightAligned(canvas, highScore, panelRightEdge, highScoreY, smallNumberBitmaps, scaleCorrection);
-
         boolean countUpFinished = displayedScore == score;
+        int shownBest = isNewBest && !countUpFinished ? previousBest : highScore;
+        drawScoreWithImagesRightAligned(canvas, shownBest, panelRightEdge, highScoreY, smallNumberBitmaps, scaleCorrection);
+
+        if (isNewBest && countUpFinished && newLabelBitmap != null) {
+            float labelX = panelX + SCORE_PANEL_NEW_X_OFFSET * scale * scaleCorrection;
+            float labelY = panelY + SCORE_PANEL_NEW_Y_OFFSET * scale * scaleCorrection;
+            newLabelDestRect.set(labelX, labelY, labelX + newLabelBitmap.getWidth() * scaleCorrection,
+                    labelY + newLabelBitmap.getHeight() * scaleCorrection);
+            canvas.drawBitmap(newLabelBitmap, null, newLabelDestRect, pixelPaint);
+        }
 
         if (currentMedal != MEDAL_NONE && countUpFinished) {
             Bitmap medalBitmap = medalBitmaps[currentMedal];
@@ -2708,6 +2832,19 @@ class GameView extends View implements Choreographer.FrameCallback {
             float playButtonHeight = playButtonBitmap.getHeight() * scaleCorrection;
             float btnX = (screenWidth - playButtonWidth) / 2f;
             float btnY = panelY + panelHeight + (15 * scale * scaleCorrection);
+            if (settingClassicMenuEnabled) {
+                float scoreButtonWidth = scoreButtonBitmap.getWidth() * scaleCorrection;
+                float scoreButtonHeight = scoreButtonBitmap.getHeight() * scaleCorrection;
+                float buttonGap = Math.min(homeButtonGap * scaleCorrection,
+                        Math.max(0f, uiAvailableWidth - playButtonWidth - scoreButtonWidth));
+                btnX = (screenWidth - playButtonWidth - scoreButtonWidth - buttonGap) / 2f;
+                float scoreX = btnX + playButtonWidth + buttonGap;
+                scoreButtonRect.set((int) scoreX, (int) btnY, (int) (scoreX + scoreButtonWidth), (int) (btnY + scoreButtonHeight));
+                scoreButtonDestRect.set(scoreButtonRect);
+                drawButton(canvas, scoreButtonBitmap, scoreButtonDestRect, scoreBtnProgress * (pressOffsetY * scaleCorrection), pixelPaint);
+            } else {
+                scoreButtonRect.setEmpty();
+            }
             playButtonRect.set((int) btnX, (int) btnY, (int) (btnX + playButtonWidth), (int) (btnY + playButtonHeight));
 
             restartBtnDestRect.set(playButtonRect);
@@ -2816,10 +2953,12 @@ class GameView extends View implements Choreographer.FrameCallback {
         if (gameState == GameState.HOME) {
             if (playButtonRect.contains(x, y)) pressedButtonRect = playButtonRect;
             else if (scoreButtonRect.contains(x, y)) pressedButtonRect = scoreButtonRect;
+            else if (rateButtonRect.contains(x, y)) pressedButtonRect = rateButtonRect;
             else if (settingsButtonRect.contains(x, y)) pressedButtonRect = settingsButtonRect;
         } else if (gameState == GameState.PANEL_SLIDING) {
             if (gameOverElementsY == gameOverElementsTargetY && !isRestarting) {
                 if (displayedScore == score && playButtonRect.contains(x, y)) pressedButtonRect = playButtonRect;
+                else if (displayedScore == score && settingClassicMenuEnabled && scoreButtonRect.contains(x, y)) pressedButtonRect = scoreButtonRect;
                 if (isGameOverIconAnimationDone && settingsButtonRect.contains(x, y)) pressedButtonRect = settingsButtonRect;
             }
         } else if (isPaused) {
@@ -2836,6 +2975,7 @@ class GameView extends View implements Choreographer.FrameCallback {
         boolean onPanel = gameState == GameState.PANEL_SLIDING;
         playBtnTarget = (pressedButtonRect == playButtonRect && onHome) ? 1f : 0f;
         scoreBtnTarget = (pressedButtonRect == scoreButtonRect) ? 1f : 0f;
+        rateBtnTarget = (pressedButtonRect == rateButtonRect) ? 1f : 0f;
         settingsBtnTarget = (pressedButtonRect == settingsButtonRect && onHome) ? 1f : 0f;
         okBtnTarget = (pressedButtonRect == playButtonRect && onPanel) ? 1f : 0f;
         gameOverSettingsBtnTarget = (pressedButtonRect == settingsButtonRect && onPanel) ? 1f : 0f;
@@ -2858,6 +2998,7 @@ class GameView extends View implements Choreographer.FrameCallback {
     private void pauseGame() {
         if (gameState != GameState.PLAYING) return;
         isPaused = true;
+        pauseFade = 0f;
         isScreenPressed = false;
         stopWeatherSounds();
         invalidate();
@@ -2872,7 +3013,9 @@ class GameView extends View implements Choreographer.FrameCallback {
                     gameState = GameState.TRANSITION_TO_WAITING;
                     isFadingOut = true;
                 } else if (button == scoreButtonRect) {
-                    Toast.makeText(getContext(), "Leaderboard unavailable. Try again later.", Toast.LENGTH_SHORT).show();
+                    Toast.makeText(getContext(), LEADERBOARD_MESSAGE, Toast.LENGTH_SHORT).show();
+                } else if (button == rateButtonRect) {
+                    Toast.makeText(getContext(), RATE_MESSAGE, Toast.LENGTH_SHORT).show();
                 } else if (button == settingsButtonRect) {
                     openSettings();
                 }
@@ -2880,6 +3023,8 @@ class GameView extends View implements Choreographer.FrameCallback {
                 playSound(soundSwooshing);
                 if (button == playButtonRect) {
                     isRestarting = true;
+                } else if (button == scoreButtonRect) {
+                    Toast.makeText(getContext(), LEADERBOARD_MESSAGE, Toast.LENGTH_SHORT).show();
                 } else if (button == settingsButtonRect) {
                     openSettings();
                 }
@@ -2891,6 +3036,7 @@ class GameView extends View implements Choreographer.FrameCallback {
     private void cancelButtonPress() {
         playBtnTarget = 0f;
         scoreBtnTarget = 0f;
+        rateBtnTarget = 0f;
         settingsBtnTarget = 0f;
         okBtnTarget = 0f;
         gameOverSettingsBtnTarget = 0f;

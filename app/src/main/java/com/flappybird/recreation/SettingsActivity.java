@@ -186,6 +186,7 @@ public class SettingsActivity extends AppCompatActivity {
     public static final String PREF_SHOW_FPS = "pref_show_fps";
     public static final String PREF_RAMP_TOP_SPEED = "pref_ramp_top_speed";
     public static final String PREF_RAMP_MIN_GAP = "pref_ramp_min_gap_percent";
+    public static final String PREF_CLASSIC_MENU_ENABLED = "pref_classic_menu_enabled";
 
     public static final int DEFAULT_BIRD_COLOR = -1;
     public static final int DEFAULT_BACKGROUND = -1;
@@ -275,6 +276,7 @@ public class SettingsActivity extends AppCompatActivity {
     public static final boolean DEFAULT_SHOW_FPS = false;
     public static final float DEFAULT_RAMP_TOP_SPEED = 3.0f;
     public static final int DEFAULT_RAMP_MIN_GAP = 55;
+    public static final boolean DEFAULT_CLASSIC_MENU_ENABLED = true;
 
     public static final int SCORE_POINT_END = 0;
     public static final int SCORE_POINT_MIDDLE = 1;
@@ -1132,6 +1134,7 @@ public class SettingsActivity extends AppCompatActivity {
         toggleRow(group, "row_auto_pause", "Pause when you leave", "Freezes the round until you tap again");
         group = addGroup(page, "Interface");
         toggleRow(group, "row_hide_settings_icon", "Hide settings button", "The top right corner still opens settings");
+        toggleRow(group, "row_classic_menu", "Original menu buttons", "Rate button on the home screen and a leaderboard button after a crash");
         group = addGroup(page, "Debug");
         toggleRow(group, "row_show_fps", "FPS counter", "Shows frames per second in the top left corner");
         toggleRow(group, "row_show_hitboxes", "Show hitboxes", "Outlines everything that can collide");
@@ -1303,6 +1306,9 @@ public class SettingsActivity extends AppCompatActivity {
         autoPause.note = "applies in the game";
         autoPause.randomizable = false;
         toggle(PREF_HIDE_SETTINGS_ICON, DEFAULT_HIDE_SETTINGS_ICON, rowView("row_hide_settings_icon")).randomizable = false;
+        ToggleSetting classicMenu = toggle(PREF_CLASSIC_MENU_ENABLED, DEFAULT_CLASSIC_MENU_ENABLED, rowView("row_classic_menu"));
+        classicMenu.note = "shown on the home and score screens";
+        classicMenu.randomizable = false;
         ToggleSetting showFps = toggle(PREF_SHOW_FPS, DEFAULT_SHOW_FPS, rowView("row_show_fps"));
         showFps.note = "shown in the game";
         showFps.randomizable = false;
@@ -1656,7 +1662,8 @@ public class SettingsActivity extends AppCompatActivity {
         return key.equals(PREF_SOUND_ENABLED) || key.equals(PREF_HAPTIC_FEEDBACK_ENABLED)
                 || key.equals(PREF_HIDE_SETTINGS_ICON) || key.equals(PREF_PAUSE_BUTTON_ENABLED)
                 || key.equals(PREF_AUTO_PAUSE_ENABLED) || key.equals(PREF_SOUND_VOLUME)
-                || key.equals(PREF_WEATHER_VOLUME) || key.equals(PREF_SHOW_FPS) || key.equals(PREF_SHOW_HITBOXES);
+                || key.equals(PREF_WEATHER_VOLUME) || key.equals(PREF_SHOW_FPS) || key.equals(PREF_SHOW_HITBOXES)
+                || key.equals(PREF_CLASSIC_MENU_ENABLED);
     }
 
     private void setFlag(String key, boolean value) {
@@ -3471,8 +3478,12 @@ public class SettingsActivity extends AppCompatActivity {
             float size = Math.max(0.1f, config.birdSize);
             Bitmap sprite = birds[birdColorIndex][1];
             float halfHeight = sprite.getHeight() * size / 2f;
-            float pilotHalfWidth = sprite.getWidth() * size * 0.5f;
-            float pilotHalfHeight = sprite.getHeight() * size * 0.5f;
+            float hitbox = Math.max(0f, config.birdHitbox);
+            boolean square = config.hitboxShape == HITBOX_SHAPE_SQUARE;
+            float boxWidth = square ? SQUARE_HITBOX_SIZE * scale : sprite.getWidth() * 0.8f;
+            float boxHeight = square ? SQUARE_HITBOX_SIZE * scale : sprite.getHeight() * 0.8f;
+            float pilotHalfWidth = boxWidth * hitbox * size / 2f + sprite.getWidth() * size * 0.1f;
+            float pilotHalfHeight = Math.max(halfHeight, boxHeight * hitbox * size / 2f + sprite.getHeight() * size * 0.1f);
             pilotFrameDelta = dt;
 
             if (config.drunk) {
