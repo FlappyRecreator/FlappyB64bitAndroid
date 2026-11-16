@@ -87,7 +87,7 @@ A full settings menu with a live preview that plays by itself and shows each cha
 3. If Android asks, allow your browser or file manager to install apps from unknown sources.
 4. Follow the on-screen prompts to finish installing.
 
-> **About the Mediafire folder:** Much older versions are still available in the [Mediafire folder](https://www.mediafire.com/folder/at8q4prpl59m6/Flappy+Bird+64-bit+Recreation). Every release there is outdated, including the folder named "LATEST RELEASE". I no longer have access to that account and cannot update it. For the current version, always use the **Releases** page.
+> **About the Mediafire folder:** Much older versions are still available in the [Mediafire folder](https://www.mediafire.com/folder/at8q4prpl59m6/Flappy+Bird+64-bit+Recreation). Every release there is outdated, including the folder named "LATEST VERSION". I no longer have access to that account and cannot update it. For the current version, always use the **Releases** page.
 
 ### Updating
 Install the new APK over the existing one. If Android shows "App not installed," uninstall the previous version first and then install the new one.
