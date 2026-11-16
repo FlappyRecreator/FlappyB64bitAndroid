@@ -1,5 +1,6 @@
 package com.flappybird.recreation;
 
+import android.content.ActivityNotFoundException;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
@@ -11,6 +12,7 @@ import android.graphics.Color;
 import android.graphics.ColorFilter;
 import android.graphics.ColorMatrix;
 import android.graphics.ColorMatrixColorFilter;
+import android.graphics.LightingColorFilter;
 import android.graphics.LinearGradient;
 import android.graphics.Matrix;
 import android.graphics.Paint;
@@ -23,6 +25,7 @@ import android.graphics.Rect;
 import android.graphics.RectF;
 import android.graphics.Shader;
 import android.media.AudioAttributes;
+import android.net.Uri;
 import android.media.MediaPlayer;
 import android.media.SoundPool;
 import android.os.Build;
@@ -33,7 +36,9 @@ import android.util.Log;
 import android.view.Choreographer;
 import android.view.Display;
 import android.view.HapticFeedbackConstants;
+import android.view.KeyEvent;
 import android.view.MotionEvent;
+import android.view.PointerIcon;
 import android.view.View;
 import android.view.WindowManager;
 import android.widget.FrameLayout;
@@ -98,6 +103,19 @@ public class MainActivity extends AppCompatActivity {
     public void onWindowFocusChanged(boolean hasFocus) {
         super.onWindowFocusChanged(hasFocus);
         if (hasFocus) hideSystemBars();
+        else if (gameView != null) gameView.releaseHeldInput();
+    }
+
+    @Override
+    public boolean onKeyDown(int keyCode, KeyEvent event) {
+        if (gameView != null && gameView.onGameKey(keyCode, event, true)) return true;
+        return super.onKeyDown(keyCode, event);
+    }
+
+    @Override
+    public boolean onKeyUp(int keyCode, KeyEvent event) {
+        if (gameView != null && gameView.onGameKey(keyCode, event, false)) return true;
+        return super.onKeyUp(keyCode, event);
     }
 
     private void hideSystemBars() {
@@ -186,12 +204,20 @@ class GameView extends View implements Choreographer.FrameCallback {
     private static final int MENU_BUTTONS_Y = 340;
     private static final int ATLAS_RATE_X = 924, ATLAS_RATE_Y = 0, ATLAS_RATE_WIDTH = 74, ATLAS_RATE_HEIGHT = 48;
     private static final int ATLAS_RESUME_X = 668, ATLAS_RESUME_Y = 284, ATLAS_RESUME_WIDTH = 26, ATLAS_RESUME_HEIGHT = 28;
-    private static final float RESUME_BUTTON_SHARE = 0.15f;
+    private static final float RESUME_BUTTON_SHARE = 0.13f;
     private static final float PAUSE_FADE_SEC = 0.16f;
     private static final int PAUSE_DIM_ALPHA = 120;
     private static final int ATLAS_NEW_X = 224, ATLAS_NEW_Y = 1002, ATLAS_NEW_WIDTH = 32, ATLAS_NEW_HEIGHT = 14;
     private static final String LEADERBOARD_MESSAGE = "Leaderboard unavailable. Try again later.";
-    private static final String RATE_MESSAGE = "Rating unavailable. Try again later.";
+    private static final String RATE_URL = "https://github.com/FlappyRecreator/FlappyB64bitAndroid";
+    private static final String RATE_MESSAGE = "No browser found to open the project page.";
+    private static final int FPS_COLOR_GOOD = 0xFF5BE35B;
+    private static final int FPS_COLOR_OK = 0xFFFFD23F;
+    private static final int FPS_COLOR_BAD = 0xFFFF5A4F;
+    private static final float FPS_GOOD_SHARE = 0.9f;
+    private static final float FPS_OK_SHARE = 0.6f;
+    private static final float FALLBACK_REFRESH_RATE = 60f;
+    private static final float CURSOR_HIDE_DELAY_SEC = 1.2f;
     private static final float PLATINUM_OFFSET_X = -1.0f;
     private static final float PLATINUM_OFFSET_Y = 1.0f;
     private static final float GOLD_OFFSET_X = -1.0f;
@@ -415,6 +441,16 @@ class GameView extends View implements Choreographer.FrameCallback {
     private boolean flashSharp = false;
     private float birdTiltVelocity = 0f;
     private float fpsTimer = 0f;
+    private Paint fpsPaint;
+    private ColorFilter fpsGoodFilter, fpsOkFilter, fpsBadFilter;
+    private int fpsColor = FPS_COLOR_GOOD;
+    private boolean settingKeyboardEnabled, settingRightClickPauses, settingHideCursor;
+    private int keyFlap, keyFlapAlt, keyPause, keyPlay, keySettings;
+    private boolean touchHeld, flapKeyHeld, flapAltKeyHeld, secondaryClickHeld;
+    private int keyButtonCode = KeyEvent.KEYCODE_UNKNOWN;
+    private boolean hasMouse;
+    private float hoverX = -1f, hoverY = -1f, cursorIdleSec = 0f;
+    private int cursorType = Integer.MIN_VALUE;
     private int fpsFrames = 0, shownFps = 0;
     private float stepAccumulator = 0f;
     private float shakeTimer = 0f;
@@ -554,6 +590,11 @@ class GameView extends View implements Choreographer.FrameCallback {
         hudIconPaint.setColor(Color.WHITE);
         hudIconPaint.setAntiAlias(true);
         hitboxPaint = newStrokePaint(0xFFFF3B30);
+        fpsPaint = new Paint(pixelPaint);
+        fpsGoodFilter = new LightingColorFilter(FPS_COLOR_GOOD, 0);
+        fpsOkFilter = new LightingColorFilter(FPS_COLOR_OK, 0);
+        fpsBadFilter = new LightingColorFilter(FPS_COLOR_BAD, 0);
+        fpsPaint.setColorFilter(fpsGoodFilter);
 
         goldenPipePaint = newPixelPaint();
         goldenPipePaint.setXfermode(new PorterDuffXfermode(PorterDuff.Mode.SRC_ATOP));
@@ -640,6 +681,14 @@ class GameView extends View implements Choreographer.FrameCallback {
         settingPipeColor = intPref(stored, PREF_PIPE_COLOR, DEFAULT_PIPE_COLOR);
         settingHideSettingsIcon = flagPref(stored, PREF_HIDE_SETTINGS_ICON, DEFAULT_HIDE_SETTINGS_ICON);
         settingClassicMenuEnabled = flagPref(stored, PREF_CLASSIC_MENU_ENABLED, DEFAULT_CLASSIC_MENU_ENABLED);
+        settingKeyboardEnabled = flagPref(stored, PREF_KEYBOARD_ENABLED, DEFAULT_KEYBOARD_ENABLED);
+        settingRightClickPauses = flagPref(stored, PREF_RIGHT_CLICK_PAUSES, DEFAULT_RIGHT_CLICK_PAUSES);
+        settingHideCursor = flagPref(stored, PREF_HIDE_CURSOR, DEFAULT_HIDE_CURSOR);
+        keyFlap = keyPref(stored, PREF_KEY_FLAP, DEFAULT_KEY_FLAP);
+        keyFlapAlt = keyPref(stored, PREF_KEY_FLAP_ALT, DEFAULT_KEY_FLAP_ALT);
+        keyPause = keyPref(stored, PREF_KEY_PAUSE, DEFAULT_KEY_PAUSE);
+        keyPlay = keyPref(stored, PREF_KEY_PLAY, DEFAULT_KEY_PLAY);
+        keySettings = keyPref(stored, PREF_KEY_SETTINGS, DEFAULT_KEY_SETTINGS);
         settingGameOverOpacity = intPref(stored, PREF_GAMEOVER_OPACITY, DEFAULT_GAMEOVER_OPACITY);
         settingGameSpeed = floatPref(stored, PREF_GAME_SPEED, DEFAULT_GAME_SPEED);
         settingGravity = floatPref(stored, PREF_GRAVITY, DEFAULT_GRAVITY);
@@ -736,6 +785,11 @@ class GameView extends View implements Choreographer.FrameCallback {
         if (!(value instanceof Number)) return fallback;
         float number = ((Number) value).floatValue();
         return Float.isNaN(number) || Float.isInfinite(number) ? fallback : number;
+    }
+
+    private static int keyPref(Map<String, ?> stored, String key, int fallback) {
+        int code = intPref(stored, key, fallback);
+        return isUsableKey(code) ? code : fallback;
     }
 
     private static boolean flagPref(Map<String, ?> stored, String key, boolean fallback) {
@@ -2340,7 +2394,22 @@ class GameView extends View implements Choreographer.FrameCallback {
         float digitWidth = smallNumberBitmaps[0].getWidth() * FPS_DIGIT_SCALE;
         float right = safeInsetLeft + cornerMargin + digitWidth * 3f;
         float bottom = systemBarTop + cornerMargin + digitHeight;
-        drawScoreWithImagesRightAligned(canvas, shownFps, right, bottom, smallNumberBitmaps, FPS_DIGIT_SCALE);
+        drawDigitsRightAligned(canvas, shownFps, right, bottom, smallNumberBitmaps, FPS_DIGIT_SCALE, fpsPaint);
+    }
+
+    private float displayRefreshRate() {
+        Display display = getDisplay();
+        float rate = display != null ? display.getRefreshRate() : FALLBACK_REFRESH_RATE;
+        return rate >= 1f && rate <= 1000f ? rate : FALLBACK_REFRESH_RATE;
+    }
+
+    private void updateFpsColor() {
+        float target = displayRefreshRate();
+        int color = shownFps >= target * FPS_GOOD_SHARE ? FPS_COLOR_GOOD
+                : shownFps >= target * FPS_OK_SHARE ? FPS_COLOR_OK : FPS_COLOR_BAD;
+        if (color == fpsColor) return;
+        fpsColor = color;
+        fpsPaint.setColorFilter(color == FPS_COLOR_GOOD ? fpsGoodFilter : color == FPS_COLOR_OK ? fpsOkFilter : fpsBadFilter);
     }
 
     private void drawBackground(Canvas canvas) {
@@ -2892,6 +2961,10 @@ class GameView extends View implements Choreographer.FrameCallback {
     }
 
     private void drawScoreWithImagesRightAligned(Canvas canvas, int number, float rightX, float y, Bitmap[] numberSet, float scaleCorrection) {
+        drawDigitsRightAligned(canvas, number, rightX, y, numberSet, scaleCorrection, pixelPaint);
+    }
+
+    private void drawDigitsRightAligned(Canvas canvas, int number, float rightX, float y, Bitmap[] numberSet, float scaleCorrection, Paint paint) {
         int count = splitDigits(number);
         float currentX = rightX;
         for (int i = 0; i < count; i++) {
@@ -2900,7 +2973,7 @@ class GameView extends View implements Choreographer.FrameCallback {
             float digitHeight = digitBitmap.getHeight() * scaleCorrection;
             currentX -= digitWidth;
             scoreDigitDestRect.set(currentX, y - digitHeight, currentX + digitWidth, y);
-            canvas.drawBitmap(digitBitmap, null, scoreDigitDestRect, pixelPaint);
+            canvas.drawBitmap(digitBitmap, null, scoreDigitDestRect, paint);
         }
     }
 
@@ -2921,9 +2994,22 @@ class GameView extends View implements Choreographer.FrameCallback {
         int touchX = (int) event.getX();
         int touchY = (int) event.getY();
 
-        switch (event.getActionMasked()) {
+        int action = event.getActionMasked();
+        if (event.getToolType(0) == MotionEvent.TOOL_TYPE_MOUSE) hasMouse = true;
+        if (action == MotionEvent.ACTION_DOWN && isSecondaryClick(event)) {
+            secondaryClickHeld = true;
+            if (settingRightClickPauses) togglePause();
+            return true;
+        }
+        if (secondaryClickHeld) {
+            if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) secondaryClickHeld = false;
+            return true;
+        }
+
+        switch (action) {
             case MotionEvent.ACTION_DOWN:
-                isScreenPressed = true;
+                touchHeld = true;
+                refreshHeld();
                 onFingerDown(touchX, touchY);
                 break;
             case MotionEvent.ACTION_POINTER_DOWN:
@@ -2936,19 +3022,177 @@ class GameView extends View implements Choreographer.FrameCallback {
                 cancelButtonPress();
                 break;
             case MotionEvent.ACTION_UP:
-                isScreenPressed = false;
+                touchHeld = false;
+                refreshHeld();
                 onFingerUp(touchX, touchY);
                 break;
             case MotionEvent.ACTION_CANCEL:
-                isScreenPressed = false;
+                touchHeld = false;
+                refreshHeld();
                 cancelButtonPress();
                 break;
         }
         return true;
     }
 
+    private static boolean isSecondaryClick(MotionEvent event) {
+        if (event.getToolType(0) != MotionEvent.TOOL_TYPE_MOUSE) return false;
+        int buttons = event.getButtonState();
+        return (buttons & MotionEvent.BUTTON_SECONDARY) != 0 && (buttons & MotionEvent.BUTTON_PRIMARY) == 0;
+    }
+
+    @Override
+    public boolean onHoverEvent(MotionEvent event) {
+        if (event.getToolType(0) == MotionEvent.TOOL_TYPE_MOUSE) {
+            hasMouse = true;
+            if (event.getActionMasked() == MotionEvent.ACTION_HOVER_EXIT) {
+                hoverX = -1f;
+                hoverY = -1f;
+            } else {
+                hoverX = event.getX();
+                hoverY = event.getY();
+                cursorIdleSec = 0f;
+            }
+            updateCursor();
+        }
+        return super.onHoverEvent(event);
+    }
+
+    private void updateCursor() {
+        if (!hasMouse || Build.VERSION.SDK_INT < Build.VERSION_CODES.N) return;
+        int type;
+        boolean running = (gameState == GameState.PLAYING && !isPaused) || gameState == GameState.WAITING;
+        if (running && settingHideCursor && cursorIdleSec >= CURSOR_HIDE_DELAY_SEC) type = PointerIcon.TYPE_NULL;
+        else if (overButton((int) hoverX, (int) hoverY)) type = PointerIcon.TYPE_HAND;
+        else type = PointerIcon.TYPE_ARROW;
+        if (type == cursorType) return;
+        cursorType = type;
+        setPointerIcon(PointerIcon.getSystemIcon(getContext(), type));
+    }
+
+    private boolean overButton(int x, int y) {
+        if (x < 0 || y < 0) return false;
+        if (gameState == GameState.HOME) {
+            return playButtonRect.contains(x, y) || scoreButtonRect.contains(x, y)
+                    || rateButtonRect.contains(x, y) || settingsButtonRect.contains(x, y);
+        }
+        if (gameState == GameState.PANEL_SLIDING) {
+            if (gameOverElementsY != gameOverElementsTargetY || isRestarting) return false;
+            boolean counted = displayedScore == score;
+            return (counted && playButtonRect.contains(x, y))
+                    || (counted && settingClassicMenuEnabled && scoreButtonRect.contains(x, y))
+                    || (isGameOverIconAnimationDone && settingsButtonRect.contains(x, y));
+        }
+        if (gameState == GameState.PLAYING) {
+            if (isPaused) return resumeDestRect.contains(x, y);
+            return settingPauseButtonEnabled && pauseButtonRect.contains(x, y);
+        }
+        return false;
+    }
+
+    private void refreshHeld() {
+        isScreenPressed = touchHeld || flapKeyHeld || flapAltKeyHeld;
+    }
+
+    void releaseHeldInput() {
+        touchHeld = false;
+        flapKeyHeld = false;
+        flapAltKeyHeld = false;
+        secondaryClickHeld = false;
+        refreshHeld();
+        if (keyButtonCode != KeyEvent.KEYCODE_UNKNOWN) cancelButtonPress();
+    }
+
+    boolean onGameKey(int keyCode, KeyEvent event, boolean down) {
+        if (!isReady || !settingKeyboardEnabled || keyCode == KeyEvent.KEYCODE_UNKNOWN || event == null) return false;
+        boolean flapKey = keyCode == keyFlap || keyCode == keyFlapAlt;
+        boolean playKey = keyCode == keyPlay;
+        boolean settingsKey = keyCode == keySettings;
+        boolean running = gameState == GameState.PLAYING;
+        boolean pauseKey = keyCode == keyPause || (keyCode == KeyEvent.KEYCODE_ESCAPE && running);
+        if (!flapKey && !playKey && !settingsKey && !(pauseKey && running)) return false;
+        if (down && event.getRepeatCount() > 0) return true;
+        if (pauseKey && running) {
+            if (down) togglePause();
+            return true;
+        }
+        return down ? keyDown(keyCode, flapKey, playKey, settingsKey) : keyUp(keyCode, flapKey);
+    }
+
+    private boolean keyDown(int keyCode, boolean flapKey, boolean playKey, boolean settingsKey) {
+        if (gameState == GameState.HOME) {
+            if (flapKey || playKey) return pressByKey(playButtonRect, keyCode);
+            return settingsKey && pressByKey(settingsButtonRect, keyCode);
+        }
+        if (gameState == GameState.PANEL_SLIDING) {
+            boolean ready = gameOverElementsY == gameOverElementsTargetY && !isRestarting;
+            if ((flapKey || playKey) && ready && displayedScore == score) return pressByKey(playButtonRect, keyCode);
+            if (settingsKey && ready && isGameOverIconAnimationDone) return pressByKey(settingsButtonRect, keyCode);
+            return flapKey || playKey;
+        }
+        if (gameState == GameState.PLAYING && isPaused) {
+            if (!flapKey && !playKey) return false;
+            resumeFromPause();
+            if (flapKey) {
+                holdKey(keyCode, true);
+                handleGameplayTap();
+            }
+            return true;
+        }
+        if (gameState == GameState.WAITING || gameState == GameState.PLAYING) {
+            if (flapKey) {
+                holdKey(keyCode, true);
+                handleGameplayTap();
+                return true;
+            }
+            if (playKey && gameState == GameState.WAITING) handleGameplayTap();
+            return playKey;
+        }
+        return flapKey || playKey;
+    }
+
+    private boolean keyUp(int keyCode, boolean flapKey) {
+        if (keyCode == keyButtonCode && pressedButtonRect != null) {
+            Rect button = pressedButtonRect;
+            keyButtonCode = KeyEvent.KEYCODE_UNKNOWN;
+            onFingerUp(button.centerX(), button.centerY());
+            return true;
+        }
+        if (flapKey) holdKey(keyCode, false);
+        return true;
+    }
+
+    private boolean pressByKey(Rect button, int keyCode) {
+        if (button.isEmpty()) return false;
+        pressedButtonRect = button;
+        keyButtonCode = keyCode;
+        applyButtonTargets();
+        invalidate();
+        return true;
+    }
+
+    private void holdKey(int keyCode, boolean held) {
+        if (keyCode == keyFlap) flapKeyHeld = held;
+        else if (keyCode == keyFlapAlt) flapAltKeyHeld = held;
+        refreshHeld();
+    }
+
+    private void togglePause() {
+        if (gameState != GameState.PLAYING) return;
+        if (isPaused) resumeFromPause();
+        else pauseGame();
+    }
+
+    private void resumeFromPause() {
+        if (!isPaused) return;
+        isPaused = false;
+        updateWeatherSounds();
+        invalidate();
+    }
+
     private void onFingerDown(int x, int y) {
         pressedButtonRect = null;
+        keyButtonCode = KeyEvent.KEYCODE_UNKNOWN;
 
         if (gameState == GameState.HOME) {
             if (playButtonRect.contains(x, y)) pressedButtonRect = playButtonRect;
@@ -2962,8 +3206,7 @@ class GameView extends View implements Choreographer.FrameCallback {
                 if (isGameOverIconAnimationDone && settingsButtonRect.contains(x, y)) pressedButtonRect = settingsButtonRect;
             }
         } else if (isPaused) {
-            isPaused = false;
-            updateWeatherSounds();
+            resumeFromPause();
             handleGameplayTap();
         } else if (gameState == GameState.PLAYING && settingPauseButtonEnabled && pauseButtonRect.contains(x, y)) {
             pauseGame();
@@ -2971,6 +3214,11 @@ class GameView extends View implements Choreographer.FrameCallback {
             handleGameplayTap();
         }
 
+        applyButtonTargets();
+        if (pressedButtonRect != null) invalidate();
+    }
+
+    private void applyButtonTargets() {
         boolean onHome = gameState == GameState.HOME;
         boolean onPanel = gameState == GameState.PANEL_SLIDING;
         playBtnTarget = (pressedButtonRect == playButtonRect && onHome) ? 1f : 0f;
@@ -2979,8 +3227,6 @@ class GameView extends View implements Choreographer.FrameCallback {
         settingsBtnTarget = (pressedButtonRect == settingsButtonRect && onHome) ? 1f : 0f;
         okBtnTarget = (pressedButtonRect == playButtonRect && onPanel) ? 1f : 0f;
         gameOverSettingsBtnTarget = (pressedButtonRect == settingsButtonRect && onPanel) ? 1f : 0f;
-
-        if (pressedButtonRect != null) invalidate();
     }
 
     private void handleGameplayTap() {
@@ -2999,7 +3245,10 @@ class GameView extends View implements Choreographer.FrameCallback {
         if (gameState != GameState.PLAYING) return;
         isPaused = true;
         pauseFade = 0f;
-        isScreenPressed = false;
+        touchHeld = false;
+        flapKeyHeld = false;
+        flapAltKeyHeld = false;
+        refreshHeld();
         stopWeatherSounds();
         invalidate();
     }
@@ -3015,7 +3264,7 @@ class GameView extends View implements Choreographer.FrameCallback {
                 } else if (button == scoreButtonRect) {
                     Toast.makeText(getContext(), LEADERBOARD_MESSAGE, Toast.LENGTH_SHORT).show();
                 } else if (button == rateButtonRect) {
-                    Toast.makeText(getContext(), RATE_MESSAGE, Toast.LENGTH_SHORT).show();
+                    openRatePage();
                 } else if (button == settingsButtonRect) {
                     openSettings();
                 }
@@ -3033,7 +3282,18 @@ class GameView extends View implements Choreographer.FrameCallback {
         cancelButtonPress();
     }
 
+    private void openRatePage() {
+        try {
+            Intent page = new Intent(Intent.ACTION_VIEW, Uri.parse(RATE_URL));
+            page.addCategory(Intent.CATEGORY_BROWSABLE);
+            getContext().startActivity(page);
+        } catch (ActivityNotFoundException | SecurityException e) {
+            Toast.makeText(getContext(), RATE_MESSAGE, Toast.LENGTH_SHORT).show();
+        }
+    }
+
     private void cancelButtonPress() {
+        keyButtonCode = KeyEvent.KEYCODE_UNKNOWN;
         playBtnTarget = 0f;
         scoreBtnTarget = 0f;
         rateBtnTarget = 0f;
@@ -3160,7 +3420,7 @@ class GameView extends View implements Choreographer.FrameCallback {
 
     public void pause() {
         hostResumed = false;
-        isScreenPressed = false;
+        releaseHeldInput();
         if (settingAutoPauseEnabled) pauseGame();
         cancelButtonPress();
         stopLoop();
@@ -3206,6 +3466,11 @@ class GameView extends View implements Choreographer.FrameCallback {
             shownFps = Math.min(999, Math.round(fpsFrames / fpsTimer));
             fpsFrames = 0;
             fpsTimer = 0f;
+            if (settingShowFps) updateFpsColor();
+        }
+        if (hasMouse) {
+            cursorIdleSec += deltaTime;
+            updateCursor();
         }
         if (settingFixedStepEnabled) {
             stepAccumulator += Math.min(deltaTime, FIXED_STEP_SEC * MAX_FIXED_STEPS);

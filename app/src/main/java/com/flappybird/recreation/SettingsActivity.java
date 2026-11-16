@@ -35,16 +35,23 @@ import android.graphics.drawable.RippleDrawable;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.text.Editable;
+import android.text.InputFilter;
 import android.text.InputType;
 import android.text.TextUtils;
+import android.text.TextWatcher;
 import android.transition.AutoTransition;
 import android.transition.TransitionManager;
 import android.util.DisplayMetrics;
 import android.view.Choreographer;
 import android.view.Gravity;
 import android.view.HapticFeedbackConstants;
+import android.view.KeyEvent;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.WindowManager;
+import android.view.inputmethod.EditorInfo;
+import android.view.inputmethod.InputMethodManager;
 import android.view.animation.OvershootInterpolator;
 import android.widget.Button;
 import android.widget.EditText;
@@ -54,6 +61,7 @@ import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 
+import androidx.activity.OnBackPressedCallback;
 import androidx.annotation.Nullable;
 import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
@@ -86,6 +94,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Date;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
@@ -93,6 +102,8 @@ import java.util.Map;
 import java.util.Random;
 import java.util.Set;
 import java.util.TreeSet;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 public class SettingsActivity extends AppCompatActivity {
 
@@ -187,6 +198,14 @@ public class SettingsActivity extends AppCompatActivity {
     public static final String PREF_RAMP_TOP_SPEED = "pref_ramp_top_speed";
     public static final String PREF_RAMP_MIN_GAP = "pref_ramp_min_gap_percent";
     public static final String PREF_CLASSIC_MENU_ENABLED = "pref_classic_menu_enabled";
+    public static final String PREF_KEYBOARD_ENABLED = "pref_keyboard_enabled";
+    public static final String PREF_KEY_FLAP = "pref_key_flap";
+    public static final String PREF_KEY_FLAP_ALT = "pref_key_flap_alt";
+    public static final String PREF_KEY_PAUSE = "pref_key_pause";
+    public static final String PREF_KEY_PLAY = "pref_key_play";
+    public static final String PREF_KEY_SETTINGS = "pref_key_settings";
+    public static final String PREF_RIGHT_CLICK_PAUSES = "pref_right_click_pauses";
+    public static final String PREF_HIDE_CURSOR = "pref_hide_cursor";
 
     public static final int DEFAULT_BIRD_COLOR = -1;
     public static final int DEFAULT_BACKGROUND = -1;
@@ -277,6 +296,37 @@ public class SettingsActivity extends AppCompatActivity {
     public static final float DEFAULT_RAMP_TOP_SPEED = 3.0f;
     public static final int DEFAULT_RAMP_MIN_GAP = 55;
     public static final boolean DEFAULT_CLASSIC_MENU_ENABLED = true;
+    public static final boolean DEFAULT_KEYBOARD_ENABLED = true;
+    public static final int DEFAULT_KEY_FLAP = KeyEvent.KEYCODE_SPACE;
+    public static final int DEFAULT_KEY_FLAP_ALT = KeyEvent.KEYCODE_DPAD_UP;
+    public static final int DEFAULT_KEY_PAUSE = KeyEvent.KEYCODE_P;
+    public static final int DEFAULT_KEY_PLAY = KeyEvent.KEYCODE_ENTER;
+    public static final int DEFAULT_KEY_SETTINGS = KeyEvent.KEYCODE_S;
+    public static final boolean DEFAULT_RIGHT_CLICK_PAUSES = true;
+    public static final boolean DEFAULT_HIDE_CURSOR = true;
+
+    public static boolean isUsableKey(int code) {
+        if (code == KeyEvent.KEYCODE_UNKNOWN) return true;
+        if (code < 0 || code > KeyEvent.getMaxKeyCode()) return false;
+        switch (code) {
+            case KeyEvent.KEYCODE_BACK:
+            case KeyEvent.KEYCODE_HOME:
+            case KeyEvent.KEYCODE_POWER:
+            case KeyEvent.KEYCODE_APP_SWITCH:
+            case KeyEvent.KEYCODE_VOLUME_UP:
+            case KeyEvent.KEYCODE_VOLUME_DOWN:
+            case KeyEvent.KEYCODE_VOLUME_MUTE:
+            case KeyEvent.KEYCODE_SLEEP:
+            case KeyEvent.KEYCODE_WAKEUP:
+            case KeyEvent.KEYCODE_ASSIST:
+            case KeyEvent.KEYCODE_VOICE_ASSIST:
+            case KeyEvent.KEYCODE_ENDCALL:
+            case KeyEvent.KEYCODE_CALL:
+                return false;
+            default:
+                return true;
+        }
+    }
 
     public static final int SCORE_POINT_END = 0;
     public static final int SCORE_POINT_MIDDLE = 1;
@@ -312,10 +362,26 @@ public class SettingsActivity extends AppCompatActivity {
     private static final int CLASSIC_FLASH_LENGTH = 1000;
     private static final int CLASSIC_BIRD_POSITION = 31;
     private static final int CLASSIC_START_HEIGHT = 36;
+    private static final String PREF_TEXT_EDITOR_WARNED = "pref_text_editor_warned";
+    private static final String PREF_TEXT_EDITOR_NOTES = "pref_text_editor_notes";
+    private static final int MAX_TEXT_CHARS = 200000;
+    private static final int MAX_TEXT_LINES = 5000;
+    private static final int MAX_LINE_CHARS = 2000;
+    private static final int MAX_LISTED_PROBLEMS = 15;
+    private static final Pattern NUMBER_TEXT = Pattern.compile(
+            "^\\+?(-?(?:[0-9]{1,9}(?:[.,][0-9]{0,6})?|[.,][0-9]{1,6}))\\s*(x|%|ms|s|sec|deg|degrees|points?|pts?)?$",
+            Pattern.CASE_INSENSITIVE);
+    private static final String TEXT_HEADER = "# Flappy Bird settings\n"
+            + "# Change a value after the = sign, then tap Apply.\n"
+            + "# Lines that start with # are notes and are ignored.\n"
+            + "# Values outside the allowed range are moved back inside it.\n"
+            + "# Type default as a value to go back to the default.\n"
+            + "# Settings you delete keep their current value.\n";
     private static final String CLASSIC_SUMMARY = "Matches the flight, pipes and scoring of the 2013 Android game";
-    private static final int TAB_COUNT = 9;
+    private static final int TAB_COUNT = 10;
     private static final int ADVANCED_PAGE = 7;
     private static final int PRESETS_PAGE = 8;
+    private static final int ALL_PAGE = 9;
     private static final int[] CRASH_FLASH_COLORS = {0xFFFFFFFF, 0xFFFF3B30, 0xFFFFD23F, 0xFF000000};
     private static final String TAG_SWITCH = "switch";
     private static final String TAG_SLIDER = "slider";
@@ -409,6 +475,22 @@ public class SettingsActivity extends AppCompatActivity {
     private ToggleSetting birdTilt;
     private NumberSetting maxFall;
     private ToggleSetting sound;
+    private ToggleSetting keyboard;
+    private final List<KeySetting> keySettings = new ArrayList<>();
+    private final Map<View, Setting> rowSettings = new HashMap<>();
+    private final Map<ViewGroup, TextView> groupLabels = new HashMap<>();
+    private final Map<ViewGroup, String> groupTitles = new HashMap<>();
+    private final Set<View> dependencyHidden = new HashSet<>();
+    private LinearLayout pageStack;
+    private TextView titleView;
+    private TextView noResults;
+    private ImageView searchButton;
+    private EditText searchField;
+    private OnBackPressedCallback searchBack;
+    private boolean searching;
+    private String searchQuery = "";
+    private Map<String, Setting> textNames;
+    private List<HiddenValue> hiddenValues;
 
     private final Runnable saveRunnable = () -> flushSave();
     private final Runnable hideCaptionRunnable = () -> caption.animate().alpha(0f).setDuration(250L).start();
@@ -432,11 +514,12 @@ public class SettingsActivity extends AppCompatActivity {
         bindPresets();
 
         readAll(prefs.getAll());
+        resolveAllKeyConflicts(null);
         syncAllViews();
         refreshDependencies(false, true);
         refreshSlots();
         pushPreview();
-        selectPage(savedInstanceState != null ? savedInstanceState.getInt(STATE_PAGE, 0) : 0, false);
+        selectPage(savedInstanceState != null ? savedInstanceState.getInt(STATE_PAGE, ALL_PAGE) : ALL_PAGE, false);
         applyPaneLayout(metrics.widthPixels, metrics.heightPixels);
 
         if (!isDisclaimerShown()) showDisclaimerDialog();
@@ -559,12 +642,13 @@ public class SettingsActivity extends AppCompatActivity {
         caption = findViewById(R.id.preview_caption);
 
         ImageView back = findViewById(R.id.button_back);
-        GradientDrawable backShape = new GradientDrawable();
-        backShape.setShape(GradientDrawable.OVAL);
-        backShape.setColor(COLOR_HIGH);
-        back.setBackground(new RippleDrawable(ColorStateList.valueOf(COLOR_RIPPLE), backShape, null));
-        back.setImageDrawable(new ArrowDrawable(dp(22), dp(2.5f), COLOR_ON));
-        back.setOnClickListener(v -> finish());
+        styleRoundButton(back);
+        back.setImageDrawable(new IconDrawable(IconDrawable.BACK, dp(22), dp(2.5f), COLOR_ON));
+        back.setOnClickListener(v -> {
+            if (searching) closeSearch();
+            else finish();
+        });
+        createSearch(back);
 
         View badge = findViewById(R.id.preview_badge);
         badge.setBackground(rounded(COLOR_SKY, dp(12)));
@@ -573,16 +657,21 @@ public class SettingsActivity extends AppCompatActivity {
         TextView presetsTab = findViewById(R.id.tab_presets);
         for (int i = 0; i < TAB_COUNT; i++) {
             final int index = i;
-            if (i == ADVANCED_PAGE) tabs[i] = createAdvancedTab(presetsTab);
+            if (i == ADVANCED_PAGE) tabs[i] = createTab("Advanced", presetsTab, presetsTab);
+            else if (i == ALL_PAGE) tabs[i] = createTab("All", presetsTab, tabs[0]);
             else tabs[i] = findViewById(TAB_IDS[i < ADVANCED_PAGE ? i : i - 1]);
             tabStyles[i] = new ChipStyle(tabs[i], COLOR_ROW, COLOR_PRIMARY, COLOR_ON_VARIANT, COLOR_ON_PRIMARY,
                     dp(12), dp(20), 0, 0);
-            tabs[i].setOnClickListener(v -> selectPage(index, true));
+            tabs[i].setOnClickListener(v -> {
+                if (searching) closeSearch();
+                selectPage(index, true);
+            });
         }
 
         ViewCompat.setOnApplyWindowInsetsListener(root, (view, windowInsets) -> {
             Insets safe = windowInsets.getInsets(
-                    WindowInsetsCompat.Type.systemBars() | WindowInsetsCompat.Type.displayCutout());
+                    WindowInsetsCompat.Type.systemBars() | WindowInsetsCompat.Type.displayCutout()
+                            | WindowInsetsCompat.Type.ime());
             view.setPadding(safe.left, safe.top, safe.right, safe.bottom);
             return WindowInsetsCompat.CONSUMED;
         });
@@ -595,9 +684,192 @@ public class SettingsActivity extends AppCompatActivity {
         });
     }
 
-    private TextView createAdvancedTab(TextView template) {
+    private void styleRoundButton(ImageView button) {
+        GradientDrawable shape = new GradientDrawable();
+        shape.setShape(GradientDrawable.OVAL);
+        shape.setColor(COLOR_HIGH);
+        button.setBackground(new RippleDrawable(ColorStateList.valueOf(COLOR_RIPPLE), shape, null));
+    }
+
+    private void createSearch(ImageView back) {
+        titleView = findViewById(R.id.tv_settings_title);
+        LinearLayout header = (LinearLayout) back.getParent();
+
+        searchField = dialogInput("", InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS, "Search settings");
+        searchField.setBackground(null);
+        searchField.setTextColor(COLOR_ON);
+        searchField.setHintTextColor(COLOR_ON_VARIANT);
+        searchField.setTextSize(18);
+        searchField.setSelectAllOnFocus(false);
+        searchField.setPadding(0, 0, 0, 0);
+        searchField.setImeOptions(EditorInfo.IME_ACTION_SEARCH | EditorInfo.IME_FLAG_NO_EXTRACT_UI);
+        searchField.setFilters(new InputFilter[]{new InputFilter.LengthFilter(60)});
+        searchField.setVisibility(View.GONE);
+        LinearLayout.LayoutParams fieldParams = new LinearLayout.LayoutParams(0, WRAP, 1f);
+        fieldParams.setMarginStart(dp(14));
+        header.addView(searchField, header.indexOfChild(titleView) + 1, fieldParams);
+        searchField.addTextChangedListener(new TextWatcher() {
+            @Override
+            public void beforeTextChanged(CharSequence text, int start, int count, int after) {
+            }
+
+            @Override
+            public void onTextChanged(CharSequence text, int start, int before, int count) {
+            }
+
+            @Override
+            public void afterTextChanged(Editable text) {
+                if (searching) applySearch(text.toString(), true);
+            }
+        });
+        searchField.setOnEditorActionListener((view, actionId, event) -> {
+            hideKeyboard();
+            return true;
+        });
+
+        searchButton = new ImageView(this);
+        searchButton.setScaleType(ImageView.ScaleType.CENTER);
+        styleRoundButton(searchButton);
+        searchButton.setImageDrawable(new IconDrawable(IconDrawable.SEARCH, dp(22), dp(2.5f), COLOR_ON));
+        searchButton.setContentDescription("Search settings");
+        LinearLayout.LayoutParams buttonParams = new LinearLayout.LayoutParams(dp(44), dp(44));
+        buttonParams.setMarginStart(dp(10));
+        header.addView(searchButton, buttonParams);
+        searchButton.setOnClickListener(v -> {
+            if (searching) closeSearch();
+            else openSearch();
+        });
+
+        searchBack = new OnBackPressedCallback(false) {
+            @Override
+            public void handleOnBackPressed() {
+                closeSearch();
+            }
+        };
+        getOnBackPressedDispatcher().addCallback(this, searchBack);
+    }
+
+    private void openSearch() {
+        if (searching) return;
+        searching = true;
+        searchBack.setEnabled(true);
+        titleView.setVisibility(View.GONE);
+        searchField.setVisibility(View.VISIBLE);
+        searchField.setText("");
+        searchButton.setImageDrawable(new IconDrawable(IconDrawable.CLOSE, dp(22), dp(2.5f), COLOR_ON));
+        searchButton.setContentDescription("Close search");
+        selectPage(ALL_PAGE, false);
+        applySearch("", true);
+        searchField.requestFocus();
+        searchField.post(() -> {
+            InputMethodManager keyboardService = (InputMethodManager) getSystemService(Context.INPUT_METHOD_SERVICE);
+            if (keyboardService != null && searching) keyboardService.showSoftInput(searchField, InputMethodManager.SHOW_IMPLICIT);
+        });
+    }
+
+    private void closeSearch() {
+        if (!searching) return;
+        searching = false;
+        searchBack.setEnabled(false);
+        hideKeyboard();
+        searchField.setText("");
+        searchField.setVisibility(View.GONE);
+        titleView.setVisibility(View.VISIBLE);
+        searchButton.setImageDrawable(new IconDrawable(IconDrawable.SEARCH, dp(22), dp(2.5f), COLOR_ON));
+        searchButton.setContentDescription("Search settings");
+        noResults.setVisibility(View.GONE);
+        for (ViewGroup group : groups) {
+            group.setVisibility(View.VISIBLE);
+            groupLabels.get(group).setVisibility(View.VISIBLE);
+            for (int i = 0; i < group.getChildCount(); i++) {
+                View row = group.getChildAt(i);
+                row.setVisibility(dependencyHidden.contains(row) ? View.GONE : View.VISIBLE);
+            }
+        }
+        styleAllGroups();
+        selectPage(currentPage, false);
+    }
+
+    private void hideKeyboard() {
+        InputMethodManager keyboardService = (InputMethodManager) getSystemService(Context.INPUT_METHOD_SERVICE);
+        if (keyboardService != null) keyboardService.hideSoftInputFromWindow(searchField.getWindowToken(), 0);
+    }
+
+    private int pageOf(View view) {
+        View parent = view;
+        while (parent != null) {
+            for (int i = 0; i < pages.length; i++) {
+                if (pages[i] == parent) return i;
+            }
+            parent = parent.getParent() instanceof View ? (View) parent.getParent() : null;
+        }
+        return 0;
+    }
+
+    private String pageName(int page) {
+        return tabs[page] != null ? tabs[page].getText().toString() : "";
+    }
+
+    private static String searchable(String text) {
+        return text == null ? "" : text.toLowerCase(Locale.US).replace('_', ' ').replace('-', ' ');
+    }
+
+    private static void collectText(View view, StringBuilder out) {
+        if (view instanceof TextView) out.append(' ').append(((TextView) view).getText());
+        CharSequence description = view.getContentDescription();
+        if (description != null) out.append(' ').append(description);
+        if (view instanceof ViewGroup) {
+            ViewGroup group = (ViewGroup) view;
+            for (int i = 0; i < group.getChildCount(); i++) collectText(group.getChildAt(i), out);
+        }
+    }
+
+    private void applySearch(String query, boolean backToTop) {
+        searchQuery = query == null ? "" : query;
+        String[] words = searchable(searchQuery).trim().split("\\s+");
+        int found = 0;
+        for (int page = 0; page < pages.length; page++) {
+            boolean pageShown = false;
+            for (ViewGroup group : groups) {
+                if (pageOf(group) != page) continue;
+                String context = pageName(page) + " " + groupTitles.get(group);
+                int shown = 0;
+                for (int i = 0; i < group.getChildCount(); i++) {
+                    View row = group.getChildAt(i);
+                    boolean visible = !dependencyHidden.contains(row) && matches(row, context, words);
+                    row.setVisibility(visible ? View.VISIBLE : View.GONE);
+                    if (visible) shown++;
+                }
+                group.setVisibility(shown > 0 ? View.VISIBLE : View.GONE);
+                groupLabels.get(group).setVisibility(shown > 0 ? View.VISIBLE : View.GONE);
+                found += shown;
+                pageShown |= shown > 0;
+            }
+            pages[page].setVisibility(pageShown ? View.VISIBLE : View.GONE);
+            pages[page].setAlpha(1f);
+            pages[page].setTranslationY(0f);
+        }
+        noResults.setText("No settings match \"" + searchQuery.trim() + "\"");
+        noResults.setVisibility(found == 0 ? View.VISIBLE : View.GONE);
+        styleAllGroups();
+        if (backToTop) scrollView.scrollTo(0, 0);
+    }
+
+    private boolean matches(View row, String context, String[] words) {
+        StringBuilder text = new StringBuilder(context);
+        collectText(row, text);
+        Setting setting = rowSettings.get(row);
+        if (setting != null) text.append(' ').append(setting.key).append(' ').append(textName(setting));
+        String haystack = searchable(text.toString());
+        for (String word : words) {
+            if (!word.isEmpty() && !haystack.contains(word)) return false;
+        }
+        return true;
+    }
+
+    private TextView createTab(String name, TextView template, View before) {
         TextView tab = new TextView(this);
-        tab.setText("Advanced");
+        tab.setText(name);
         tab.setTextSize(14);
         tab.setTypeface(template.getTypeface());
         tab.setGravity(Gravity.CENTER);
@@ -607,7 +879,7 @@ public class SettingsActivity extends AppCompatActivity {
         params.setMarginEnd(dp(6));
         ViewGroup bar = (ViewGroup) template.getParent();
         int position = 0;
-        while (position < bar.getChildCount() && bar.getChildAt(position) != template) position++;
+        while (position < bar.getChildCount() && bar.getChildAt(position) != before) position++;
         bar.addView(tab, position, params);
         return tab;
     }
@@ -657,10 +929,22 @@ public class SettingsActivity extends AppCompatActivity {
     }
 
     private void selectPage(int index, boolean animate) {
-        int page = index >= 0 && index < pages.length ? index : 0;
+        int page = index >= 0 && index < pages.length ? index : ALL_PAGE;
+        boolean all = page == ALL_PAGE;
         for (int i = 0; i < pages.length; i++) {
             tabStyles[i].set(i == page, animate);
-            pages[i].setVisibility(i == page ? View.VISIBLE : View.GONE);
+            if (!searching) pages[i].setVisibility(all || i == page ? View.VISIBLE : View.GONE);
+            if (i != ALL_PAGE) {
+                ViewGroup.MarginLayoutParams params = (ViewGroup.MarginLayoutParams) pages[i].getLayoutParams();
+                params.topMargin = all ? dp(14) : 0;
+                pages[i].setLayoutParams(params);
+            }
+        }
+        for (ViewGroup group : groups) {
+            int owner = pageOf(group);
+            String title = groupTitles.get(group);
+            String text = all && owner != ALL_PAGE ? pageName(owner) + "  /  " + title : title;
+            groupLabels.get(group).setText(text.toUpperCase(Locale.US));
         }
         currentPage = page;
         scrollView.scrollTo(0, 0);
@@ -830,6 +1114,10 @@ public class SettingsActivity extends AppCompatActivity {
         return new LinearLayout.LayoutParams(0, height, 1f);
     }
 
+    private static LinearLayout.LayoutParams weightedHeight() {
+        return new LinearLayout.LayoutParams(MATCH, 0, 1f);
+    }
+
     private LinearLayout newLinear(boolean horizontal) {
         LinearLayout layout = new LinearLayout(this);
         layout.setOrientation(horizontal ? LinearLayout.HORIZONTAL : LinearLayout.VERTICAL);
@@ -837,8 +1125,17 @@ public class SettingsActivity extends AppCompatActivity {
     }
 
     private LinearLayout addPage(int index) {
+        if (pageStack == null) {
+            pageStack = newLinear(false);
+            content.addView(pageStack, new FrameLayout.LayoutParams(MATCH, WRAP));
+            noResults = newText("", 15, COLOR_ON_VARIANT, pixelFont);
+            noResults.setGravity(Gravity.CENTER);
+            noResults.setPadding(dp(16), dp(40), dp(16), dp(40));
+            noResults.setVisibility(View.GONE);
+        }
         LinearLayout page = newLinear(false);
-        content.addView(page, new FrameLayout.LayoutParams(MATCH, WRAP));
+        if (index == ALL_PAGE) pageStack.addView(page, 0, linear(MATCH, WRAP));
+        else pageStack.addView(page, linear(MATCH, WRAP));
         pages[index] = page;
         return page;
     }
@@ -855,7 +1152,13 @@ public class SettingsActivity extends AppCompatActivity {
         LinearLayout group = newLinear(false);
         page.addView(group, linear(MATCH, WRAP));
         groups.add(group);
+        groupLabels.put(group, label);
+        groupTitles.put(group, title);
         return group;
+    }
+
+    private void keyRow(LinearLayout group, String name, String title, String summary, int defaultKey) {
+        valueRow(group, name, title, summary, keyName(defaultKey));
     }
 
     private LinearLayout addRow(LinearLayout group, String name, boolean horizontal, int top, int bottom) {
@@ -1025,6 +1328,12 @@ public class SettingsActivity extends AppCompatActivity {
 
     private void buildPages() {
         loadFonts();
+        searchField.setTypeface(pixelFont);
+
+        LinearLayout start = addPage(ALL_PAGE);
+        LinearLayout quick = addGroup(start, "Start here");
+        actionRow(quick, "button_reset_all_quick", "Reset to defaults",
+                "Puts every setting back to normal. Your high score and saved setups are kept", COLOR_PRIMARY);
 
         LinearLayout page = addPage(0);
         LinearLayout group = addGroup(page, "Look");
@@ -1132,6 +1441,15 @@ public class SettingsActivity extends AppCompatActivity {
         group = addGroup(page, "Pausing");
         toggleRow(group, "row_pause_button", "Pause button", "Shows a pause button while you play");
         toggleRow(group, "row_auto_pause", "Pause when you leave", "Freezes the round until you tap again");
+        group = addGroup(page, "Keyboard and mouse");
+        toggleRow(group, "row_keyboard", "Keyboard controls", "Play with a USB or Bluetooth keyboard");
+        keyRow(group, "row_key_flap", "Flap", "Also presses Play on the menus", DEFAULT_KEY_FLAP);
+        keyRow(group, "row_key_flap_alt", "Flap, second key", null, DEFAULT_KEY_FLAP_ALT);
+        keyRow(group, "row_key_pause", "Pause and resume", "Esc also pauses during a run", DEFAULT_KEY_PAUSE);
+        keyRow(group, "row_key_play", "Play and restart", null, DEFAULT_KEY_PLAY);
+        keyRow(group, "row_key_settings", "Open settings", "From the home and score screens", DEFAULT_KEY_SETTINGS);
+        toggleRow(group, "row_right_click_pause", "Right click pauses", "Right mouse button pauses and resumes a run");
+        toggleRow(group, "row_hide_cursor", "Hide the mouse pointer", "Hidden during a run until you move the mouse");
         group = addGroup(page, "Interface");
         toggleRow(group, "row_hide_settings_icon", "Hide settings button", "The top right corner still opens settings");
         toggleRow(group, "row_classic_menu", "Original menu buttons", "Rate button on the home screen and a leaderboard button after a crash");
@@ -1171,6 +1489,9 @@ public class SettingsActivity extends AppCompatActivity {
         actionRow(group, "button_import_settings", "Import from file", "Loads a settings file, and can be undone", COLOR_ON);
         actionRow(group, "button_share_settings", "Share settings", "Sends your setup to a friend as text", COLOR_ON);
         actionRow(group, "button_paste_settings", "Paste settings", "Imports a setup someone sent you as text", COLOR_ON);
+        actionRow(group, "button_edit_text", "Edit as text", "See and change every setting at once, past the slider limits", COLOR_ON);
+        content.removeView(noResults);
+        pageStack.addView(noResults, linear(MATCH, WRAP));
     }
 
     private void createSettings() {
@@ -1313,6 +1634,20 @@ public class SettingsActivity extends AppCompatActivity {
         showFps.note = "shown in the game";
         showFps.randomizable = false;
         toggle(PREF_SHOW_HITBOXES, DEFAULT_SHOW_HITBOXES, rowView("row_show_hitboxes")).randomizable = false;
+        keyboard = toggle(PREF_KEYBOARD_ENABLED, DEFAULT_KEYBOARD_ENABLED, rowView("row_keyboard"));
+        keyboard.note = "used in the game";
+        keyboard.randomizable = false;
+        new KeySetting(PREF_KEY_FLAP, DEFAULT_KEY_FLAP, rowView("row_key_flap"));
+        new KeySetting(PREF_KEY_FLAP_ALT, DEFAULT_KEY_FLAP_ALT, rowView("row_key_flap_alt"));
+        new KeySetting(PREF_KEY_PAUSE, DEFAULT_KEY_PAUSE, rowView("row_key_pause"));
+        new KeySetting(PREF_KEY_PLAY, DEFAULT_KEY_PLAY, rowView("row_key_play"));
+        new KeySetting(PREF_KEY_SETTINGS, DEFAULT_KEY_SETTINGS, rowView("row_key_settings"));
+        ToggleSetting rightClick = toggle(PREF_RIGHT_CLICK_PAUSES, DEFAULT_RIGHT_CLICK_PAUSES, rowView("row_right_click_pause"));
+        rightClick.note = "used in the game";
+        rightClick.randomizable = false;
+        ToggleSetting hideCursor = toggle(PREF_HIDE_CURSOR, DEFAULT_HIDE_CURSOR, rowView("row_hide_cursor"));
+        hideCursor.note = "used in the game";
+        hideCursor.randomizable = false;
     }
 
     private void pair(String key, int defaultValue, String rowName) {
@@ -1465,7 +1800,9 @@ public class SettingsActivity extends AppCompatActivity {
                 rowOf(PREF_WING_SPEED), rowOf(PREF_DAY_NIGHT_LENGTH), rowOf(PREF_CRASH_FLASH_FADE),
                 rowOf(PREF_PIXEL_STEPS_ENABLED), rowOf(PREF_TILT_STYLE),
                 rowOf(PREF_RAMP_TOP_SPEED), rowOf(PREF_RAMP_MIN_GAP),
-                rowOf(PREF_SOUND_VOLUME), rowOf(PREF_WEATHER_VOLUME)};
+                rowOf(PREF_SOUND_VOLUME), rowOf(PREF_WEATHER_VOLUME),
+                rowOf(PREF_KEY_FLAP), rowOf(PREF_KEY_FLAP_ALT), rowOf(PREF_KEY_PAUSE),
+                rowOf(PREF_KEY_PLAY), rowOf(PREF_KEY_SETTINGS)};
         boolean[] shown = {
                 wingAnimation.value,
                 storm, storm,
@@ -1477,17 +1814,27 @@ public class SettingsActivity extends AppCompatActivity {
                 wingAnimation.value, dayNight.value, crashFlash.value,
                 fixedStep.value, birdTilt.value,
                 number(PREF_SPEED_RAMP) > 0f, number(PREF_GAP_SHRINK) > 0f,
-                sound.value, sound.value};
+                sound.value, sound.value,
+                keyboard.value, keyboard.value, keyboard.value,
+                keyboard.value, keyboard.value};
 
         boolean changed = false;
         for (int i = 0; i < rows.length; i++) {
-            if ((rows[i].getVisibility() == View.VISIBLE) != shown[i]) changed = true;
+            if (dependencyHidden.contains(rows[i]) == shown[i]) changed = true;
         }
         if (changed) {
-            if (animate) TransitionManager.beginDelayedTransition(content, new AutoTransition().setDuration(180L));
-            for (int i = 0; i < rows.length; i++) rows[i].setVisibility(shown[i] ? View.VISIBLE : View.GONE);
+            for (int i = 0; i < rows.length; i++) {
+                if (shown[i]) dependencyHidden.remove(rows[i]);
+                else dependencyHidden.add(rows[i]);
+            }
+            if (searching) {
+                applySearch(searchQuery, false);
+            } else {
+                if (animate) TransitionManager.beginDelayedTransition(content, new AutoTransition().setDuration(180L));
+                for (int i = 0; i < rows.length; i++) rows[i].setVisibility(shown[i] ? View.VISIBLE : View.GONE);
+            }
         }
-        if (changed || forceStyle) styleAllGroups();
+        if ((changed || forceStyle) && !searching) styleAllGroups();
 
         background.setEnabled(!dayNight.value);
         pipeColor.setEnabled(!randomPipeColors.value);
@@ -1579,6 +1926,7 @@ public class SettingsActivity extends AppCompatActivity {
     }
 
     private void afterBulkChange() {
+        resolveAllKeyConflicts(null);
         syncAllViews();
         unsaved.addAll(settings);
         flushSave();
@@ -1613,12 +1961,8 @@ public class SettingsActivity extends AppCompatActivity {
             }
         }, "Everything randomized"));
 
-        View resetAll = rowView("button_reset_all");
-        resetAll.setOnClickListener(v -> confirm("Reset to defaults",
-                "Every setting goes back to its default. Saved setups and your high score are kept.", "Reset",
-                () -> applyBulkChange(() -> {
-                    for (Setting setting : settings) setting.reset();
-                }, "Settings reset to defaults")));
+        rowView("button_reset_all").setOnClickListener(v -> confirmReset());
+        rowView("button_reset_all_quick").setOnClickListener(v -> confirmReset());
 
         highScoreSummary = summaries.get("button_reset_high_score");
         classicSummary = summaries.get("button_classic_feel");
@@ -1637,6 +1981,7 @@ public class SettingsActivity extends AppCompatActivity {
         rowView("button_import_settings").setOnClickListener(v -> startImport());
         rowView("button_share_settings").setOnClickListener(v -> shareSettings());
         rowView("button_paste_settings").setOnClickListener(v -> pasteSettings());
+        rowView("button_edit_text").setOnClickListener(v -> openTextEditor());
 
         View deleteAll = rowView("button_reset_profiles");
         deleteAll.setOnClickListener(v -> confirm("Delete saved setups",
@@ -1646,6 +1991,14 @@ public class SettingsActivity extends AppCompatActivity {
                     refreshSlots();
                     announce("All saved setups deleted", null, null);
                 }));
+    }
+
+    private void confirmReset() {
+        confirm("Reset to defaults",
+                "Every setting goes back to its default. Saved setups and your high score are kept.", "Reset",
+                () -> applyBulkChange(() -> {
+                    for (Setting setting : settings) setting.reset();
+                }, "Settings reset to defaults"));
     }
 
     private int storedHighScore() {
@@ -1663,7 +2016,8 @@ public class SettingsActivity extends AppCompatActivity {
                 || key.equals(PREF_HIDE_SETTINGS_ICON) || key.equals(PREF_PAUSE_BUTTON_ENABLED)
                 || key.equals(PREF_AUTO_PAUSE_ENABLED) || key.equals(PREF_SOUND_VOLUME)
                 || key.equals(PREF_WEATHER_VOLUME) || key.equals(PREF_SHOW_FPS) || key.equals(PREF_SHOW_HITBOXES)
-                || key.equals(PREF_CLASSIC_MENU_ENABLED);
+                || key.equals(PREF_CLASSIC_MENU_ENABLED) || key.equals(PREF_KEYBOARD_ENABLED)
+                || key.equals(PREF_RIGHT_CLICK_PAUSES) || key.equals(PREF_HIDE_CURSOR) || setting instanceof KeySetting;
     }
 
     private void setFlag(String key, boolean value) {
@@ -1753,6 +2107,11 @@ public class SettingsActivity extends AppCompatActivity {
     private void applyImport(CharSequence text) {
         final Map<String, Object> imported = parseSettings(text);
         if (imported == null) {
+            TextImport fromText = parseSettingsText(text);
+            if (!fromText.values.isEmpty() || !fromText.hidden.isEmpty()) {
+                applySettingsText(text, false);
+                return;
+            }
             announce("That is not a Flappy Bird settings file", null, null);
             return;
         }
@@ -1925,6 +2284,553 @@ public class SettingsActivity extends AppCompatActivity {
         });
     }
 
+    private String textName(Setting setting) {
+        String name = setting.key.startsWith("pref_") ? setting.key.substring(5) : setting.key;
+        if (name.endsWith("_enabled")) name = name.substring(0, name.length() - 8);
+        return name;
+    }
+
+    private static String nameKey(String name) {
+        return name == null ? "" : name.trim().toLowerCase(Locale.US).replace('-', '_').replace(' ', '_');
+    }
+
+    private Map<String, Setting> textLookup() {
+        if (textNames != null) return textNames;
+        Map<String, Setting> names = new HashMap<>();
+        for (Setting setting : settings) {
+            names.put(nameKey(setting.key), setting);
+            if (setting.key.startsWith("pref_")) names.put(nameKey(setting.key.substring(5)), setting);
+        }
+        for (Setting setting : settings) {
+            String name = nameKey(textName(setting));
+            if (!names.containsKey(name)) names.put(name, setting);
+        }
+        textNames = names;
+        return names;
+    }
+
+    private final class HiddenValue {
+        final String key;
+        final String name;
+        final String label;
+        final boolean flag;
+        final int max;
+        final Object fallback;
+
+        HiddenValue(String key, String name, String label, boolean flag, int max, Object fallback) {
+            this.key = key;
+            this.name = name;
+            this.label = label;
+            this.flag = flag;
+            this.max = max;
+            this.fallback = fallback;
+        }
+
+        Object current() {
+            Object stored = prefs.getAll().get(key);
+            if (flag) return stored instanceof Boolean ? stored : fallback;
+            return stored instanceof Integer ? Math.max(0, Math.min(max, (Integer) stored)) : fallback;
+        }
+
+        String textValue() {
+            Object value = current();
+            return flag ? ((Boolean) value ? "on" : "off") : String.valueOf(value);
+        }
+
+        String textHint() {
+            return flag ? "on or off" : "0 to " + max;
+        }
+
+        Object parse(String text) {
+            String word = compact(text);
+            if (word.equals("default")) return fallback;
+            if (flag) {
+                if (word.equals("on") || word.equals("true") || word.equals("yes") || word.equals("1")) return Boolean.TRUE;
+                if (word.equals("off") || word.equals("false") || word.equals("no") || word.equals("0")) return Boolean.FALSE;
+                return null;
+            }
+            String trimmed = text.trim();
+            if (!trimmed.matches("-?[0-9]{1,12}")) return null;
+            long number = Long.parseLong(trimmed);
+            return (int) Math.max(0, Math.min(max, number));
+        }
+
+        String limitNote(String text) {
+            if (flag) return null;
+            String trimmed = text.trim();
+            if (!trimmed.matches("-?[0-9]{1,12}")) return null;
+            long number = Long.parseLong(trimmed);
+            if (number > max) return "can't go above " + max + ", so it was set to " + max;
+            if (number < 0) return "can't go below 0, so it was set to 0";
+            return null;
+        }
+
+        void write(SharedPreferences.Editor editor, Object value) {
+            if (value == null) editor.remove(key);
+            else if (flag) editor.putBoolean(key, (Boolean) value);
+            else editor.putInt(key, (Integer) value);
+        }
+    }
+
+    private List<HiddenValue> hiddenValues() {
+        if (hiddenValues != null) return hiddenValues;
+        List<HiddenValue> list = new ArrayList<>();
+        list.add(new HiddenValue(KEY_HIGH_SCORE, "high_score", "High score", false, MAX_SCORE_VALUE, 0));
+        list.add(new HiddenValue(PREF_SETTINGS_DISCLAIMER_SHOWN, "settings_disclaimer_shown", "Settings disclaimer already seen", true, 0, Boolean.FALSE));
+        list.add(new HiddenValue(PREF_TEXT_EDITOR_WARNED, "text_editor_warned", "Text editor warning already seen", true, 0, Boolean.FALSE));
+        list.add(new HiddenValue(PREF_TEXT_EDITOR_NOTES, "text_editor_notes", "Show notes in this editor", true, 0, Boolean.TRUE));
+        hiddenValues = list;
+        return list;
+    }
+
+    private HiddenValue hiddenNamed(String name) {
+        String wanted = nameKey(name);
+        for (HiddenValue value : hiddenValues()) {
+            if (nameKey(value.name).equals(wanted) || nameKey(value.key).equals(wanted)) return value;
+        }
+        return null;
+    }
+
+    private boolean notesShown() {
+        return (Boolean) hiddenNamed("text_editor_notes").current();
+    }
+
+    private static boolean isNote(String line) {
+        return line.trim().startsWith("#");
+    }
+
+    private static String settingName(String line) {
+        String trimmed = line.trim();
+        if (trimmed.isEmpty() || trimmed.startsWith("#") || trimmed.startsWith("[")) return null;
+        int split = trimmed.indexOf('=');
+        if (split < 0) split = trimmed.indexOf(':');
+        return split > 0 ? nameKey(trimmed.substring(0, split)) : null;
+    }
+
+    private static String withoutNotes(String text) {
+        StringBuilder out = new StringBuilder();
+        for (String line : text.split("\\r\\n|\\r|\\n")) {
+            String trimmed = line.trim();
+            if (trimmed.isEmpty() || isNote(trimmed)) continue;
+            if (trimmed.startsWith("[") && out.length() > 0) out.append('\n');
+            out.append(line).append('\n');
+        }
+        return out.toString();
+    }
+
+    private String withNotes(String edited) {
+        Map<String, String> typed = new HashMap<>();
+        List<String> extra = new ArrayList<>();
+        for (String line : edited.split("\\r\\n|\\r|\\n")) {
+            String name = settingName(line);
+            if (name != null && (textLookup().containsKey(name) || hiddenNamed(name) != null)) typed.put(name, line.trim());
+            else if (!line.trim().isEmpty() && !isNote(line) && !line.trim().startsWith("[")) extra.add(line);
+        }
+        StringBuilder out = new StringBuilder();
+        for (String line : buildSettingsText().split("\n")) {
+            String name = settingName(line);
+            String replacement = name != null ? typed.get(name) : null;
+            out.append(replacement != null ? replacement : line).append('\n');
+        }
+        if (!extra.isEmpty()) {
+            out.append("\n# These lines were not recognised\n");
+            for (String line : extra) out.append(line).append('\n');
+        }
+        return out.toString();
+    }
+
+    private String buildSettingsText() {
+        StringBuilder out = new StringBuilder(TEXT_HEADER);
+        Set<Setting> written = new HashSet<>();
+        for (int page = 0; page < pages.length; page++) {
+            boolean pageWritten = false;
+            for (ViewGroup group : groups) {
+                if (pageOf(group) != page) continue;
+                boolean groupWritten = false;
+                for (int i = 0; i < group.getChildCount(); i++) {
+                    Setting setting = rowSettings.get(group.getChildAt(i));
+                    if (setting == null) continue;
+                    if (!pageWritten) {
+                        out.append("\n[").append(pageName(page)).append("]\n");
+                        pageWritten = true;
+                    }
+                    if (!groupWritten) {
+                        out.append("\n## ").append(groupTitles.get(group)).append('\n');
+                        groupWritten = true;
+                    }
+                    out.append("# ").append(setting.label).append(": ").append(setting.textHint()).append('\n');
+                    out.append(textName(setting)).append(" = ").append(setting.textValue()).append('\n');
+                    written.add(setting);
+                }
+            }
+        }
+        boolean otherWritten = false;
+        for (Setting setting : settings) {
+            if (written.contains(setting)) continue;
+            if (!otherWritten) {
+                out.append("\n[Other]\n");
+                otherWritten = true;
+            }
+            out.append("# ").append(setting.label).append(": ").append(setting.textHint()).append('\n');
+            out.append(textName(setting)).append(" = ").append(setting.textValue()).append('\n');
+        }
+        out.append("\n[Hidden]\n");
+        out.append("# Values the game keeps behind the scenes. They are only changed from this editor.\n");
+        for (HiddenValue value : hiddenValues()) {
+            out.append("# ").append(value.label).append(": ").append(value.textHint()).append('\n');
+            out.append(value.name).append(" = ").append(value.textValue()).append('\n');
+        }
+        return out.toString();
+    }
+
+    private final class TextImport {
+        final Map<String, Object> values = new HashMap<>();
+        final Map<HiddenValue, Object> hidden = new HashMap<>();
+        final List<String> problems = new ArrayList<>();
+    }
+
+    private static String clip(String text) {
+        return text.length() > 40 ? text.substring(0, 40) + "..." : text;
+    }
+
+    private TextImport parseSettingsText(CharSequence text) {
+        TextImport result = new TextImport();
+        if (text == null) return result;
+        String raw = text.toString();
+        if (raw.length() > MAX_TEXT_CHARS) {
+            raw = raw.substring(0, MAX_TEXT_CHARS);
+            result.problems.add("The text is very long, so only the start was read");
+        }
+        Map<String, Setting> lookup = textLookup();
+        String[] lines = raw.split("\r\n|\r|\n");
+        int count = Math.min(lines.length, MAX_TEXT_LINES);
+        if (lines.length > MAX_TEXT_LINES) result.problems.add("Only the first " + MAX_TEXT_LINES + " lines were read");
+        for (int i = 0; i < count; i++) {
+            String line = lines[i].trim();
+            int number = i + 1;
+            if (line.isEmpty() || line.startsWith("#") || (line.startsWith("[") && line.endsWith("]"))) continue;
+            if (line.length() > MAX_LINE_CHARS) {
+                result.problems.add("Line " + number + " is too long");
+                continue;
+            }
+            int split = line.indexOf('=');
+            if (split < 0) split = line.indexOf(':');
+            if (split <= 0) {
+                result.problems.add("Line " + number + ": write it as name = value");
+                continue;
+            }
+            String name = line.substring(0, split).trim();
+            String value = line.substring(split + 1).trim();
+            int note = value.indexOf(" #");
+            if (note >= 0) value = value.substring(0, note).trim();
+            if (value.length() >= 2 && value.startsWith("\"") && value.endsWith("\"")) value = value.substring(1, value.length() - 1).trim();
+            Setting setting = lookup.get(nameKey(name));
+            HiddenValue hidden = setting == null ? hiddenNamed(name) : null;
+            if (hidden != null) {
+                Object parsed = hidden.parse(value);
+                if (parsed == null) {
+                    result.problems.add("Line " + number + ": \"" + clip(value) + "\" can't be used for " + hidden.name + " (" + hidden.textHint() + ")");
+                    continue;
+                }
+                String limited = hidden.limitNote(value);
+                if (limited != null) result.problems.add("Line " + number + ": " + hidden.name + " " + limited);
+                result.hidden.put(hidden, parsed);
+                continue;
+            }
+            if (setting == null) {
+                result.problems.add("Line " + number + ": there is no setting called \"" + clip(name) + "\"");
+                continue;
+            }
+            Object parsed = nameKey(value).equals("default") ? setting.defaultObject() : setting.parseText(value);
+            if (parsed == null) {
+                result.problems.add("Line " + number + ": \"" + clip(value) + "\" can't be used for " + textName(setting) + " (" + setting.textHint() + ")");
+                continue;
+            }
+            String limited = setting.limitNote(parsed);
+            if (limited != null) result.problems.add("Line " + number + ": " + textName(setting) + " " + limited);
+            result.values.put(setting.key, parsed);
+        }
+        return result;
+    }
+
+    private boolean looksLikeJson(CharSequence text) {
+        if (text == null) return false;
+        String trimmed = text.toString().trim();
+        return trimmed.startsWith("{");
+    }
+
+    private void applySettingsText(final CharSequence text, final boolean fromEditor) {
+        final TextImport parsed;
+        if (looksLikeJson(text)) {
+            parsed = new TextImport();
+            Map<String, Object> json = parseSettings(text);
+            if (json != null) parsed.values.putAll(json);
+            else parsed.problems.add("The text starts like a .json settings file but could not be read");
+        } else {
+            parsed = parseSettingsText(text);
+        }
+        if (!fromEditor) parsed.hidden.clear();
+        if (parsed.values.isEmpty() && parsed.hidden.isEmpty()) {
+            if (parsed.problems.isEmpty()) parsed.problems.add("No settings were found in the text");
+            showProblems("Nothing was changed", parsed.problems, fromEditor ? text : null);
+            return;
+        }
+        final Map<String, Object> before = snapshot();
+        final Map<HiddenValue, Object> hiddenBefore = new HashMap<>();
+        final Map<HiddenValue, Object> hiddenShown = new HashMap<>();
+        Map<String, ?> stored = prefs.getAll();
+        for (HiddenValue value : parsed.hidden.keySet()) {
+            hiddenBefore.put(value, stored.get(value.key));
+            hiddenShown.put(value, value.current());
+        }
+        try {
+            Map<String, Object> merged = snapshot();
+            merged.putAll(parsed.values);
+            readAll(merged);
+            parsed.problems.addAll(resolveAllKeyConflicts(before));
+            afterBulkChange();
+            writeHidden(parsed.hidden);
+        } catch (RuntimeException e) {
+            restore(before);
+            afterBulkChange();
+            writeHidden(hiddenBefore);
+            showProblems("Nothing was changed", Collections.singletonList("The settings could not be applied, so everything was left as it was"), fromEditor ? text : null);
+            return;
+        }
+        int changed = 0;
+        Map<String, Object> after = snapshot();
+        for (Map.Entry<String, Object> entry : before.entrySet()) {
+            if (!entry.getValue().equals(after.get(entry.getKey()))) changed++;
+        }
+        for (Map.Entry<HiddenValue, Object> entry : hiddenShown.entrySet()) {
+            if (!entry.getValue().equals(entry.getKey().current())) changed++;
+        }
+        String message = changed == 0 ? "No settings changed" : changed == 1 ? "1 setting changed" : changed + " settings changed";
+        showCaption(message);
+        if (changed > 0) {
+            announce(message, "Undo", v -> {
+                restore(before);
+                afterBulkChange();
+                writeHidden(hiddenBefore);
+                showCaption("Change undone");
+            });
+        } else {
+            announce(message, null, null);
+        }
+        if (!parsed.problems.isEmpty()) showProblems(changed == 0 ? "Nothing was changed" : "Applied, with notes", parsed.problems, fromEditor ? text : null);
+    }
+
+    private void writeHidden(Map<HiddenValue, Object> values) {
+        if (values.isEmpty()) return;
+        SharedPreferences.Editor editor = prefs.edit();
+        for (Map.Entry<HiddenValue, Object> entry : values.entrySet()) entry.getKey().write(editor, entry.getValue());
+        editor.apply();
+        refreshHighScore();
+    }
+
+    private void showProblems(String title, List<String> problems, final CharSequence editAgain) {
+        StringBuilder message = new StringBuilder();
+        int shown = Math.min(problems.size(), MAX_LISTED_PROBLEMS);
+        for (int i = 0; i < shown; i++) {
+            if (i > 0) message.append("\n\n");
+            message.append(problems.get(i));
+        }
+        if (problems.size() > shown) message.append("\n\n").append(problems.size() - shown).append(" more not shown");
+        MaterialAlertDialogBuilder builder = new MaterialAlertDialogBuilder(this)
+                .setTitle(title)
+                .setMessage(message.toString())
+                .setPositiveButton("OK", null);
+        if (editAgain != null) builder.setNeutralButton("Edit again", (dialog, which) -> showTextEditor(editAgain.toString()));
+        showDialog(builder);
+    }
+
+    private void openTextEditor() {
+        Object warned = prefs.getAll().get(PREF_TEXT_EDITOR_WARNED);
+        if (warned instanceof Boolean && (Boolean) warned) {
+            showTextEditor(startingText());
+            return;
+        }
+        showDialog(new MaterialAlertDialogBuilder(this)
+                .setTitle("Editing settings by hand")
+                .setMessage("This shows every setting as text so you can change many at once, including values past the slider limits. "
+                        + "Extreme values can make the game very hard or strange to play.\n\n"
+                        + "Everything is checked before it is applied, values are kept inside safe limits, and you can undo the change afterward.")
+                .setPositiveButton("Continue", (dialog, which) -> {
+                    prefs.edit().putBoolean(PREF_TEXT_EDITOR_WARNED, true).apply();
+                    showTextEditor(startingText());
+                })
+                .setNegativeButton("Cancel", null));
+    }
+
+    private String startingText() {
+        String text = buildSettingsText();
+        return notesShown() ? text : withoutNotes(text);
+    }
+
+    private void showTextEditor(String text) {
+        flushSave();
+        final EditText editor = new EditText(this);
+        editor.setTypeface(Typeface.MONOSPACE);
+        editor.setTextSize(13);
+        editor.setTextColor(COLOR_ON);
+        editor.setGravity(Gravity.TOP | Gravity.START);
+        editor.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_MULTI_LINE | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
+        editor.setImeOptions(EditorInfo.IME_FLAG_NO_EXTRACT_UI);
+        editor.setHorizontallyScrolling(false);
+        editor.setFilters(new InputFilter[]{new InputFilter.LengthFilter(MAX_TEXT_CHARS)});
+        editor.setHighlightColor(COLOR_SELECTION);
+        editor.setBackground(rounded(COLOR_ROW, dp(16)));
+        editor.setPadding(dp(14), dp(12), dp(14), dp(12));
+        editor.setMinimumHeight(dp(120));
+        editor.setText(text);
+
+        TextView warning = newText("Values are checked before they are applied. Anything outside the safe range is limited, and lines that can't be read are skipped.",
+                12, COLOR_ON_VARIANT, null);
+        LinearLayout body = newLinear(false);
+        body.setPadding(dp(24), dp(4), dp(24), 0);
+        body.addView(warning, linear(MATCH, WRAP));
+
+        LinearLayout notesRow = newLinear(true);
+        notesRow.setGravity(Gravity.CENTER_VERTICAL);
+        TextView notesLabel = newText("Show notes", 14, COLOR_ON, mediumFont);
+        notesRow.addView(notesLabel, weighted(WRAP));
+        final MaterialSwitch notesSwitch = new MaterialSwitch(this);
+        notesSwitch.setSaveEnabled(false);
+        tintSwitch(notesSwitch);
+        notesSwitch.setChecked(notesShown());
+        notesRow.addView(notesSwitch, linear(WRAP, WRAP));
+        notesRow.setOnClickListener(v -> notesSwitch.setChecked(!notesSwitch.isChecked()));
+        LinearLayout.LayoutParams notesParams = linear(MATCH, WRAP);
+        notesParams.topMargin = dp(8);
+        body.addView(notesRow, notesParams);
+        notesSwitch.setOnCheckedChangeListener((button, checked) -> {
+            String current = editor.getText().toString();
+            editor.setText(checked ? withNotes(current) : withoutNotes(current));
+            prefs.edit().putBoolean(PREF_TEXT_EDITOR_NOTES, checked).apply();
+        });
+        LinearLayout.LayoutParams editorParams = weightedHeight();
+        editorParams.topMargin = dp(12);
+        body.addView(editor, editorParams);
+
+        final AlertDialog dialog = showDialog(new MaterialAlertDialogBuilder(this)
+                .setTitle("Edit as text")
+                .setView(body)
+                .setPositiveButton("Apply", (d, which) -> applySettingsText(editor.getText().toString(), true))
+                .setNeutralButton("Copy", null)
+                .setNegativeButton("Cancel", null));
+        if (dialog.getWindow() != null) dialog.getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
+        Button copy = dialog.getButton(DialogInterface.BUTTON_NEUTRAL);
+        if (copy != null) {
+            copy.setOnClickListener(v -> {
+                ClipboardManager clipboard = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
+                if (clipboard == null) return;
+                clipboard.setPrimaryClip(ClipData.newPlainText("Flappy Bird settings", editor.getText().toString()));
+                announce("Settings text copied", null, null);
+            });
+        }
+    }
+
+    private List<String> resolveAllKeyConflicts(Map<String, Object> before) {
+        List<String> notes = new ArrayList<>();
+        for (int i = 0; i < keySettings.size(); i++) {
+            KeySetting later = keySettings.get(i);
+            if (later.value == KeyEvent.KEYCODE_UNKNOWN) continue;
+            for (int j = 0; j < i; j++) {
+                KeySetting earlier = keySettings.get(j);
+                if (earlier.value != later.value) continue;
+                KeySetting cleared = later;
+                if (before != null && Integer.valueOf(later.value).equals(before.get(later.key))) cleared = earlier;
+                notes.add(keyName(cleared.value) + " was used twice, so it was removed from " + textName(cleared));
+                cleared.value = KeyEvent.KEYCODE_UNKNOWN;
+                unsaved.add(cleared);
+                if (cleared == later) break;
+            }
+        }
+        return notes;
+    }
+
+    static String keyName(int code) {
+        switch (code) {
+            case KeyEvent.KEYCODE_UNKNOWN: return "None";
+            case KeyEvent.KEYCODE_SPACE: return "Space";
+            case KeyEvent.KEYCODE_ENTER: return "Enter";
+            case KeyEvent.KEYCODE_NUMPAD_ENTER: return "Numpad Enter";
+            case KeyEvent.KEYCODE_DPAD_UP: return "Up arrow";
+            case KeyEvent.KEYCODE_DPAD_DOWN: return "Down arrow";
+            case KeyEvent.KEYCODE_DPAD_LEFT: return "Left arrow";
+            case KeyEvent.KEYCODE_DPAD_RIGHT: return "Right arrow";
+            case KeyEvent.KEYCODE_DPAD_CENTER: return "D-pad center";
+            case KeyEvent.KEYCODE_ESCAPE: return "Esc";
+            case KeyEvent.KEYCODE_DEL: return "Backspace";
+            case KeyEvent.KEYCODE_FORWARD_DEL: return "Delete";
+            case KeyEvent.KEYCODE_SHIFT_LEFT: return "Left Shift";
+            case KeyEvent.KEYCODE_SHIFT_RIGHT: return "Right Shift";
+            case KeyEvent.KEYCODE_CTRL_LEFT: return "Left Ctrl";
+            case KeyEvent.KEYCODE_CTRL_RIGHT: return "Right Ctrl";
+            case KeyEvent.KEYCODE_ALT_LEFT: return "Left Alt";
+            case KeyEvent.KEYCODE_ALT_RIGHT: return "Right Alt";
+            default: break;
+        }
+        String raw = KeyEvent.keyCodeToString(code);
+        if (raw == null || !raw.startsWith("KEYCODE_")) return "Key " + code;
+        String[] parts = raw.substring(8).toLowerCase(Locale.US).split("_");
+        StringBuilder name = new StringBuilder();
+        for (String part : parts) {
+            if (part.isEmpty()) continue;
+            if (name.length() > 0) name.append(' ');
+            name.append(Character.toUpperCase(part.charAt(0))).append(part.substring(1));
+        }
+        return name.length() > 0 ? name.toString() : "Key " + code;
+    }
+
+    private static String compact(String text) {
+        return text.toLowerCase(Locale.US).replaceAll("[^a-z0-9]", "");
+    }
+
+    static int parseKey(String text) {
+        if (text == null) return -1;
+        String wanted = compact(text);
+        if (wanted.isEmpty() || wanted.equals("none") || wanted.equals("off") || wanted.equals("nokey")) return KeyEvent.KEYCODE_UNKNOWN;
+        if (wanted.equals("esc")) return KeyEvent.KEYCODE_ESCAPE;
+        if (wanted.equals("return")) return KeyEvent.KEYCODE_ENTER;
+        if (wanted.equals("spacebar")) return KeyEvent.KEYCODE_SPACE;
+        if (wanted.equals("up") || wanted.equals("arrowup")) return KeyEvent.KEYCODE_DPAD_UP;
+        if (wanted.equals("down") || wanted.equals("arrowdown")) return KeyEvent.KEYCODE_DPAD_DOWN;
+        if (wanted.equals("left") || wanted.equals("arrowleft")) return KeyEvent.KEYCODE_DPAD_LEFT;
+        if (wanted.equals("right") || wanted.equals("arrowright")) return KeyEvent.KEYCODE_DPAD_RIGHT;
+        if (wanted.equals("shift")) return KeyEvent.KEYCODE_SHIFT_LEFT;
+        if (wanted.equals("ctrl") || wanted.equals("control")) return KeyEvent.KEYCODE_CTRL_LEFT;
+        if (wanted.equals("alt")) return KeyEvent.KEYCODE_ALT_LEFT;
+        String digits = wanted.startsWith("key") ? wanted.substring(3) : wanted;
+        if (digits.length() > 0 && digits.length() <= 4 && digits.matches("[0-9]+") && wanted.length() > 1) {
+            int code = Integer.parseInt(digits);
+            if (code > 0 && code <= KeyEvent.getMaxKeyCode() && !wanted.equals(digits)) return code;
+        }
+        for (int code = 1; code <= KeyEvent.getMaxKeyCode(); code++) {
+            if (compact(keyName(code)).equals(wanted)) return code;
+            String raw = KeyEvent.keyCodeToString(code);
+            if (raw != null && raw.startsWith("KEYCODE_") && compact(raw.substring(8)).equals(wanted)) return code;
+        }
+        return -1;
+    }
+
+    private void showKeyDialog(final KeySetting setting) {
+        final AlertDialog dialog = showDialog(new MaterialAlertDialogBuilder(this)
+                .setTitle(setting.label)
+                .setMessage("Press a key on your keyboard.\n\nCurrent key: " + setting.describe())
+                .setNeutralButton("No key", (d, which) -> setting.setFromUser(KeyEvent.KEYCODE_UNKNOWN))
+                .setNegativeButton("Cancel", null));
+        final boolean[] captured = {false};
+        dialog.setOnKeyListener((d, keyCode, event) -> {
+            if (keyCode == KeyEvent.KEYCODE_UNKNOWN || !isUsableKey(keyCode)) return false;
+            if (captured[0] || event.getAction() != KeyEvent.ACTION_DOWN || event.getRepeatCount() > 0) return true;
+            captured[0] = true;
+            d.dismiss();
+            setting.setFromUser(keyCode);
+            return true;
+        });
+    }
+
     private void showNumberDialog(final NumberSetting setting) {
         int inputType = setting.integer
                 ? InputType.TYPE_CLASS_NUMBER
@@ -2001,6 +2907,7 @@ public class SettingsActivity extends AppCompatActivity {
             this.row = rowId;
             String text = firstText(row);
             this.label = text != null ? text : key;
+            rowSettings.put(row, this);
             settings.add(this);
             settingsByKey.put(key, this);
         }
@@ -2024,6 +2931,18 @@ public class SettingsActivity extends AppCompatActivity {
         abstract void export(JSONObject out) throws JSONException;
 
         abstract boolean accepts(Object value);
+
+        abstract String textValue();
+
+        abstract String textHint();
+
+        abstract Object parseText(String text);
+
+        abstract Object defaultObject();
+
+        String limitNote(Object parsed) {
+            return null;
+        }
     }
 
     private final class ToggleSetting extends Setting {
@@ -2095,6 +3014,29 @@ public class SettingsActivity extends AppCompatActivity {
         @Override
         boolean accepts(Object candidate) {
             return candidate instanceof Boolean;
+        }
+
+        @Override
+        String textValue() {
+            return value ? "on" : "off";
+        }
+
+        @Override
+        String textHint() {
+            return "on or off";
+        }
+
+        @Override
+        Object parseText(String text) {
+            String word = compact(text);
+            if (word.equals("on") || word.equals("true") || word.equals("yes") || word.equals("1") || word.equals("enabled")) return Boolean.TRUE;
+            if (word.equals("off") || word.equals("false") || word.equals("no") || word.equals("0") || word.equals("disabled")) return Boolean.FALSE;
+            return null;
+        }
+
+        @Override
+        Object defaultObject() {
+            return defaultValue;
         }
     }
 
@@ -2265,6 +3207,54 @@ public class SettingsActivity extends AppCompatActivity {
         }
 
         @Override
+        String textValue() {
+            return zeroLabel != null && value == 0f ? zeroLabel : withUnit(value);
+        }
+
+        @Override
+        String textHint() {
+            String range = sliderMin == min && sliderMax == max
+                    ? withUnit(min) + " to " + withUnit(max)
+                    : "slider " + withUnit(sliderMin) + " to " + withUnit(sliderMax) + ", allowed " + withUnit(min) + " to " + withUnit(max);
+            String zero = zeroLabel != null ? ", 0 means " + zeroLabel : "";
+            return range + zero + ", default " + withUnit(defaultValue);
+        }
+
+        @Override
+        Object parseText(String text) {
+            String trimmed = text.trim();
+            if (zeroLabel != null && compact(trimmed).equals(compact(zeroLabel))) return 0f;
+            Matcher match = NUMBER_TEXT.matcher(trimmed);
+            if (!match.matches()) return null;
+            float parsed = parseNumber(match.group(1), Float.NaN);
+            if (Float.isNaN(parsed) || Float.isInfinite(parsed)) return null;
+            return parsed;
+        }
+
+        @Override
+        Object defaultObject() {
+            return defaultValue;
+        }
+
+        @Override
+        String limitNote(Object parsed) {
+            float wanted = ((Number) parsed).floatValue();
+            if (wanted > max) return "can't go above " + withUnit(max) + ", so it was set to " + withUnit(max);
+            if (wanted < min) return "can't go below " + withUnit(min) + ", so it was set to " + withUnit(min);
+            return null;
+        }
+
+        String withUnit(float number) {
+            String text = plain(number);
+            if (unit == UNIT_TIMES) return text + "x";
+            if (unit == UNIT_PERCENT) return text + "%";
+            if (unit == UNIT_DEGREES) return text + " deg";
+            if (unit == UNIT_MS) return text + " ms";
+            if (unit == UNIT_SECONDS) return text + " s";
+            return text;
+        }
+
+        @Override
         String describe() {
             if (zeroLabel != null && value == 0f) return zeroLabel;
             String number = plain(value);
@@ -2400,6 +3390,39 @@ public class SettingsActivity extends AppCompatActivity {
         boolean accepts(Object candidate) {
             return candidate instanceof Number && indexOf(((Number) candidate).intValue()) >= 0;
         }
+
+        @Override
+        String textValue() {
+            return describe();
+        }
+
+        @Override
+        String textHint() {
+            StringBuilder hint = new StringBuilder();
+            for (int i = 0; i < names.length; i++) {
+                if (i > 0) hint.append(i == names.length - 1 ? " or " : ", ");
+                hint.append(names[i]);
+            }
+            return hint.toString();
+        }
+
+        @Override
+        Object parseText(String text) {
+            String wanted = compact(text);
+            for (int i = 0; i < names.length; i++) {
+                if (compact(names[i]).equals(wanted)) return values[i];
+            }
+            if (wanted.matches("[0-9]{1,3}")) {
+                int number = Integer.parseInt(wanted);
+                if (indexOf(number) >= 0) return number;
+            }
+            return null;
+        }
+
+        @Override
+        Object defaultObject() {
+            return defaultValue;
+        }
     }
 
     private final class ListSetting extends Setting {
@@ -2473,6 +3496,160 @@ public class SettingsActivity extends AppCompatActivity {
         boolean accepts(Object candidate) {
             return candidate instanceof String;
         }
+
+        @Override
+        String textValue() {
+            return value.isEmpty() ? "none" : value.replace(",", ", ");
+        }
+
+        @Override
+        String textHint() {
+            return "scores separated by commas, or none";
+        }
+
+        @Override
+        Object parseText(String text) {
+            String trimmed = text.trim();
+            if (trimmed.isEmpty() || compact(trimmed).equals("none")) return "";
+            if (!trimmed.matches("[0-9,;\\s]+")) return null;
+            return normalizeScores(trimmed);
+        }
+
+        @Override
+        Object defaultObject() {
+            return defaultValue;
+        }
+
+        @Override
+        String limitNote(Object parsed) {
+            String text = (String) parsed;
+            int count = text.isEmpty() ? 0 : text.split(",").length;
+            return count >= MAX_LIGHTNING_SCORES ? "keeps at most " + MAX_LIGHTNING_SCORES + " scores" : null;
+        }
+    }
+
+    private final class KeySetting extends Setting {
+        final int defaultValue;
+        final TextView pill;
+        int value;
+
+        KeySetting(String key, int defaultValue, View rowId) {
+            super(key, rowId);
+            this.defaultValue = defaultValue;
+            this.value = defaultValue;
+            this.pill = (TextView) row.findViewWithTag(TAG_VALUE);
+            pill.setBackground(rounded(COLOR_HIGH, dp(16)));
+            randomizable = false;
+            note = "used in the game";
+            keySettings.add(this);
+            row.setOnClickListener(v -> showKeyDialog(KeySetting.this));
+        }
+
+        void setFromUser(int code) {
+            if (!isUsableKey(code)) return;
+            value = code;
+            KeySetting moved = null;
+            if (code != KeyEvent.KEYCODE_UNKNOWN) {
+                for (KeySetting other : keySettings) {
+                    if (other == this || other.value != code) continue;
+                    other.value = KeyEvent.KEYCODE_UNKNOWN;
+                    other.syncView();
+                    scheduleSave(other);
+                    moved = other;
+                }
+            }
+            syncView();
+            onUserChange(this);
+            if (moved != null) announce(keyName(code) + " was removed from " + moved.label, null, null);
+        }
+
+        private int decode(Object stored) {
+            if (stored instanceof Number) {
+                double number = ((Number) stored).doubleValue();
+                if (number != Math.rint(number) || number < 0 || number > KeyEvent.getMaxKeyCode()) return -1;
+                int code = (int) number;
+                return isUsableKey(code) ? code : -1;
+            }
+            if (stored instanceof String) {
+                int code = parseKey((String) stored);
+                return code >= 0 && isUsableKey(code) ? code : -1;
+            }
+            return -1;
+        }
+
+        @Override
+        void read(Map<String, ?> source) {
+            Object stored = source.get(key);
+            int code = decode(stored);
+            value = code >= 0 ? code : defaultValue;
+            if (stored != null && (!(stored instanceof Integer) || code < 0)) unsaved.add(this);
+        }
+
+        @Override
+        void write(SharedPreferences.Editor editor) {
+            editor.putInt(key, value);
+        }
+
+        @Override
+        void reset() {
+            value = defaultValue;
+        }
+
+        @Override
+        void randomize() {
+        }
+
+        @Override
+        void syncView() {
+            pill.setText(describe());
+        }
+
+        @Override
+        Object capture() {
+            return value;
+        }
+
+        @Override
+        void restore(Object captured) {
+            int code = decode(captured);
+            if (code >= 0) value = code;
+        }
+
+        @Override
+        String describe() {
+            return keyName(value);
+        }
+
+        @Override
+        void export(JSONObject out) throws JSONException {
+            out.put(key, value);
+        }
+
+        @Override
+        boolean accepts(Object candidate) {
+            return decode(candidate) >= 0;
+        }
+
+        @Override
+        String textValue() {
+            return keyName(value);
+        }
+
+        @Override
+        String textHint() {
+            return "a key such as Space, Enter, P, Esc or Up arrow, or none";
+        }
+
+        @Override
+        Object parseText(String text) {
+            int code = parseKey(text);
+            return code >= 0 && isUsableKey(code) ? code : null;
+        }
+
+        @Override
+        Object defaultObject() {
+            return defaultValue;
+        }
     }
 
     private static final class ChipStyle {
@@ -2504,6 +3681,7 @@ public class SettingsActivity extends AppCompatActivity {
         }
 
         void set(boolean active, boolean animate) {
+            view.setSelected(active);
             float target = active ? 1f : 0f;
             if (animator != null) {
                 animator.cancel();
@@ -2536,12 +3714,17 @@ public class SettingsActivity extends AppCompatActivity {
         }
     }
 
-    private static final class ArrowDrawable extends Drawable {
+    private static final class IconDrawable extends Drawable {
+        static final int BACK = 0;
+        static final int SEARCH = 1;
+        static final int CLOSE = 2;
         private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final Path path = new Path();
+        private final int kind;
         private final int size;
 
-        ArrowDrawable(int size, float strokeWidth, int color) {
+        IconDrawable(int kind, int size, float strokeWidth, int color) {
+            this.kind = kind;
             this.size = size;
             paint.setStyle(Paint.Style.STROKE);
             paint.setStrokeWidth(strokeWidth);
@@ -2556,13 +3739,29 @@ public class SettingsActivity extends AppCompatActivity {
             float centerX = bounds.left + bounds.width() / 2f;
             float centerY = bounds.top + bounds.height() / 2f;
             float reach = size * 0.36f;
-            float wing = reach * 0.85f;
             path.reset();
-            path.moveTo(centerX + reach, centerY);
-            path.lineTo(centerX - reach, centerY);
-            path.moveTo(centerX - reach + wing, centerY - wing);
-            path.lineTo(centerX - reach, centerY);
-            path.lineTo(centerX - reach + wing, centerY + wing);
+            if (kind == SEARCH) {
+                float radius = size * 0.25f;
+                float lensX = centerX - size * 0.07f;
+                float lensY = centerY - size * 0.07f;
+                canvas.drawCircle(lensX, lensY, radius, paint);
+                float edge = radius * 0.7071f;
+                path.moveTo(lensX + edge, lensY + edge);
+                path.lineTo(centerX + reach * 0.95f, centerY + reach * 0.95f);
+            } else if (kind == CLOSE) {
+                float arm = reach * 0.78f;
+                path.moveTo(centerX - arm, centerY - arm);
+                path.lineTo(centerX + arm, centerY + arm);
+                path.moveTo(centerX + arm, centerY - arm);
+                path.lineTo(centerX - arm, centerY + arm);
+            } else {
+                float wing = reach * 0.85f;
+                path.moveTo(centerX + reach, centerY);
+                path.lineTo(centerX - reach, centerY);
+                path.moveTo(centerX - reach + wing, centerY - wing);
+                path.lineTo(centerX - reach, centerY);
+                path.lineTo(centerX - reach + wing, centerY + wing);
+            }
             canvas.drawPath(path, paint);
         }
 
