@@ -1,0 +1,2449 @@
+=== FILE: android/R.java
+package android;
+public final class R { public static final class attr { public static final int state_checked = 0x010100a0, state_enabled = 0x0101009e, state_focused = 0x0101009c; } }
+=== FILE: android/animation/TimeInterpolator.java
+package android.animation;
+public interface TimeInterpolator { float getInterpolation(float input); }
+=== FILE: android/animation/ValueAnimator.java
+package android.animation;
+import java.util.ArrayList;
+import java.util.List;
+public class ValueAnimator {
+    public interface AnimatorUpdateListener { void onAnimationUpdate(ValueAnimator animation); }
+    private float[] values; private float current; private final List<AnimatorUpdateListener> listeners = new ArrayList<>();
+    public static ValueAnimator ofFloat(float... v) { if (v == null || v.length == 0) throw new IllegalArgumentException(); ValueAnimator a = new ValueAnimator(); a.values = v; a.current = v[0]; return a; }
+    public ValueAnimator setDuration(long d) { if (d < 0) throw new IllegalArgumentException(); return this; }
+    public void setInterpolator(TimeInterpolator i) {}
+    public void addUpdateListener(AnimatorUpdateListener l) { listeners.add(l); }
+    public Object getAnimatedValue() { return current; }
+    public float getAnimatedFraction() { return 1f; }
+    public void start() { current = values[values.length - 1]; for (AnimatorUpdateListener l : listeners) l.onAnimationUpdate(this); }
+    public void cancel() {}
+    public boolean isRunning() { return false; }
+}
+=== FILE: android/app/Activity.java
+package android.app;
+import android.content.Context;
+import android.content.Intent;
+import android.content.ActivityNotFoundException;
+import android.os.Bundle;
+import android.view.View;
+import android.view.Window;
+import android.view.WindowManager;
+import java.util.HashMap;
+import java.util.Map;
+public class Activity extends Context {
+    public void runOnUiThread(Runnable r) { r.run(); }
+    public static final Map<Integer, String> SIM_LAYOUTS = new HashMap<>();
+    private final Window window = new Window(this);
+    public final View simContainer = new android.widget.FrameLayout(this);
+    public View simRoot; public boolean simFinished; public int simTheme; public boolean simThemeBeforeCreate;
+    private boolean simCreated;
+    public void setTheme(int resId) { simTheme = resId; simThemeBeforeCreate = !simCreated && simRoot == null; }
+    protected void onCreate(Bundle b) { simCreated = true; }
+    protected void onResume() {}
+    protected void onPause() {}
+    protected void onDestroy() {}
+    protected void onSaveInstanceState(Bundle out) {}
+    public void onAttachedToWindow() {}
+    public void onWindowFocusChanged(boolean hasFocus) {}
+    public void setContentView(int id) { String path = SIM_LAYOUTS.get(id); if (path != null) simRoot = android.view.SimInflater.inflate(this, path); }
+    @SuppressWarnings("unchecked") public <T extends View> T findViewById(int id) { if (simRoot != null) return (T) simRoot.findViewById(id); return (T) simContainer; }
+    public Window getWindow() { return window; }
+    public WindowManager getWindowManager() { return null; }
+    public boolean isFinishing() { return simFinished; }
+    public static final int RESULT_OK = -1, RESULT_CANCELED = 0;
+    public Intent simPendingIntent; public int simPendingRequest;
+    public void startActivityForResult(Intent i, int request) { if (simNoActivities) throw new ActivityNotFoundException("none"); simPendingIntent = i; simPendingRequest = request; }
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {}
+    public void simDeliverResult(int resultCode, Intent data) { onActivityResult(simPendingRequest, resultCode, data); }
+    public void finish() { simFinished = true; }
+    public boolean onKeyDown(int keyCode, android.view.KeyEvent event) { return false; }
+    public boolean onKeyUp(int keyCode, android.view.KeyEvent event) { return false; }
+}
+=== FILE: android/app/ActivityManager.java
+package android.app;
+public class ActivityManager {
+    public static class MemoryInfo { public long availMem, totalMem; public boolean lowMemory; }
+    public void getMemoryInfo(MemoryInfo info) { info.availMem = 3L << 30; info.totalMem = 8L << 30; }
+    public int getMemoryClass() { return 256; }
+    public boolean isLowRamDevice() { return false; }
+}
+=== FILE: android/content/ActivityNotFoundException.java
+package android.content;
+public class ActivityNotFoundException extends RuntimeException { public ActivityNotFoundException(String m) { super(m); } }
+=== FILE: android/content/ClipData.java
+package android.content;
+public class ClipData {
+    public static class Item { private final CharSequence text; public Item(CharSequence t) { text = t; } public CharSequence coerceToText(Context c) { return text == null ? "" : text; } }
+    private final Item item;
+    private ClipData(CharSequence t) { item = new Item(t); }
+    public static ClipData newPlainText(CharSequence label, CharSequence text) { return new ClipData(text); }
+    public int getItemCount() { return 1; }
+    public Item getItemAt(int i) { if (i != 0) throw new IndexOutOfBoundsException(); return item; }
+}
+=== FILE: android/content/ClipboardManager.java
+package android.content;
+public class ClipboardManager {
+    public static ClipData simClip;
+    public ClipData getPrimaryClip() { return simClip; }
+    public void setPrimaryClip(ClipData c) { simClip = c; }
+}
+=== FILE: android/content/ContentResolver.java
+package android.content;
+import android.net.Uri;
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.io.FileNotFoundException;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.util.HashMap;
+import java.util.Map;
+public class ContentResolver {
+    public static final Map<String, byte[]> SIM_FILES = new HashMap<>();
+    public static boolean simRejectTruncate, simDenied;
+    public OutputStream openOutputStream(Uri uri) throws FileNotFoundException { return openOutputStream(uri, "w"); }
+    public OutputStream openOutputStream(Uri uri, String mode) throws FileNotFoundException {
+        if (simDenied) throw new SecurityException("Permission denial");
+        if (simRejectTruncate && mode.equals("wt")) throw new IllegalArgumentException("Unsupported mode wt");
+        final String key = uri.simPath;
+        return new ByteArrayOutputStream() { @Override public void close() { SIM_FILES.put(key, toByteArray()); } };
+    }
+    public InputStream openInputStream(Uri uri) throws FileNotFoundException {
+        if (simDenied) throw new SecurityException("Permission denial");
+        byte[] data = SIM_FILES.get(uri.simPath); if (data == null) throw new FileNotFoundException(uri.simPath);
+        return new ByteArrayInputStream(data);
+    }
+}
+=== FILE: android/content/Context.java
+package android.content;
+import android.content.res.Resources;
+import java.util.HashMap;
+import java.util.Map;
+public abstract class Context {
+    public static final int MODE_PRIVATE = 0;
+    public static final String VIBRATOR_SERVICE = "vibrator", CLIPBOARD_SERVICE = "clipboard", INPUT_METHOD_SERVICE = "input_method", ACTIVITY_SERVICE = "activity", POWER_SERVICE = "power";
+    private final android.view.inputmethod.InputMethodManager imm = new android.view.inputmethod.InputMethodManager();
+    public static final Map<String, Object> SIM_PREFS = new HashMap<>();
+    public static Intent simLastStarted; public static boolean simNoActivities;
+    private final ContentResolver resolver = new ContentResolver(); private final ClipboardManager clipboard = new ClipboardManager();
+    public ContentResolver getContentResolver() { return resolver; }
+    public static final Map<String, Map<String, Object>> SIM_STORES = new HashMap<>();
+    public static int simStartedActivities; public static int simApplies;
+    private final Resources res = new Resources();
+    private final android.os.Vibrator vib = new android.os.Vibrator();
+    public Resources getResources() { return res; }
+    public String getPackageName() { return "com.flappybird.recreation"; }
+    public static java.io.File SIM_FILES_DIR;
+    public static boolean simBrokenFiles;
+    public java.io.File getFilesDir() {
+        if (simBrokenFiles) return new java.io.File("/proc/no/such/dir");
+        if (SIM_FILES_DIR == null) { try { SIM_FILES_DIR = java.nio.file.Files.createTempDirectory("simfiles").toFile(); } catch (java.io.IOException e) { throw new RuntimeException(e); } }
+        return SIM_FILES_DIR;
+    }
+    private static Context simApp;
+    private static Context newSimApp() { return new Context() { }; }
+    public Context getApplicationContext() { if (simApp == null) simApp = newSimApp(); return simApp; }
+    public android.content.pm.PackageManager getPackageManager() { return new android.content.pm.PackageManager(); }
+    public static final android.content.pm.ApplicationInfo SIM_APP_INFO = new android.content.pm.ApplicationInfo();
+    public android.content.pm.ApplicationInfo getApplicationInfo() { return SIM_APP_INFO; }
+    public Object getSystemService(String name) { if (ACTIVITY_SERVICE.equals(name)) return new android.app.ActivityManager(); if (POWER_SERVICE.equals(name)) return new android.os.PowerManager(); return VIBRATOR_SERVICE.equals(name) ? vib : CLIPBOARD_SERVICE.equals(name) ? clipboard : INPUT_METHOD_SERVICE.equals(name) ? imm : null; }
+    public void startActivity(Intent i) { if (simNoActivities) throw new ActivityNotFoundException("none"); simStartedActivities++; simLastStarted = i; }
+    public SharedPreferences getSharedPreferences(String name, int mode) {
+        final Map<String, Object> store = name.startsWith("FlappyBirdProfile_") ? SIM_STORES.computeIfAbsent(name, k -> new HashMap<>()) : SIM_PREFS;
+        return new SharedPreferences() {
+            private <T> T typed(String k, T d, Class<T> type) { Object v = store.get(k); if (v == null) return d; if (!type.isInstance(v)) throw new ClassCastException(v.getClass().getName() + " cannot be cast to " + type.getName() + " (key " + k + ")"); return type.cast(v); }
+            public Map<String, ?> getAll() { return new HashMap<>(store); }
+            public int getInt(String k, int d) { return typed(k, d, Integer.class); }
+            public float getFloat(String k, float d) { return typed(k, d, Float.class); }
+            public boolean getBoolean(String k, boolean d) { return typed(k, d, Boolean.class); }
+            public String getString(String k, String d) { return typed(k, d, String.class); }
+            public long getLong(String k, long d) { return typed(k, d, Long.class); }
+            public boolean contains(String k) { return store.containsKey(k); }
+            public Editor edit() {
+                final Map<String, Object> pending = new HashMap<>(); final boolean[] clear = { false }; final java.util.Set<String> removed = new java.util.HashSet<>();
+                return new Editor() {
+                    public Editor putInt(String k, int v) { pending.put(k, v); return this; }
+                    public Editor putFloat(String k, float v) { pending.put(k, v); return this; }
+                    public Editor putBoolean(String k, boolean v) { pending.put(k, v); return this; }
+                    public Editor putString(String k, String v) { pending.put(k, v); return this; }
+                    public Editor putLong(String k, long v) { pending.put(k, v); return this; }
+                    public Editor remove(String k) { removed.add(k); return this; }
+                    public Editor clear() { clear[0] = true; return this; }
+                    public void apply() { simApplies++; if (clear[0]) store.clear(); for (String k : removed) store.remove(k); store.putAll(pending); }
+                    public boolean commit() { apply(); return true; }
+                };
+            }
+        };
+    }
+}
+=== FILE: android/content/DialogInterface.java
+package android.content;
+public interface DialogInterface {
+    int BUTTON_POSITIVE = -1, BUTTON_NEGATIVE = -2, BUTTON_NEUTRAL = -3;
+    void dismiss();
+    interface OnClickListener { void onClick(DialogInterface d, int which); }
+    interface OnKeyListener { boolean onKey(DialogInterface d, int keyCode, android.view.KeyEvent event); }
+    interface OnShowListener { void onShow(DialogInterface d); }
+}
+=== FILE: android/content/Intent.java
+package android.content;
+import android.net.Uri;
+import java.util.HashMap;
+import java.util.Map;
+public class Intent {
+    public static final String ACTION_SEND = "android.intent.action.SEND", ACTION_CREATE_DOCUMENT = "android.intent.action.CREATE_DOCUMENT", ACTION_OPEN_DOCUMENT = "android.intent.action.OPEN_DOCUMENT", ACTION_CHOOSER = "android.intent.action.CHOOSER";
+    public static final String CATEGORY_OPENABLE = "android.intent.category.OPENABLE", CATEGORY_BROWSABLE = "android.intent.category.BROWSABLE", ACTION_VIEW = "android.intent.action.VIEW";
+    public Intent(String action, Uri u) { simAction = action; data = u; }
+    public static final String EXTRA_TEXT = "android.intent.extra.TEXT", EXTRA_SUBJECT = "android.intent.extra.SUBJECT", EXTRA_TITLE = "android.intent.extra.TITLE", EXTRA_MIME_TYPES = "android.intent.extra.MIME_TYPES", EXTRA_INTENT = "android.intent.extra.INTENT";
+    public String simAction, simType; public final Map<String, Object> simExtras = new HashMap<>(); private Uri data;
+    public Intent(Context c, Class<?> cls) {}
+    public Intent() {}
+    public Intent(String action) { simAction = action; }
+    public Intent addCategory(String c) { return this; }
+    public Intent setType(String t) { simType = t; return this; }
+    public Intent putExtra(String k, String v) { simExtras.put(k, v); return this; }
+    public Intent putExtra(String k, String[] v) { simExtras.put(k, v); return this; }
+    public Intent putExtra(String k, Intent v) { simExtras.put(k, v); return this; }
+    public Intent setData(Uri u) { data = u; return this; }
+    public Uri getData() { return data; }
+    public static Intent createChooser(Intent target, CharSequence title) { Intent c = new Intent(ACTION_CHOOSER); c.putExtra(EXTRA_INTENT, target); return c; }
+}
+=== FILE: android/content/SharedPreferences.java
+package android.content;
+import java.util.Map;
+public interface SharedPreferences {
+    Map<String, ?> getAll();
+    int getInt(String k, int d); float getFloat(String k, float d); boolean getBoolean(String k, boolean d); String getString(String k, String d); long getLong(String k, long d); boolean contains(String k);
+    Editor edit();
+    interface Editor { Editor putInt(String k, int v); Editor putFloat(String k, float v); Editor putBoolean(String k, boolean v); Editor putString(String k, String v); Editor putLong(String k, long v); Editor remove(String k); Editor clear(); void apply(); boolean commit(); }
+}
+=== FILE: android/content/pm/ApplicationInfo.java
+package android.content.pm;
+public class ApplicationInfo { public static final int FLAG_DEBUGGABLE = 2; public int flags = FLAG_DEBUGGABLE; public int targetSdkVersion = 36; }
+=== FILE: android/content/pm/PackageInfo.java
+package android.content.pm;
+public class PackageInfo {
+    public String versionName; public int versionCode; public long firstInstallTime = 1700000000000L, lastUpdateTime = 1760000000000L;
+    public long getLongVersionCode() { return versionCode; }
+}
+=== FILE: android/content/pm/PackageManager.java
+package android.content.pm;
+public class PackageManager {
+    public static class NameNotFoundException extends Exception { public NameNotFoundException(String s) { super(s); } }
+    public static boolean simNoIcon;
+    public android.graphics.drawable.Drawable getApplicationIcon(String name) throws NameNotFoundException { if (simNoIcon) throw new NameNotFoundException(name); return new android.graphics.drawable.GradientDrawable(); }
+    public PackageInfo getPackageInfo(String name, int flags) throws NameNotFoundException { PackageInfo info = new PackageInfo(); info.versionName = "1.5.2"; info.versionCode = 152; return info; }
+}
+=== FILE: android/content/res/ColorStateList.java
+package android.content.res;
+public class ColorStateList {
+    public ColorStateList(int[][] states, int[] colors) { if (states.length != colors.length) throw new IllegalArgumentException("states and colors must match"); }
+    public static ColorStateList valueOf(int color) { return new ColorStateList(new int[][] { {} }, new int[] { color }); }
+}
+=== FILE: android/content/res/Configuration.java
+package android.content.res;
+public class Configuration {
+    public static final int ORIENTATION_PORTRAIT = 1, ORIENTATION_LANDSCAPE = 2, UI_MODE_NIGHT_MASK = 0x30, UI_MODE_NIGHT_YES = 0x20, UI_MODE_NIGHT_NO = 0x10;
+    public static final int TOUCHSCREEN_NOTOUCH = 1, TOUCHSCREEN_FINGER = 3, KEYBOARD_NOKEYS = 1, KEYBOARD_QWERTY = 2, HARDKEYBOARDHIDDEN_NO = 1, HARDKEYBOARDHIDDEN_YES = 2;
+    public int orientation = ORIENTATION_PORTRAIT, uiMode = UI_MODE_NIGHT_YES, touchscreen = TOUCHSCREEN_FINGER, keyboard = KEYBOARD_NOKEYS, hardKeyboardHidden = HARDKEYBOARDHIDDEN_YES;
+    public int screenWidthDp = 392, screenHeightDp = 850; public float fontScale = 1f;
+}
+=== FILE: android/content/res/Resources.java
+package android.content.res;
+import android.graphics.Bitmap;
+import android.util.DisplayMetrics;
+import java.util.HashMap;
+import java.util.Map;
+public class Resources {
+    public static final Map<Integer, int[]> SIZES = new HashMap<>();
+    public static final Map<String, Integer> NAMES = new HashMap<>();
+    public static final DisplayMetrics SIM_METRICS = new DisplayMetrics();
+    public Bitmap simDecode(int id) { int[] s = SIZES.get(id); return s == null ? null : Bitmap.simDecoded(s[0], s[1]); }
+    public int getIdentifier(String name, String type, String pkg) { Integer id = NAMES.get(type + "/" + name); return id == null ? 0 : id; }
+    public DisplayMetrics getDisplayMetrics() { return SIM_METRICS; }
+    public static final Configuration SIM_CONFIG = new Configuration();
+    public Configuration getConfiguration() { return SIM_CONFIG; }
+}
+=== FILE: android/graphics/Bitmap.java
+package android.graphics;
+public final class Bitmap {
+    public enum Config { ALPHA_8, RGB_565, ARGB_4444, ARGB_8888 }
+    public static long allocCount, liveBytes, peakBytes;
+    private final int w, h; private boolean recycled; private boolean hasAlpha = true; private final boolean mutable;
+    private Bitmap(int w, int h, boolean mutable) {
+        if (w <= 0 || h <= 0) throw new IllegalArgumentException("width and height must be > 0");
+        this.w = w; this.h = h; this.mutable = mutable; allocCount++; liveBytes += 4L * w * h; peakBytes = Math.max(peakBytes, liveBytes);
+    }
+    public static Bitmap simDecoded(int w, int h) { return new Bitmap(w, h, false); }
+    public static Bitmap createBitmap(int w, int h, Config c) { return new Bitmap(w, h, true); }
+    public static Bitmap createBitmap(Bitmap src, int x, int y, int w, int h) { return createBitmap(src, x, y, w, h, null, false); }
+    public static Bitmap createBitmap(Bitmap src, int x, int y, int w, int h, Matrix m, boolean filter) {
+        if (src.recycled) throw new IllegalStateException("createBitmap from recycled bitmap");
+        if (x < 0 || y < 0) throw new IllegalArgumentException("x/y must be >= 0");
+        if (x + w > src.w) throw new IllegalArgumentException("x + width must be <= bitmap.width()");
+        if (y + h > src.h) throw new IllegalArgumentException("y + height must be <= bitmap.height()");
+        if (!src.mutable && x == 0 && y == 0 && w == src.w && h == src.h && (m == null || m.isIdentity())) return src;
+        int nw = w, nh = h;
+        if (m != null && !m.isIdentity()) { nw = Math.round(Math.abs(w * m.sx)); nh = Math.round(Math.abs(h * m.sy)); }
+        return new Bitmap(nw, nh, false);
+    }
+    public static Bitmap createScaledBitmap(Bitmap src, int dw, int dh, boolean filter) {
+        Matrix m = new Matrix();
+        if (src.w != dw || src.h != dh) m.setScale(dw / (float) src.w, dh / (float) src.h);
+        if (dw <= 0 || dh <= 0) throw new IllegalArgumentException("width and height must be > 0");
+        Bitmap b = createBitmap(src, 0, 0, src.w, src.h, m, filter);
+        if (b != src && (b.w != dw || b.h != dh)) return new Bitmap(dw, dh, false);
+        return b;
+    }
+    public int getWidth() { return w; }
+    public int getHeight() { return h; }
+    public void recycle() { if (!recycled) { recycled = true; liveBytes -= 4L * w * h; } }
+    public boolean isRecycled() { return recycled; }
+    public void setHasAlpha(boolean a) { hasAlpha = a; }
+    public boolean hasAlpha() { return hasAlpha; }
+    public void prepareToDraw() { if (recycled) throw new IllegalStateException("prepareToDraw on recycled bitmap"); }
+    public Config getConfig() { return Config.ARGB_8888; }
+}
+=== FILE: android/graphics/BitmapFactory.java
+package android.graphics;
+import android.content.res.Resources;
+public class BitmapFactory {
+    public static class Options { public boolean inScaled = true; public boolean inMutable; public Bitmap.Config inPreferredConfig; }
+    public static Bitmap decodeResource(Resources res, int id, Options o) { return res.simDecode(id); }
+    public static Bitmap decodeResource(Resources res, int id) { return res.simDecode(id); }
+}
+=== FILE: android/graphics/BlurMaskFilter.java
+package android.graphics;
+public class BlurMaskFilter extends MaskFilter {
+    public enum Blur { NORMAL, SOLID, OUTER, INNER }
+    public BlurMaskFilter(float radius, Blur style) { if (!(radius > 0)) throw new IllegalArgumentException("radius must be > 0"); }
+}
+=== FILE: android/graphics/Canvas.java
+package android.graphics;
+public class Canvas {
+    public static long ops; public static long blurOps; public static long pathOps; public int saveDepth;
+    public Canvas() {}
+    public Canvas(Bitmap b) { if (b.isRecycled()) throw new IllegalStateException("recycled"); }
+    private static void check(Bitmap b) { if (b == null) throw new NullPointerException("bitmap == null"); if (b.isRecycled()) throw new RuntimeException("Canvas: trying to use a recycled bitmap"); }
+    private static void use(Paint p) { if (p == null) throw new NullPointerException("paint == null"); ops++; if (p.maskFilter != null) blurOps++; }
+    private static void opt(Paint p) { ops++; if (p != null && p.maskFilter != null) blurOps++; }
+    public void drawBitmap(Bitmap b, float l, float t, Paint p) { check(b); nan(l, t); opt(p); }
+    public static java.util.List<Object[]> simDraws;
+    public void drawRoundRect(RectF r, float rx, float ry, Paint p) { use(p); nan(r.left, r.top); nan(r.right, r.bottom); }
+    public static final java.util.List<String> simTexts = new java.util.ArrayList<>();
+    public void drawText(String t, float x, float y, Paint p) { use(p); nan(x, y); if (t == null) throw new NullPointerException("text"); simTexts.add(t); }
+    public void drawBitmap(Bitmap b, Rect src, RectF dst, Paint p) { check(b); if (dst == null) throw new NullPointerException(); nan(dst.left, dst.top); nan(dst.right, dst.bottom); opt(p); if (simDraws != null) simDraws.add(new Object[] {b, new float[] {dst.left, dst.top, dst.right, dst.bottom}}); }
+    public void drawBitmap(Bitmap b, Rect src, Rect dst, Paint p) { check(b); if (dst == null) throw new NullPointerException(); opt(p); }
+    public void drawBitmap(Bitmap b, Matrix m, Paint p) { check(b); if (m == null) throw new NullPointerException(); opt(p); }
+    public void drawRect(float l, float t, float r, float b, Paint p) { nan(l, t); nan(r, b); use(p); }
+    public void drawRect(RectF r, Paint p) { nan(r.left, r.top); use(p); }
+    public void drawRect(Rect r, Paint p) { use(p); }
+    public void drawCircle(float x, float y, float r, Paint p) { nan(x, y); nan(r, 0); use(p); }
+    public void drawLine(float x0, float y0, float x1, float y1, Paint p) { nan(x0, y0); nan(x1, y1); use(p); }
+    public void drawLines(float[] pts, Paint p) { drawLines(pts, 0, pts.length, p); }
+    public void drawLines(float[] pts, int off, int count, Paint p) {
+        if (off < 0 || count < 0 || off + count > pts.length) throw new ArrayIndexOutOfBoundsException("drawLines range");
+        for (int i = off; i < off + (count & ~3); i++) nan(pts[i], 0);
+        use(p);
+    }
+    public void drawPoint(float x, float y, Paint p) { nan(x, y); use(p); }
+    public void drawPoints(float[] pts, int off, int count, Paint p) { if (off + count > pts.length) throw new ArrayIndexOutOfBoundsException(); use(p); }
+    public void drawPath(Path path, Paint p) { if (path == null) throw new NullPointerException(); pathOps++; use(p); }
+    public void drawPaint(Paint p) { use(p); }
+    public void drawColor(int c) { ops++; }
+    public void drawColor(int c, PorterDuff.Mode m) { ops++; }
+    public static long layerOps;
+    public int save() { return saveDepth++; }
+    public static long clipOps;
+    public boolean clipRect(float l, float t, float r, float b) { nan(l, t); nan(r, b); clipOps++; return true; }
+    public int saveLayer(float l, float t, float r, float b, Paint p) { nan(l, t); nan(r, b); layerOps++; return saveDepth++; }
+    public int saveLayer(RectF bounds, Paint p) { layerOps++; return saveDepth++; }
+    public int saveLayerAlpha(RectF bounds, int alpha) { if (alpha < 0 || alpha > 255) throw new IllegalStateException("layer alpha " + alpha); layerOps++; return saveDepth++; }
+    public int saveLayerAlpha(float l, float t, float r, float b, int alpha) { nan(l, t); nan(r, b); layerOps++; return saveDepth++; }
+    public void restore() { if (--saveDepth < 0) throw new IllegalStateException("Underflow in restore - more restores than saves"); }
+    public void translate(float dx, float dy) { nan(dx, dy); }
+    public void scale(float sx, float sy) { nan(sx, sy); }
+    public final void scale(float sx, float sy, float px, float py) { nan(sx, sy); nan(px, py); }
+    public void rotate(float d) { nan(d, 0); }
+    public final void rotate(float d, float px, float py) { nan(d, px); nan(py, 0); }
+    private static void nan(float a, float b) { if (Float.isNaN(a) || Float.isNaN(b) || Float.isInfinite(a) || Float.isInfinite(b)) throw new IllegalStateException("NaN/Infinite coordinate reached the canvas"); }
+}
+=== FILE: android/graphics/Color.java
+package android.graphics;
+public class Color {
+    public static final int BLACK = 0xFF000000, WHITE = 0xFFFFFFFF, CYAN = 0xFF00FFFF, TRANSPARENT = 0, RED = 0xFFFF0000, YELLOW = 0xFFFFFF00;
+    public static int argb(int a, int r, int g, int b) { return (a << 24) | (r << 16) | (g << 8) | b; }
+    public static int rgb(int r, int g, int b) { return 0xFF000000 | (r << 16) | (g << 8) | b; }
+    public static int alpha(int c) { return c >>> 24; } public static int red(int c) { return (c >> 16) & 0xFF; }
+    public static int green(int c) { return (c >> 8) & 0xFF; } public static int blue(int c) { return c & 0xFF; }
+}
+=== FILE: android/graphics/ColorFilter.java
+package android.graphics;
+public class ColorFilter { public static long allocCount; public ColorFilter() { allocCount++; } }
+=== FILE: android/graphics/ColorMatrix.java
+package android.graphics;
+public class ColorMatrix { public ColorMatrix() {} public void reset() {} public void setRotate(int axis, float degrees) { if (axis < 0 || axis > 2) throw new RuntimeException(); } public void setSaturation(float s) {} }
+=== FILE: android/graphics/ColorMatrixColorFilter.java
+package android.graphics;
+public class ColorMatrixColorFilter extends ColorFilter { public ColorMatrixColorFilter(ColorMatrix m) { if (m == null) throw new NullPointerException(); } }
+=== FILE: android/graphics/LightingColorFilter.java
+package android.graphics;
+public class LightingColorFilter extends ColorFilter { public final int simMul, simAdd; public LightingColorFilter(int mul, int add) { simMul = mul; simAdd = add; } }
+=== FILE: android/graphics/LinearGradient.java
+package android.graphics;
+public class LinearGradient extends Shader {
+    public LinearGradient(float x0, float y0, float x1, float y1, int[] colors, float[] positions, TileMode t) { if (colors.length < 2) throw new IllegalArgumentException(); if (positions != null && positions.length != colors.length) throw new IllegalArgumentException(); }
+    public LinearGradient(float x0, float y0, float x1, float y1, int c0, int c1, TileMode t) {}
+}
+=== FILE: android/graphics/MaskFilter.java
+package android.graphics;
+public class MaskFilter {}
+=== FILE: android/graphics/Matrix.java
+package android.graphics;
+public class Matrix {
+    public float sx = 1, sy = 1; public boolean identity = true;
+    public Matrix() {}
+    public boolean isIdentity() { return identity; }
+    public void reset() { sx = 1; sy = 1; identity = true; }
+    public void setScale(float x, float y) { sx = x; sy = y; identity = (x == 1 && y == 1); }
+    public void setTranslate(float dx, float dy) { sx = 1; sy = 1; identity = (dx == 0 && dy == 0); }
+    public boolean postTranslate(float dx, float dy) { identity = false; return true; }
+    public boolean postRotate(float d) { identity = false; return true; }
+    public boolean postScale(float x, float y) { sx *= x; sy *= y; identity = false; return true; }
+    public boolean postScale(float x, float y, float px, float py) { sx *= x; sy *= y; identity = false; return true; }
+}
+=== FILE: android/graphics/Paint.java
+package android.graphics;
+public class Paint {
+    public static final int ANTI_ALIAS_FLAG = 1, FILTER_BITMAP_FLAG = 2;
+    public enum Style { FILL, STROKE, FILL_AND_STROKE }
+    public enum Cap { BUTT, ROUND, SQUARE }
+    public enum Join { MITER, ROUND, BEVEL }
+    public enum Align { LEFT, CENTER, RIGHT }
+    public float simTextSize = 12f; public void setTextSize(float s) { if (Float.isNaN(s) || s <= 0) throw new IllegalArgumentException("text size " + s); simTextSize = s; }
+    public void setTextAlign(Align a) { if (a == null) throw new NullPointerException(); }
+    public float measureText(String t) { return t.length() * simTextSize * 0.6f; }
+    public Typeface setTypeface(Typeface t) { return t; }
+    public static long allocCount;
+    public MaskFilter maskFilter; private int color = 0xFF000000; private float strokeWidth; private ColorFilter colorFilter; private Shader shader; private Xfermode xfermode;
+    public Paint() { allocCount++; }
+    public Paint(int flags) { allocCount++; }
+    public Paint(Paint p) { allocCount++; maskFilter = p.maskFilter; color = p.color; strokeWidth = p.strokeWidth; }
+    public void setFilterBitmap(boolean f) {}
+    public void setAntiAlias(boolean a) {}
+    public void setDither(boolean d) {}
+    public void setColor(int c) { color = c; }
+    public int getColor() { return color; }
+    public void setAlpha(int a) { if (a < 0 || a > 255) throw new IllegalStateException("alpha out of range: " + a); color = (color & 0x00FFFFFF) | (a << 24); }
+    public int getAlpha() { return color >>> 24; }
+    public void setStyle(Style s) {}
+    public void setStrokeWidth(float w) { if (Float.isNaN(w) || w < 0) throw new IllegalStateException("bad stroke width " + w); strokeWidth = w; }
+    public float getStrokeWidth() { return strokeWidth; }
+    public void setStrokeCap(Cap c) {}
+    public void setStrokeJoin(Join j) {}
+    public MaskFilter setMaskFilter(MaskFilter m) { maskFilter = m; return m; }
+    public Xfermode setXfermode(Xfermode x) { xfermode = x; return x; }
+    public Xfermode simXfermode() { return xfermode; }
+    public Shader setShader(Shader s) { shader = s; return s; }
+    public ColorFilter setColorFilter(ColorFilter f) { colorFilter = f; return f; } public ColorFilter getColorFilter() { return colorFilter; }
+}
+=== FILE: android/graphics/Path.java
+package android.graphics;
+public class Path { public static long allocCount; public Path() { allocCount++; } public void reset() {} public void rewind() {} public void moveTo(float x, float y) {} public void lineTo(float x, float y) {} public void close() {} }
+=== FILE: android/graphics/PixelFormat.java
+package android.graphics;
+public class PixelFormat { public static final int TRANSLUCENT = -3, OPAQUE = -1, TRANSPARENT = -2; }
+=== FILE: android/graphics/PorterDuff.java
+package android.graphics;
+public class PorterDuff { public enum Mode { CLEAR, SRC, DST, SRC_OVER, DST_OVER, SRC_IN, DST_IN, SRC_OUT, DST_OUT, SRC_ATOP, DST_ATOP, XOR, DARKEN, LIGHTEN, MULTIPLY, SCREEN, ADD, OVERLAY } }
+=== FILE: android/graphics/PorterDuffColorFilter.java
+package android.graphics;
+public class PorterDuffColorFilter extends ColorFilter { public PorterDuffColorFilter(int color, PorterDuff.Mode m) {} }
+=== FILE: android/graphics/PorterDuffXfermode.java
+package android.graphics;
+public class PorterDuffXfermode extends Xfermode { public PorterDuffXfermode(PorterDuff.Mode m) {} }
+=== FILE: android/graphics/RadialGradient.java
+package android.graphics;
+public class RadialGradient extends Shader {
+    public RadialGradient(float cx, float cy, float r, int[] colors, float[] stops, TileMode t) { if (!(r > 0)) throw new IllegalArgumentException("radius must be > 0"); if (stops != null && stops.length != colors.length) throw new IllegalArgumentException(); }
+    public RadialGradient(float cx, float cy, float r, int c0, int c1, TileMode t) { if (!(r > 0)) throw new IllegalArgumentException("radius must be > 0"); }
+}
+=== FILE: android/graphics/Rect.java
+package android.graphics;
+public final class Rect {
+    public int left, top, right, bottom;
+    public Rect() {}
+    public Rect(int l, int t, int r, int b) { set(l, t, r, b); }
+    public float exactCenterX() { return (left + right) * 0.5f; } public float exactCenterY() { return (top + bottom) * 0.5f; }
+    public void set(int l, int t, int r, int b) { left = l; top = t; right = r; bottom = b; }
+    public void set(Rect r) { set(r.left, r.top, r.right, r.bottom); }
+    public void setEmpty() { set(0, 0, 0, 0); }
+    public boolean isEmpty() { return left >= right || top >= bottom; }
+    public int width() { return right - left; }
+    public int height() { return bottom - top; }
+    public int centerX() { return (left + right) >> 1; }
+    public int centerY() { return (top + bottom) >> 1; }
+    public void offset(int dx, int dy) { left += dx; right += dx; top += dy; bottom += dy; }
+    public boolean contains(int x, int y) { return left < right && top < bottom && x >= left && x < right && y >= top && y < bottom; }
+    public static boolean intersects(Rect a, Rect b) { return a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom; }
+}
+=== FILE: android/graphics/RectF.java
+package android.graphics;
+public class RectF {
+    public float left, top, right, bottom;
+    public RectF() {}
+    public RectF(float l, float t, float r, float b) { set(l, t, r, b); }
+    public void inset(float dx, float dy) { left += dx; top += dy; right -= dx; bottom -= dy; }
+    public void set(float l, float t, float r, float b) { left = l; top = t; right = r; bottom = b; }
+    public void set(RectF r) { set(r.left, r.top, r.right, r.bottom); }
+    public void set(Rect r) { set(r.left, r.top, r.right, r.bottom); }
+    public final float width() { return right - left; }
+    public final float height() { return bottom - top; }
+    public final float centerX() { return (left + right) * 0.5f; }
+    public final float centerY() { return (top + bottom) * 0.5f; }
+    public void offset(float dx, float dy) { left += dx; right += dx; top += dy; bottom += dy; }
+    public boolean contains(float x, float y) { return left < right && top < bottom && x >= left && x < right && y >= top && y < bottom; }
+}
+=== FILE: android/graphics/Shader.java
+package android.graphics;
+public class Shader { public enum TileMode { CLAMP, REPEAT, MIRROR } public static long allocCount; public Shader() { allocCount++; } public void setLocalMatrix(Matrix m) {} }
+=== FILE: android/graphics/Typeface.java
+package android.graphics;
+public class Typeface {
+    public static final int NORMAL = 0, BOLD = 1;
+    public static final Typeface DEFAULT = new Typeface("default"), DEFAULT_BOLD = new Typeface("default-bold"), MONOSPACE = new Typeface("monospace");
+    public final String simName;
+    public Typeface(String name) { simName = name; }
+    public static Typeface create(String family, int style) { return new Typeface(family); }
+}
+=== FILE: android/graphics/Xfermode.java
+package android.graphics;
+public class Xfermode {}
+=== FILE: android/graphics/drawable/Drawable.java
+package android.graphics.drawable;
+import android.graphics.Canvas;
+import android.graphics.ColorFilter;
+import android.graphics.Rect;
+public abstract class Drawable {
+    private final Rect bounds = new Rect();
+    public abstract void draw(Canvas canvas);
+    public abstract void setAlpha(int alpha);
+    public abstract void setColorFilter(ColorFilter filter);
+    public abstract int getOpacity();
+    public int getIntrinsicWidth() { return -1; } public int getIntrinsicHeight() { return -1; }
+    public final Rect getBounds() { return bounds; }
+    public void setBounds(int l, int t, int r, int b) { bounds.set(l, t, r, b); }
+    public Drawable mutate() { return this; } public void setTint(int c) {}
+    public void invalidateSelf() {}
+}
+=== FILE: android/graphics/drawable/GradientDrawable.java
+package android.graphics.drawable;
+import android.graphics.Canvas;
+import android.graphics.ColorFilter;
+public class GradientDrawable extends Drawable {
+    public static final int RECTANGLE = 0, OVAL = 1;
+    public int simColor; public float simRadius; public float[] simRadii; public int simStroke;
+    public void setShape(int s) { if (s < 0 || s > 3) throw new IllegalArgumentException(); }
+    public void setColor(int c) { simColor = c; }
+    public void setCornerRadius(float r) { if (Float.isNaN(r)) throw new IllegalArgumentException("radius NaN"); simRadius = r; simRadii = null; }
+    public void setCornerRadii(float[] r) { if (r != null && r.length < 8) throw new ArrayIndexOutOfBoundsException("radii needs 8 values"); simRadii = r; }
+    public void setStroke(int width, int color) { simStroke = width; }
+    public void setSize(int w, int h) {}
+    public void draw(Canvas c) {} public void setAlpha(int a) {} public void setColorFilter(ColorFilter f) {} public int getOpacity() { return -3; }
+}
+=== FILE: android/graphics/drawable/RippleDrawable.java
+package android.graphics.drawable;
+import android.content.res.ColorStateList;
+import android.graphics.Canvas;
+import android.graphics.ColorFilter;
+public class RippleDrawable extends Drawable {
+    public RippleDrawable(ColorStateList color, Drawable content, Drawable mask) { if (color == null) throw new IllegalArgumentException("RippleDrawable requires a non-null color"); }
+    public void draw(Canvas c) {} public void setAlpha(int a) {} public void setColorFilter(ColorFilter f) {} public int getOpacity() { return -3; }
+}
+=== FILE: android/media/AudioAttributes.java
+package android.media;
+public final class AudioAttributes {
+    public static final int USAGE_GAME = 14, CONTENT_TYPE_SONIFICATION = 4;
+    public static class Builder { public Builder setUsage(int u) { return this; } public Builder setContentType(int c) { return this; } public AudioAttributes build() { return new AudioAttributes(); } }
+}
+=== FILE: android/media/MediaPlayer.java
+package android.media;
+import android.content.Context;
+public class MediaPlayer {
+    public static int simCreated, simPlaying; private boolean playing, released;
+    public static MediaPlayer create(Context c, int resId) { simCreated++; return new MediaPlayer(); }
+    private void live() { if (released) throw new IllegalStateException("MediaPlayer released"); }
+    public void setLooping(boolean l) { live(); }
+    public boolean isPlaying() { live(); return playing; }
+    public void start() { live(); if (!playing) { playing = true; simPlaying++; } }
+    public void pause() { live(); if (playing) { playing = false; simPlaying--; } }
+    public static float simLastVolume = -1f;
+    public void setVolume(float l, float r) { live(); simLastVolume = l; }
+    public void release() { if (playing) { playing = false; simPlaying--; } released = true; }
+}
+=== FILE: android/media/SoundPool.java
+package android.media;
+import android.content.Context;
+public class SoundPool {
+    public static volatile long simPlays; private volatile boolean released; private int next = 1;
+    public static class Builder { public Builder setMaxStreams(int n) { return this; } public Builder setAudioAttributes(AudioAttributes a) { return this; } public SoundPool build() { return new SoundPool(); } }
+    public int load(Context c, int resId, int priority) { return next++; }
+    public static volatile float simLastVolume = -1f;
+    public final int play(int id, float l, float r, int prio, int loop, float rate) { if (!released) { simPlays++; simLastVolume = l; } return 1; }
+    public final void release() { released = true; }
+}
+=== FILE: android/net/Uri.java
+package android.net;
+public class Uri { public final String simPath; private Uri(String p) { simPath = p; } public static Uri parse(String p) { return new Uri(p); } @Override public String toString() { return simPath; } }
+=== FILE: android/os/Build.java
+package android.os;
+public class Build {
+    public static final String MANUFACTURER = "SimMaker", MODEL = "Sim Phone", BRAND = "sim", DEVICE = "simdevice", PRODUCT = "simproduct", HARDWARE = "simchip", FINGERPRINT = "sim/simproduct/simdevice:17/SIM.1/1:user/release-keys";
+    public static final String[] SUPPORTED_ABIS = {"arm64-v8a"};
+    public static class VERSION { public static int SDK_INT = Integer.getInteger("sim.sdk", 37); public static final String RELEASE = "17", SECURITY_PATCH = "2026-11-01"; }
+    public static class VERSION_CODES { public static final int LOLLIPOP = 21, M = 23, N = 24, O = 26, P = 28, Q = 29, R = 30, S = 31, TIRAMISU = 33; }
+}
+=== FILE: android/os/Bundle.java
+package android.os;
+import java.util.HashMap;
+import java.util.Map;
+public final class Bundle {
+    private final Map<String, Object> map = new HashMap<>();
+    public void putInt(String k, int v) { map.put(k, v); }
+    public int getInt(String k, int d) { Object v = map.get(k); return v instanceof Integer ? (Integer) v : d; }
+}
+=== FILE: android/os/IBinder.java
+package android.os;
+public interface IBinder {}
+=== FILE: android/os/PowerManager.java
+package android.os;
+public class PowerManager { public boolean isPowerSaveMode() { return false; } }
+=== FILE: android/os/SystemClock.java
+package android.os;
+public final class SystemClock {
+    public static long simSleepMs, simUptimeSkewMs;
+    public static long elapsedRealtime() { return android.view.Choreographer.simLastNanos / 1000000L + simSleepMs; }
+    public static long uptimeMillis() { return android.view.Choreographer.simLastNanos / 1000000L + simUptimeSkewMs; }
+}
+=== FILE: android/os/VibrationEffect.java
+package android.os;
+public abstract class VibrationEffect {
+    public static final int DEFAULT_AMPLITUDE = -1;
+    public static VibrationEffect createWaveform(long[] timings, int repeat) { if (timings == null || timings.length == 0) throw new IllegalArgumentException(); return new VibrationEffect() {}; }
+    public static VibrationEffect createOneShot(long ms, int amplitude) { return new VibrationEffect() {}; }
+}
+=== FILE: android/os/Vibrator.java
+package android.os;
+public class Vibrator {
+    public static boolean simDenyPermission; public static int simVibrations;
+    public boolean hasVibrator() { return true; }
+    private void go() { if (simDenyPermission) throw new SecurityException("Requires VIBRATE permission"); simVibrations++; }
+    public void vibrate(long ms) { go(); }
+    public void vibrate(long[] pattern, int repeat) { go(); }
+    public void vibrate(VibrationEffect e) { if (e == null) throw new NullPointerException(); go(); }
+    public void cancel() {}
+}
+=== FILE: android/text/Editable.java
+package android.text;
+public interface Editable extends CharSequence {}
+=== FILE: android/text/InputFilter.java
+package android.text;
+public interface InputFilter { class LengthFilter implements InputFilter { private final int max; public LengthFilter(int m) { max = m; } public int getMax() { return max; } } }
+=== FILE: android/text/InputType.java
+package android.text;
+public interface InputType { int TYPE_TEXT_VARIATION_PERSON_NAME = 0x60, TYPE_TEXT_FLAG_MULTI_LINE = 0x20000, TYPE_TEXT_FLAG_NO_SUGGESTIONS = 0x80000; int TYPE_CLASS_TEXT = 1, TYPE_CLASS_NUMBER = 2, TYPE_NUMBER_FLAG_DECIMAL = 0x2000, TYPE_NUMBER_FLAG_SIGNED = 0x1000; }
+=== FILE: android/text/SimEditable.java
+package android.text;
+public final class SimEditable implements Editable {
+    private final CharSequence text; public SimEditable(CharSequence t) { text = t; }
+    public int length() { return text.length(); } public char charAt(int i) { return text.charAt(i); }
+    public CharSequence subSequence(int a, int b) { return text.subSequence(a, b); } public String toString() { return text.toString(); }
+}
+=== FILE: android/text/TextUtils.java
+package android.text;
+public class TextUtils { public enum TruncateAt { START, MIDDLE, END, MARQUEE } }
+=== FILE: android/text/TextWatcher.java
+package android.text;
+public interface TextWatcher { void beforeTextChanged(CharSequence s, int start, int count, int after); void onTextChanged(CharSequence s, int start, int before, int count); void afterTextChanged(Editable s); }
+=== FILE: android/transition/AutoTransition.java
+package android.transition;
+public class AutoTransition extends TransitionSet {}
+=== FILE: android/transition/Transition.java
+package android.transition;
+public abstract class Transition { public Transition setDuration(long d) { return this; } }
+=== FILE: android/transition/TransitionManager.java
+package android.transition;
+import android.view.ViewGroup;
+public class TransitionManager {
+    public static int simCount;
+    public static void beginDelayedTransition(ViewGroup root) { if (root == null) throw new NullPointerException(); simCount++; }
+    public static void beginDelayedTransition(ViewGroup root, Transition t) { if (root == null) throw new NullPointerException(); simCount++; }
+}
+=== FILE: android/transition/TransitionSet.java
+package android.transition;
+public class TransitionSet extends Transition { @Override public TransitionSet setDuration(long d) { return this; } }
+=== FILE: android/util/Base64.java
+package android.util;
+public class Base64 {
+    public static final int DEFAULT = 0, NO_PADDING = 1, NO_WRAP = 2, CRLF = 4, URL_SAFE = 8;
+    public static String encodeToString(byte[] input, int flags) {
+        if ((flags & NO_WRAP) == 0) return java.util.Base64.getMimeEncoder().encodeToString(input) + "\n";
+        return java.util.Base64.getEncoder().encodeToString(input);
+    }
+    public static byte[] decode(String text, int flags) { return java.util.Base64.getMimeDecoder().decode(text); }
+}
+=== FILE: android/util/DisplayMetrics.java
+package android.util;
+public class DisplayMetrics { public float density = 2.75f; public int widthPixels = 1080, heightPixels = 2340, densityDpi = 440; }
+=== FILE: android/util/Log.java
+package android.util;
+public final class Log {
+    public static int simErrors;
+    public static int d(String t, String m) { return 0; }
+    public static int i(String t, String m) { return 0; }
+    public static int w(String t, String m) { return 0; }
+    public static int w(String t, String m, Throwable e) { return 0; }
+    public static int e(String t, String m) { simErrors++; return 0; }
+    public static int e(String t, String m, Throwable e) { simErrors++; return 0; }
+    public static String getStackTraceString(Throwable e) { java.io.StringWriter w = new java.io.StringWriter(); e.printStackTrace(new java.io.PrintWriter(w)); return w.toString(); }
+}
+=== FILE: android/util/TypedValue.java
+package android.util;
+public class TypedValue { public static final int COMPLEX_UNIT_PX = 0, COMPLEX_UNIT_DIP = 1, COMPLEX_UNIT_SP = 2; }
+=== FILE: android/view/Choreographer.java
+package android.view;
+import java.util.ArrayList;
+import java.util.List;
+public final class Choreographer {
+    public interface FrameCallback { void doFrame(long frameTimeNanos); }
+    private static final Choreographer INSTANCE = new Choreographer();
+    private final List<FrameCallback> callbacks = new ArrayList<>();
+    private final List<FrameCallback> running = new ArrayList<>();
+    public static Choreographer getInstance() { return INSTANCE; }
+    public void postFrameCallback(FrameCallback c) { if (c == null) throw new IllegalArgumentException(); callbacks.add(c); }
+    public void removeFrameCallback(FrameCallback c) { callbacks.remove(c); }
+    public int simPending() { return callbacks.size(); }
+    public void simReset() { callbacks.clear(); }
+    public static long simLastNanos;
+    public void simFrame(long nanos) { simLastNanos = nanos; running.clear(); running.addAll(callbacks); callbacks.clear(); for (int i = 0; i < running.size(); i++) running.get(i).doFrame(nanos); }
+}
+=== FILE: android/view/ContextThemeWrapper.java
+package android.view;
+public class ContextThemeWrapper extends android.content.Context {
+    public final android.content.Context simBase; public final int simTheme;
+    public ContextThemeWrapper(android.content.Context base, int theme) { if (base == null) throw new NullPointerException(); simBase = base; simTheme = theme; }
+}
+=== FILE: android/view/Display.java
+package android.view;
+public final class Display {
+    public static final class Mode {
+        private final int id, w, h; private final float rate;
+        public Mode(int id, int w, int h, float rate) { this.id = id; this.w = w; this.h = h; this.rate = rate; }
+        public int getModeId() { return id; } public int getPhysicalWidth() { return w; } public int getPhysicalHeight() { return h; } public float getRefreshRate() { return rate; }
+    }
+    private final Mode[] modes = { new Mode(1, 1080, 2340, 60f), new Mode(2, 1080, 2340, 120f), new Mode(3, 720, 1560, 120f), new Mode(4, 1080, 2340, 90f) };
+    public Mode[] getSupportedModes() { return modes; }
+    public Mode getMode() { return modes[0]; }
+    public float getRefreshRate() { return 60f; }
+    public float[] getSupportedRefreshRates() { return new float[] { 60f, 90f, 120f }; }
+}
+=== FILE: android/view/Gravity.java
+package android.view;
+public class Gravity { public static final int CENTER = 17, CENTER_VERTICAL = 16, CENTER_HORIZONTAL = 1, START = 0x00800003, END = 0x00800005, TOP = 48, BOTTOM = 80; }
+=== FILE: android/view/HapticFeedbackConstants.java
+package android.view;
+public class HapticFeedbackConstants { public static final int LONG_PRESS = 0, VIRTUAL_KEY = 1, KEYBOARD_TAP = 3, CLOCK_TICK = 4; }
+=== FILE: android/view/KeyEvent.java
+package android.view;
+public class KeyEvent {
+    public static final int ACTION_DOWN = 0, ACTION_UP = 1;
+    public static final int KEYCODE_UNKNOWN = 0, KEYCODE_SOFT_LEFT = 1, KEYCODE_SOFT_RIGHT = 2, KEYCODE_HOME = 3, KEYCODE_BACK = 4, KEYCODE_CALL = 5, KEYCODE_ENDCALL = 6, KEYCODE_0 = 7, KEYCODE_1 = 8, KEYCODE_2 = 9, KEYCODE_3 = 10, KEYCODE_4 = 11, KEYCODE_5 = 12, KEYCODE_6 = 13, KEYCODE_7 = 14, KEYCODE_8 = 15, KEYCODE_9 = 16, KEYCODE_STAR = 17, KEYCODE_POUND = 18, KEYCODE_DPAD_UP = 19, KEYCODE_DPAD_DOWN = 20, KEYCODE_DPAD_LEFT = 21, KEYCODE_DPAD_RIGHT = 22, KEYCODE_DPAD_CENTER = 23, KEYCODE_VOLUME_UP = 24, KEYCODE_VOLUME_DOWN = 25, KEYCODE_POWER = 26, KEYCODE_CAMERA = 27, KEYCODE_CLEAR = 28, KEYCODE_A = 29, KEYCODE_B = 30, KEYCODE_C = 31, KEYCODE_D = 32, KEYCODE_E = 33, KEYCODE_F = 34, KEYCODE_G = 35, KEYCODE_H = 36, KEYCODE_I = 37, KEYCODE_J = 38, KEYCODE_K = 39, KEYCODE_L = 40, KEYCODE_M = 41, KEYCODE_N = 42, KEYCODE_O = 43, KEYCODE_P = 44, KEYCODE_Q = 45, KEYCODE_R = 46, KEYCODE_S = 47, KEYCODE_T = 48, KEYCODE_U = 49, KEYCODE_V = 50, KEYCODE_W = 51, KEYCODE_X = 52, KEYCODE_Y = 53, KEYCODE_Z = 54, KEYCODE_COMMA = 55, KEYCODE_PERIOD = 56, KEYCODE_ALT_LEFT = 57, KEYCODE_ALT_RIGHT = 58, KEYCODE_SHIFT_LEFT = 59, KEYCODE_SHIFT_RIGHT = 60, KEYCODE_TAB = 61, KEYCODE_SPACE = 62, KEYCODE_SYM = 63, KEYCODE_EXPLORER = 64, KEYCODE_ENVELOPE = 65, KEYCODE_ENTER = 66, KEYCODE_DEL = 67, KEYCODE_GRAVE = 68, KEYCODE_MINUS = 69, KEYCODE_EQUALS = 70, KEYCODE_LEFT_BRACKET = 71, KEYCODE_RIGHT_BRACKET = 72, KEYCODE_BACKSLASH = 73, KEYCODE_SEMICOLON = 74, KEYCODE_APOSTROPHE = 75, KEYCODE_SLASH = 76, KEYCODE_AT = 77, KEYCODE_MENU = 82, KEYCODE_SEARCH = 84, KEYCODE_PAGE_UP = 92, KEYCODE_PAGE_DOWN = 93, KEYCODE_BUTTON_A = 96, KEYCODE_BUTTON_B = 97, KEYCODE_BUTTON_X = 99, KEYCODE_BUTTON_Y = 100, KEYCODE_BUTTON_START = 108, KEYCODE_ESCAPE = 111, KEYCODE_FORWARD_DEL = 112, KEYCODE_CTRL_LEFT = 113, KEYCODE_CTRL_RIGHT = 114, KEYCODE_CAPS_LOCK = 115, KEYCODE_MOVE_HOME = 122, KEYCODE_MOVE_END = 123, KEYCODE_INSERT = 124, KEYCODE_F1 = 131, KEYCODE_F2 = 132, KEYCODE_F3 = 133, KEYCODE_F4 = 134, KEYCODE_F5 = 135, KEYCODE_F6 = 136, KEYCODE_F7 = 137, KEYCODE_F8 = 138, KEYCODE_F9 = 139, KEYCODE_F10 = 140, KEYCODE_F11 = 141, KEYCODE_F12 = 142, KEYCODE_NUMPAD_0 = 144, KEYCODE_NUMPAD_ENTER = 160, KEYCODE_VOLUME_MUTE = 164, KEYCODE_APP_SWITCH = 187, KEYCODE_ASSIST = 219, KEYCODE_SLEEP = 223, KEYCODE_WAKEUP = 224, KEYCODE_VOICE_ASSIST = 231;
+    private final int action, code, repeat;
+    public KeyEvent(int action, int code) { this(action, code, 0); }
+    public KeyEvent(int action, int code, int repeat) { this.action = action; this.code = code; this.repeat = repeat; }
+    public int getAction() { return action; } public int getKeyCode() { return code; } public int getRepeatCount() { return repeat; }
+    public static int getMaxKeyCode() { return 316; }
+    public static String keyCodeToString(int keyCode) {
+        for (java.lang.reflect.Field f : KeyEvent.class.getFields()) {
+            try { if (f.getName().startsWith("KEYCODE_") && f.getInt(null) == keyCode) return f.getName(); } catch (IllegalAccessException e) { }
+        }
+        return String.valueOf(keyCode);
+    }
+}
+=== FILE: android/view/MotionEvent.java
+package android.view;
+public final class MotionEvent {
+    public static final int ACTION_DOWN = 0, ACTION_UP = 1, ACTION_MOVE = 2, ACTION_CANCEL = 3, ACTION_OUTSIDE = 4, ACTION_POINTER_DOWN = 5, ACTION_POINTER_UP = 6;
+    public static final int ACTION_MASK = 0xff, ACTION_POINTER_INDEX_MASK = 0xff00, ACTION_POINTER_INDEX_SHIFT = 8;
+    public static final int ACTION_HOVER_MOVE = 7, ACTION_HOVER_ENTER = 9, ACTION_HOVER_EXIT = 10;
+    public static final int ACTION_SCROLL = 8, AXIS_VSCROLL = 9;
+    private float vscroll;
+    public MotionEvent simScroll(float amount) { vscroll = amount; return this; }
+    public float getAxisValue(int axis) { return axis == AXIS_VSCROLL ? vscroll : 0f; }
+    public static final int TOOL_TYPE_UNKNOWN = 0, TOOL_TYPE_FINGER = 1, TOOL_TYPE_MOUSE = 3, BUTTON_PRIMARY = 1, BUTTON_SECONDARY = 2, BUTTON_TERTIARY = 4;
+    private int action; private float x, y; private int toolType = TOOL_TYPE_FINGER, buttons;
+    public static MotionEvent obtain(long down, long time, int action, float x, float y, int meta) { MotionEvent e = new MotionEvent(); e.action = action; e.x = x; e.y = y; return e; }
+    public MotionEvent simMouse(int buttonState) { toolType = TOOL_TYPE_MOUSE; buttons = buttonState; return this; }
+    public int getToolType(int i) { return toolType; } public int getButtonState() { return buttons; }
+    public int getAction() { return action; }
+    public int getActionMasked() { return action & ACTION_MASK; }
+    public int getActionIndex() { return (action & ACTION_POINTER_INDEX_MASK) >> ACTION_POINTER_INDEX_SHIFT; }
+    public float getX() { return x; } public float getY() { return y; }
+    public float getX(int i) { return x; } public float getY(int i) { return y; }
+    public int getPointerCount() { return 1; }
+    public int getPointerId(int index) { return index; }
+    public void recycle() {}
+}
+=== FILE: android/view/PointerIcon.java
+package android.view;
+public final class PointerIcon {
+    public static final int TYPE_NULL = 0, TYPE_ARROW = 1000, TYPE_HAND = 1002;
+    public final int simType;
+    private PointerIcon(int t) { simType = t; }
+    public static PointerIcon getSystemIcon(android.content.Context c, int type) { if (c == null) throw new NullPointerException(); return new PointerIcon(type); }
+}
+=== FILE: android/view/SimInflater.java
+package android.view;
+import android.content.Context;
+import java.io.File;
+import java.util.HashSet;
+import java.util.Set;
+import javax.xml.parsers.DocumentBuilderFactory;
+import org.w3c.dom.Element;
+import org.w3c.dom.Node;
+import org.w3c.dom.NodeList;
+public final class SimInflater {
+    private static final String NS = "http://schemas.android.com/apk/res/android";
+    public static View inflate(Context c, String path) {
+        try {
+            Element root = DocumentBuilderFactory.newInstance().newDocumentBuilder().parse(new File(path)).getDocumentElement();
+            DocumentBuilderFactory f = DocumentBuilderFactory.newInstance(); f.setNamespaceAware(true);
+            root = f.newDocumentBuilder().parse(new File(path)).getDocumentElement();
+            return build(c, root, null, new HashSet<>());
+        } catch (RuntimeException e) { throw e; } catch (Exception e) { throw new RuntimeException("inflate failed: " + e, e); }
+    }
+    private static int px(String v, int fallback) {
+        if (v == null || v.isEmpty()) return fallback;
+        if (v.equals("match_parent")) return -1; if (v.equals("wrap_content")) return -2;
+        if (v.endsWith("dp")) return Math.round(Float.parseFloat(v.substring(0, v.length() - 2)) * 2.75f);
+        throw new RuntimeException("bad dimension " + v);
+    }
+    private static View build(Context c, Element e, ViewGroup parent, Set<Integer> seen) throws Exception {
+        String tag = e.getTagName(); Class<?> cls;
+        if (tag.contains(".")) cls = Class.forName(tag);
+        else if (tag.equals("View")) cls = View.class;
+        else cls = Class.forName("android.widget." + tag);
+        View v = (View) cls.getConstructor(Context.class).newInstance(c);
+        String id = e.getAttributeNS(NS, "id");
+        if (!id.isEmpty()) {
+            String name = id.substring(id.indexOf('/') + 1);
+            int value = Class.forName(c.getPackageName() + ".R$id").getField(name).getInt(null);
+            if (!seen.add(value)) throw new RuntimeException("duplicate id " + name);
+            v.setId(value);
+        }
+        String tagValue = e.getAttributeNS(NS, "tag"); if (!tagValue.isEmpty()) v.setTag(tagValue);
+        String vis = e.getAttributeNS(NS, "visibility");
+        if (vis.equals("gone")) v.setVisibility(View.GONE); else if (vis.equals("invisible")) v.setVisibility(View.INVISIBLE);
+        String alpha = e.getAttributeNS(NS, "alpha"); if (!alpha.isEmpty()) v.setAlpha(Float.parseFloat(alpha));
+        if (v instanceof android.widget.TextView) ((android.widget.TextView) v).setText(e.getAttributeNS(NS, "text"));
+        if (v instanceof android.widget.LinearLayout) ((android.widget.LinearLayout) v).setOrientation("vertical".equals(e.getAttributeNS(NS, "orientation")) ? 1 : 0);
+        if ("true".equals(e.getAttributeNS(NS, "clickable"))) v.setClickable(true);
+        if (parent != null) {
+            ViewGroup.LayoutParams lp = parent.simDefaultParams();
+            lp.width = px(e.getAttributeNS(NS, "layout_width"), -2); lp.height = px(e.getAttributeNS(NS, "layout_height"), -2);
+            if (lp instanceof android.widget.LinearLayout.LayoutParams) { String w = e.getAttributeNS(NS, "layout_weight"); if (!w.isEmpty()) ((android.widget.LinearLayout.LayoutParams) lp).weight = Float.parseFloat(w); }
+            parent.addView(v, lp);
+        }
+        NodeList kids = e.getChildNodes();
+        for (int i = 0; i < kids.getLength(); i++) {
+            Node n = kids.item(i);
+            if (n instanceof Element) { if (!(v instanceof ViewGroup)) throw new RuntimeException(tag + " cannot have children"); build(c, (Element) n, (ViewGroup) v, seen); }
+        }
+        return v;
+    }
+}
+=== FILE: android/view/View.java
+package android.view;
+import android.content.Context;
+import android.content.res.Resources;
+import android.graphics.Canvas;
+import android.graphics.drawable.Drawable;
+import java.util.ArrayList;
+import java.util.List;
+public class View {
+    public static final int VISIBLE = 0, INVISIBLE = 4, GONE = 8, NO_ID = -1;
+    public static final int FOCUS_UP = 33, FOCUS_DOWN = 130;
+    public interface OnClickListener { void onClick(View v); }
+    public interface OnLongClickListener { boolean onLongClick(View v); }
+    public interface OnLayoutChangeListener { void onLayoutChange(View v, int left, int top, int right, int bottom, int oldLeft, int oldTop, int oldRight, int oldBottom); }
+    private final Context context; public boolean simInvalidated; public int simHaptics; private int w, h;
+    public final List<Runnable> simDelayed = new ArrayList<>(); public boolean simAttached = true;
+    private int id = NO_ID, visibility = VISIBLE; private Object tag; private float alpha = 1f, scaleX = 1f, scaleY = 1f, translationY;
+    private boolean enabled = true, selected, clickable; private Drawable background; private ViewGroup.LayoutParams layoutParams;
+    private OnClickListener clickListener; private final List<OnLayoutChangeListener> layoutListeners = new ArrayList<>();
+    private int padL, padT, padR, padB; private CharSequence contentDescription; public ViewGroup simParent; public int simLayoutRequests;
+    public View(Context c) { if (c == null) throw new NullPointerException("context"); context = c; }
+    public final Context getContext() { return context; }
+    public Resources getResources() { return context.getResources(); }
+    public void invalidate() { simInvalidated = true; }
+    public boolean post(Runnable r) { if (r == null) throw new NullPointerException(); simDelayed.add(r); return true; }
+    public boolean postDelayed(Runnable r, long ms) { if (r == null) throw new NullPointerException(); simDelayed.add(r); return true; }
+    public boolean removeCallbacks(Runnable r) { while (simDelayed.remove(r)) { } return true; }
+    public boolean performHapticFeedback(int c) { simHaptics++; return true; }
+    public boolean performClick() { if (clickListener != null && enabled) { clickListener.onClick(this); return true; } return false; }
+    public Display getDisplay() { return simAttached ? new Display() : null; }
+    public final int getWidth() { return w; } public final int getHeight() { return h; }
+    public final int getLeft() { return 0; } public final int getTop() { return 0; } public final int getRight() { return w; } public final int getBottom() { return h; }
+    public void setKeepScreenOn(boolean k) {}
+    public void requestApplyInsets() {}
+    public void requestLayout() { simLayoutRequests++; }
+    public boolean isAttachedToWindow() { return simAttached; }
+    public void setId(int i) { id = i; } public int getId() { return id; }
+    public void setTag(Object t) { tag = t; } public Object getTag() { return tag; }
+    public void setVisibility(int v) { if (v != VISIBLE && v != INVISIBLE && v != GONE) throw new IllegalArgumentException("visibility"); visibility = v; }
+    public int getVisibility() { return visibility; }
+    public boolean simWillNotDraw; public void setWillNotDraw(boolean w) { simWillNotDraw = w; }
+    public void clearFocus() { simFocused = false; }
+    public static class MeasureSpec { public static final int UNSPECIFIED = 0, EXACTLY = 0x40000000, AT_MOST = 0x80000000;
+        public static int makeMeasureSpec(int size, int mode) { return (size & 0x3FFFFFFF) | mode; } public static int getSize(int spec) { return spec & 0x3FFFFFFF; } public static int getMode(int spec) { return spec & 0xC0000000; } }
+    private int simMeasuredHeight; public final void measure(int w, int h) { simMeasuredHeight = simMeasure(MeasureSpec.getSize(w)); } public final int getMeasuredHeight() { return simMeasuredHeight; }
+    public int simMeasure(int width) { ViewGroup.LayoutParams p = getLayoutParams(); return p != null && p.height > 0 ? p.height : padT + padB; }
+    public void setAlpha(float a) { if (Float.isNaN(a)) throw new IllegalArgumentException("alpha NaN"); alpha = a; } public float getAlpha() { return alpha; }
+    public void setScaleX(float s) { scaleX = s; } public void setScaleY(float s) { scaleY = s; } public float getScaleX() { return scaleX; } public float getScaleY() { return scaleY; }
+    public void setTranslationY(float t) { translationY = t; } public float getTranslationY() { return translationY; }
+    public void setElevation(float e) {}
+    public void setEnabled(boolean e) { enabled = e; } public boolean isEnabled() { return enabled; }
+    public void setSelected(boolean s) { selected = s; } public boolean isSelected() { return selected; }
+    public void setClickable(boolean c) { clickable = c; } public boolean isClickable() { return clickable; }
+    public void setFocusable(boolean f) {} public void setFocusableInTouchMode(boolean f) {}
+    public boolean simFocused; public boolean requestFocus() { simFocused = true; return true; }
+    public android.os.IBinder getWindowToken() { return null; }
+    public PointerIcon simPointerIcon; public void setPointerIcon(PointerIcon p) { simPointerIcon = p; }
+    public boolean onHoverEvent(MotionEvent e) { return false; }
+    public void setMinimumHeight(int h) {} public void setSaveEnabled(boolean e) {}
+    public void setBackground(Drawable d) { background = d; } public Drawable getBackground() { return background; }
+    public void setBackgroundColor(int c) {} public void setBackgroundTintList(android.content.res.ColorStateList c) {}
+    public void setOnClickListener(OnClickListener l) { clickListener = l; if (l != null) clickable = true; }
+    public void setOnLongClickListener(OnLongClickListener l) {}
+    public void setContentDescription(CharSequence c) { contentDescription = c; } public CharSequence getContentDescription() { return contentDescription; }
+    public void setPadding(int l, int t, int r, int b) { padL = l; padT = t; padR = r; padB = b; }
+    public int getPaddingLeft() { return padL; } public int getPaddingTop() { return padT; } public int getPaddingRight() { return padR; } public int getPaddingBottom() { return padB; }
+    public ViewGroup.LayoutParams getLayoutParams() { return layoutParams; }
+    public void setLayoutParams(ViewGroup.LayoutParams p) { if (p == null) throw new NullPointerException("Layout parameters cannot be null"); layoutParams = p; simLayoutRequests++; }
+    public void addOnLayoutChangeListener(OnLayoutChangeListener l) { layoutListeners.add(l); }
+    public ViewPropertyAnimator animate() { return new ViewPropertyAnimator(this); }
+    public ViewParent getParent() { return simParent; }
+    @SuppressWarnings("unchecked") public <T extends View> T findViewById(int target) { if (target == NO_ID) return null; return (T) simFind(target); }
+    @SuppressWarnings("unchecked") public final <T extends View> T findViewWithTag(Object t) { return t == null ? null : (T) simFindTag(t); }
+    protected View simFindTag(Object t) { return t.equals(tag) ? this : null; }
+    protected View simFind(int target) { return id == target ? this : null; }
+    protected void onDraw(Canvas c) {}
+    protected void onSizeChanged(int w, int h, int ow, int oh) {}
+    protected void onAttachedToWindow() {}
+    protected void onDetachedFromWindow() {}
+    public boolean onTouchEvent(MotionEvent e) { return false; }
+    public boolean onGenericMotionEvent(MotionEvent e) { return false; }
+    public void simLayout(int nw, int nh) { int ow = w, oh = h; w = nw; h = nh; if (nw != ow || nh != oh) onSizeChanged(nw, nh, ow, oh); for (OnLayoutChangeListener l : new ArrayList<>(layoutListeners)) l.onLayoutChange(this, 0, 0, nw, nh, 0, 0, ow, oh); }
+    public void simDraw(Canvas c) { simInvalidated = false; onDraw(c); }
+    public void simAttach() { simAttached = true; onAttachedToWindow(); }
+    public void simDetach() { onDetachedFromWindow(); simAttached = false; }
+    public void simRunDelayed() { List<Runnable> copy = new ArrayList<>(simDelayed); simDelayed.clear(); for (Runnable r : copy) r.run(); }
+}
+=== FILE: android/view/ViewGroup.java
+package android.view;
+import android.content.Context;
+import java.util.ArrayList;
+import java.util.List;
+public abstract class ViewGroup extends View implements ViewParent {
+    public static class LayoutParams { public static final int MATCH_PARENT = -1, WRAP_CONTENT = -2; public int width, height; public LayoutParams(int w, int h) { width = w; height = h; } }
+    public static class MarginLayoutParams extends LayoutParams { public int leftMargin, topMargin, rightMargin, bottomMargin; public MarginLayoutParams(int w, int h) { super(w, h); } public void setMarginStart(int m) { leftMargin = m; } public void setMarginEnd(int m) { rightMargin = m; } }
+    public View simChild; private final List<View> children = new ArrayList<>();
+    public ViewGroup(Context c) { super(c); }
+    public LayoutParams simDefaultParams() { return new LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT); }
+    public void addView(View v) { addView(v, v.getLayoutParams() != null ? v.getLayoutParams() : simDefaultParams()); }
+    public void addView(View v, int index, LayoutParams p) { addView(v, p); children.remove(v); children.add(Math.max(0, Math.min(index, children.size())), v); }
+    public void addView(View v, LayoutParams p) {
+        if (v == null) throw new IllegalArgumentException("Cannot add a null child view to a ViewGroup");
+        if (v.simParent != null) throw new IllegalStateException("The specified child already has a parent");
+        simLimit(); v.setLayoutParams(p); v.simParent = this; children.add(v); simChild = v;
+    }
+    protected void simLimit() {}
+    public void removeView(View v) { if (children.remove(v)) v.simParent = null; }
+    public int getChildCount() { return children.size(); }
+    public int indexOfChild(View v) { return children.indexOf(v); }
+    public View getChildAt(int i) { return i < 0 || i >= children.size() ? null : children.get(i); }
+    @Override protected View simFind(int target) { if (getId() == target) return this; for (View c : children) { View f = c.simFind(target); if (f != null) return f; } return null; }
+    @Override protected View simFindTag(Object t) { if (t.equals(getTag())) return this; for (View c : children) { View f = c.simFindTag(t); if (f != null) return f; } return null; }
+}
+=== FILE: android/view/ViewParent.java
+package android.view;
+public interface ViewParent {}
+=== FILE: android/view/ViewPropertyAnimator.java
+package android.view;
+import android.animation.TimeInterpolator;
+public class ViewPropertyAnimator {
+    private final View view; private Runnable end;
+    ViewPropertyAnimator(View v) { view = v; }
+    public ViewPropertyAnimator alpha(float a) { view.setAlpha(a); return this; }
+    public ViewPropertyAnimator scaleX(float s) { view.setScaleX(s); return this; }
+    public ViewPropertyAnimator scaleY(float s) { view.setScaleY(s); return this; }
+    public ViewPropertyAnimator translationY(float t) { view.setTranslationY(t); return this; }
+    public ViewPropertyAnimator setDuration(long d) { if (d < 0) throw new IllegalArgumentException(); return this; }
+    public ViewPropertyAnimator setStartDelay(long d) { return this; }
+    public ViewPropertyAnimator setInterpolator(TimeInterpolator i) { return this; }
+    public ViewPropertyAnimator withEndAction(Runnable r) { end = r; return this; }
+    public void start() { if (end != null) { Runnable r = end; end = null; r.run(); } }
+    public void cancel() {}
+}
+=== FILE: android/view/Window.java
+package android.view;
+import android.content.Context;
+public class Window {
+    private final View decor; private WindowManager.LayoutParams attrs = new WindowManager.LayoutParams();
+    public Window(Context c) { decor = new View(c); }
+    public View getDecorView() { return decor; }
+    public WindowManager.LayoutParams getAttributes() { return attrs; }
+    public void setAttributes(WindowManager.LayoutParams a) { if (a == null) throw new NullPointerException(); attrs = a; }
+    public void addFlags(int f) {} public void clearFlags(int f) {}
+    public int simSoftInputMode; public void setSoftInputMode(int m) { simSoftInputMode = m; }
+}
+=== FILE: android/view/WindowManager.java
+package android.view;
+public interface WindowManager {
+    Display getDefaultDisplay();
+    class LayoutParams extends ViewGroup.LayoutParams {
+        public static final int FLAG_KEEP_SCREEN_ON = 0x80, SOFT_INPUT_ADJUST_RESIZE = 0x10, SOFT_INPUT_STATE_VISIBLE = 4;
+        public float preferredRefreshRate; public int preferredDisplayModeId; public int flags;
+        public LayoutParams() { super(MATCH_PARENT, MATCH_PARENT); }
+    }
+}
+=== FILE: android/view/animation/DecelerateInterpolator.java
+package android.view.animation;
+public class DecelerateInterpolator implements android.animation.TimeInterpolator { public float getInterpolation(float i) { return i; } }
+=== FILE: android/view/animation/OvershootInterpolator.java
+package android.view.animation;
+public class OvershootInterpolator implements android.animation.TimeInterpolator { public OvershootInterpolator() {} public OvershootInterpolator(float t) {} public float getInterpolation(float i) { return i; } }
+=== FILE: android/view/inputmethod/EditorInfo.java
+package android.view.inputmethod;
+public class EditorInfo { public static final int IME_ACTION_SEARCH = 3, IME_ACTION_DONE = 6, IME_FLAG_NO_EXTRACT_UI = 0x10000000; }
+=== FILE: android/view/inputmethod/InputMethodManager.java
+package android.view.inputmethod;
+public final class InputMethodManager {
+    public static final int SHOW_IMPLICIT = 1; public static int simShows, simHides;
+    public boolean showSoftInput(android.view.View v, int flags) { simShows++; return true; }
+    public boolean hideSoftInputFromWindow(android.os.IBinder token, int flags) { simHides++; return true; }
+}
+=== FILE: android/widget/Button.java
+package android.widget;
+import android.content.Context;
+public class Button extends TextView { public Button(Context c) { super(c); } }
+=== FILE: android/widget/CompoundButton.java
+package android.widget;
+import android.content.Context;
+public abstract class CompoundButton extends Button {
+    public interface OnCheckedChangeListener { void onCheckedChanged(CompoundButton buttonView, boolean isChecked); }
+    private boolean checked, broadcasting; private OnCheckedChangeListener listener;
+    public CompoundButton(Context c) { super(c); setClickable(true); }
+    public void setOnCheckedChangeListener(OnCheckedChangeListener l) { listener = l; }
+    public boolean isChecked() { return checked; }
+    public void toggle() { setChecked(!checked); }
+    public void setChecked(boolean c) {
+        if (checked == c) return; checked = c;
+        if (broadcasting) return; broadcasting = true;
+        try { if (listener != null) listener.onCheckedChanged(this, checked); } finally { broadcasting = false; }
+    }
+    @Override public boolean performClick() { if (!isEnabled()) return false; toggle(); return true; }
+}
+=== FILE: android/widget/EditText.java
+package android.widget;
+import android.content.Context;
+public class EditText extends TextView {
+    public static EditText simLast;
+    public EditText(Context c) { super(c); simLast = this; }
+    public void selectAll() {}
+    public int simSelection; public void setSelection(int i) { if (i < 0 || i > getText().length()) throw new IndexOutOfBoundsException("selection " + i); simSelection = i; }
+}
+=== FILE: android/widget/FrameLayout.java
+package android.widget;
+import android.content.Context;
+import android.view.ViewGroup;
+public class FrameLayout extends ViewGroup {
+    public static class LayoutParams extends ViewGroup.MarginLayoutParams { public int gravity = -1; public LayoutParams(int w, int h) { super(w, h); } public LayoutParams(int w, int h, int g) { super(w, h); gravity = g; } }
+    public FrameLayout(Context c) { super(c); }
+    @Override public ViewGroup.LayoutParams simDefaultParams() { return new LayoutParams(-1, -1); }
+}
+=== FILE: android/widget/HorizontalScrollView.java
+package android.widget;
+import android.content.Context;
+public class HorizontalScrollView extends FrameLayout {
+    public int simScrollX;
+    public HorizontalScrollView(Context c) { super(c); }
+    @Override protected void simLimit() { if (getChildCount() > 0) throw new IllegalStateException("HorizontalScrollView can host only one direct child"); }
+    public final void smoothScrollTo(int x, int y) { simScrollX = x; }
+    public void scrollTo(int x, int y) { simScrollX = x; }
+}
+=== FILE: android/widget/ImageView.java
+package android.widget;
+import android.content.Context;
+import android.graphics.drawable.Drawable;
+import android.view.View;
+public class ImageView extends View {
+    public Drawable simDrawable;
+    public ImageView(Context c) { super(c); }
+    public void setImageDrawable(Drawable d) { simDrawable = d; }
+    public enum ScaleType { CENTER, FIT_CENTER, CENTER_CROP, CENTER_INSIDE }
+    public void setScaleType(ScaleType t) {}
+}
+=== FILE: android/widget/LinearLayout.java
+package android.widget;
+import android.content.Context;
+import android.view.ViewGroup;
+public class LinearLayout extends ViewGroup {
+    public static final int HORIZONTAL = 0, VERTICAL = 1;
+    public static class LayoutParams extends ViewGroup.MarginLayoutParams { public float weight; public int gravity = -1; public LayoutParams(int w, int h) { super(w, h); } public LayoutParams(int w, int h, float wt) { super(w, h); weight = wt; } }
+    private int orientation = HORIZONTAL;
+    public void setGravity(int g) {} public void setBaselineAligned(boolean b) {}
+    public LinearLayout(Context c) { super(c); }
+    public void setOrientation(int o) { if (o != HORIZONTAL && o != VERTICAL) throw new IllegalArgumentException(); orientation = o; }
+    public int getOrientation() { return orientation; }
+    @Override public int simMeasure(int width) {
+        ViewGroup.LayoutParams own = getLayoutParams();
+        if (own != null && own.height > 0) return own.height;
+        int total = getPaddingTop() + getPaddingBottom(), tallest = 0;
+        for (int i = 0; i < getChildCount(); i++) {
+            android.view.View c = getChildAt(i); if (c.getVisibility() == GONE) continue;
+            ViewGroup.LayoutParams p = c.getLayoutParams(); int margins = p instanceof ViewGroup.MarginLayoutParams ? ((ViewGroup.MarginLayoutParams) p).topMargin + ((ViewGroup.MarginLayoutParams) p).bottomMargin : 0;
+            int h = c.simMeasure(width) + margins;
+            if (orientation == VERTICAL) total += h; else tallest = Math.max(tallest, h);
+        }
+        return orientation == VERTICAL ? total : total + tallest;
+    }
+    @Override public ViewGroup.LayoutParams simDefaultParams() { return new LayoutParams(-2, -2); }
+}
+=== FILE: android/widget/RelativeLayout.java
+package android.widget;
+import android.content.Context;
+import android.view.ViewGroup;
+public class RelativeLayout extends ViewGroup {
+    public static class LayoutParams extends ViewGroup.MarginLayoutParams { public LayoutParams(int w, int h) { super(w, h); } }
+    public RelativeLayout(Context c) { super(c); }
+    @Override public ViewGroup.LayoutParams simDefaultParams() { return new LayoutParams(-2, -2); }
+}
+=== FILE: android/widget/TextView.java
+package android.widget;
+import android.content.Context;
+import android.view.View;
+public class TextView extends View {
+    private CharSequence text = ""; public int simTextColor;
+    public TextView(Context c) { super(c); }
+    private final java.util.List<android.text.TextWatcher> watchers = new java.util.ArrayList<>(); private int simMaxLength = Integer.MAX_VALUE;
+    public void setText(CharSequence t) {
+        CharSequence before = text; text = t == null ? "" : t;
+        if (text.length() > simMaxLength) text = text.subSequence(0, simMaxLength);
+        for (android.text.TextWatcher w : new java.util.ArrayList<>(watchers)) { w.beforeTextChanged(before, 0, before.length(), text.length()); w.onTextChanged(text, 0, before.length(), text.length()); w.afterTextChanged(new android.text.SimEditable(text)); }
+    }
+    public void addTextChangedListener(android.text.TextWatcher w) { watchers.add(w); }
+    public void setFilters(android.text.InputFilter[] filters) { for (android.text.InputFilter f : filters) if (f instanceof android.text.InputFilter.LengthFilter) simMaxLength = ((android.text.InputFilter.LengthFilter) f).getMax(); }
+    public boolean simSelectable; public void setTextIsSelectable(boolean b) { simSelectable = b; }
+    public void setHintTextColor(int c) {} public void setImeOptions(int o) {} public void setHorizontallyScrolling(boolean h) {}
+    public interface OnEditorActionListener { boolean onEditorAction(TextView v, int actionId, android.view.KeyEvent event); }
+    public OnEditorActionListener simEditorAction; public void setOnEditorActionListener(OnEditorActionListener l) { simEditorAction = l; }
+    public CharSequence getText() { return text; }
+    public void setTextColor(int c) { simTextColor = c; }
+    public void setHint(CharSequence h) {}
+    public void setInputType(int t) {}
+    public void setSingleLine() {} public void setSingleLine(boolean s) {}
+    public void setHighlightColor(int c) {} public void setTextCursorDrawable(android.graphics.drawable.Drawable d) {}
+    public android.graphics.drawable.Drawable getTextSelectHandle() { return new android.graphics.drawable.GradientDrawable(); }
+    public android.graphics.drawable.Drawable getTextSelectHandleLeft() { return new android.graphics.drawable.GradientDrawable(); }
+    public android.graphics.drawable.Drawable getTextSelectHandleRight() { return new android.graphics.drawable.GradientDrawable(); }
+    public void setTextSelectHandle(android.graphics.drawable.Drawable d) {} public void setTextSelectHandleLeft(android.graphics.drawable.Drawable d) {} public void setTextSelectHandleRight(android.graphics.drawable.Drawable d) {}
+    public void setSelectAllOnFocus(boolean s) {}
+    public float simTextPx = 30f; public void setTextSize(float s) { simTextPx = s * 2.75f; } public void setTextSize(int unit, float s) { if (Float.isNaN(s) || s <= 0) throw new IllegalArgumentException("text size " + s); simTextPx = unit == 0 ? s : s * 2.75f; }
+    @Override public int simMeasure(int width) { android.view.ViewGroup.LayoutParams p = getLayoutParams(); if (p != null && p.height > 0) return p.height; int lines = String.valueOf(getText()).isEmpty() ? 1 : Math.max(1, (int) Math.ceil(getText().length() * simTextPx * 0.55f / Math.max(1, width))); return Math.round(lines * simTextPx * 1.25f) + getPaddingTop() + getPaddingBottom(); }
+    public void setGravity(int g) {}
+    private android.graphics.Typeface face; public void setTypeface(android.graphics.Typeface t) { face = t; } public android.graphics.Typeface getTypeface() { return face; }
+    public void setLetterSpacing(float f) {} public void setAllCaps(boolean c) {} public void setMaxLines(int m) {} public void setMinWidth(int w) {} public void setMaxWidth(int w) {}
+    public void setEllipsize(android.text.TextUtils.TruncateAt t) {}
+}
+=== FILE: android/widget/Toast.java
+package android.widget;
+import android.content.Context;
+public class Toast {
+    public static final int LENGTH_SHORT = 0, LENGTH_LONG = 1; public static int simShown; public static String simLast;
+    private CharSequence text;
+    public static Toast makeText(Context c, CharSequence t, int d) { if (c == null) throw new NullPointerException(); Toast x = new Toast(); x.text = t; return x; }
+    public void show() { simShown++; simLast = String.valueOf(text); }
+}
+=== FILE: androidx/activity/ComponentActivity.java
+package androidx.activity;
+public class ComponentActivity extends android.app.Activity {
+    private final OnBackPressedDispatcher dispatcher = new OnBackPressedDispatcher();
+    public final OnBackPressedDispatcher getOnBackPressedDispatcher() { return dispatcher; }
+    public void onBackPressed() { if (!dispatcher.simDispatch()) finish(); }
+}
+=== FILE: androidx/activity/EdgeToEdge.java
+package androidx.activity;
+public final class EdgeToEdge { public static int simEnabled; public static void enable(ComponentActivity a) { if (a == null) throw new NullPointerException(); simEnabled++; } }
+=== FILE: androidx/activity/OnBackPressedCallback.java
+package androidx.activity;
+public abstract class OnBackPressedCallback {
+    private boolean enabled;
+    public OnBackPressedCallback(boolean enabled) { this.enabled = enabled; }
+    public final void setEnabled(boolean e) { enabled = e; } public final boolean isEnabled() { return enabled; }
+    public abstract void handleOnBackPressed();
+}
+=== FILE: androidx/activity/OnBackPressedDispatcher.java
+package androidx.activity;
+public final class OnBackPressedDispatcher {
+    private final java.util.List<OnBackPressedCallback> callbacks = new java.util.ArrayList<>();
+    public void addCallback(Object owner, OnBackPressedCallback cb) { if (cb == null) throw new NullPointerException(); callbacks.add(cb); }
+    public boolean simDispatch() { for (int i = callbacks.size() - 1; i >= 0; i--) { OnBackPressedCallback cb = callbacks.get(i); if (cb.isEnabled()) { cb.handleOnBackPressed(); return true; } } return false; }
+}
+=== FILE: androidx/annotation/NonNull.java
+package androidx.annotation;
+public @interface NonNull {}
+=== FILE: androidx/annotation/Nullable.java
+package androidx.annotation;
+public @interface Nullable {}
+=== FILE: androidx/appcompat/app/AlertDialog.java
+package androidx.appcompat.app;
+import android.content.DialogInterface;
+public class AlertDialog implements DialogInterface {
+    public static AlertDialog simLastShown;
+    public static class Builder {
+        private final AlertDialog dialog = new AlertDialog();
+        public Builder(android.content.Context c) { if (c == null) throw new NullPointerException(); }
+        public Builder setTitle(CharSequence t) { dialog.simTitle = String.valueOf(t); return this; }
+        public Builder setMessage(CharSequence t) { dialog.simMessage = String.valueOf(t); return this; }
+        public Builder setView(android.view.View v) { dialog.simView = v; return this; }
+        public Builder setPositiveButton(CharSequence t, DialogInterface.OnClickListener l) { dialog.simPositive = l; return this; }
+        public Builder setNegativeButton(CharSequence t, DialogInterface.OnClickListener l) { dialog.simNegative = l; return this; }
+        public AlertDialog create() { return dialog; }
+    }
+    public String simTitle, simMessage; public DialogInterface.OnClickListener simPositive, simNegative, simNeutral; public android.view.View simView; public boolean simDismissed;
+    public final java.util.Map<Integer, android.widget.Button> simButtons = new java.util.HashMap<>();
+    public android.widget.Button getButton(int which) { return simButtons.get(which); }
+    public void dismiss() { simDismissed = true; }
+    public boolean simCancelable = true, simCancelOutside = true; public void setCancelable(boolean c) { simCancelable = c; } public void setCanceledOnTouchOutside(boolean c) { simCancelOutside = c; }
+    public DialogInterface.OnShowListener simShowListener; public void setOnShowListener(DialogInterface.OnShowListener l) { simShowListener = l; }
+    public void show() { simLastShown = this; if (simShowListener != null) simShowListener.onShow(this); }
+    public DialogInterface.OnKeyListener simKeyListener; public void setOnKeyListener(DialogInterface.OnKeyListener l) { simKeyListener = l; }
+    public android.view.Window getWindow() { return null; }
+    public void simClick(int which) {
+        DialogInterface.OnClickListener l = which == BUTTON_POSITIVE ? simPositive : which == BUTTON_NEGATIVE ? simNegative : simNeutral;
+        if (l != null) l.onClick(this, which); simDismissed = true;
+    }
+}
+=== FILE: androidx/appcompat/app/AppCompatActivity.java
+package androidx.appcompat.app;
+public class AppCompatActivity extends androidx.activity.ComponentActivity {}
+=== FILE: androidx/appcompat/widget/SwitchCompat.java
+package androidx.appcompat.widget;
+import android.content.Context;
+import android.content.res.ColorStateList;
+import android.widget.CompoundButton;
+public class SwitchCompat extends CompoundButton {
+    public SwitchCompat(Context c) { super(c); }
+    public void setThumbTintList(ColorStateList l) {} public void setTrackTintList(ColorStateList l) {}
+}
+=== FILE: androidx/core/content/ContextCompat.java
+package androidx.core.content;
+import android.content.Context;
+public class ContextCompat {
+    public static <T> T getSystemService(Context c, Class<T> cls) { if (cls == android.os.Vibrator.class) return cls.cast(c.getSystemService(Context.VIBRATOR_SERVICE)); return null; }
+}
+=== FILE: androidx/core/content/res/ResourcesCompat.java
+package androidx.core.content.res;
+import android.content.Context;
+import android.graphics.Typeface;
+public final class ResourcesCompat {
+    public static boolean simMissing;
+    public static Typeface getFont(Context c, int id) { if (simMissing) throw new RuntimeException("Resources$NotFoundException: font"); return new Typeface("font#" + Integer.toHexString(id)); }
+}
+=== FILE: androidx/core/graphics/Insets.java
+package androidx.core.graphics;
+public final class Insets {
+    public static final Insets NONE = new Insets(0, 0, 0, 0);
+    public final int left, top, right, bottom;
+    private Insets(int l, int t, int r, int b) { left = l; top = t; right = r; bottom = b; }
+    public static Insets of(int l, int t, int r, int b) { return new Insets(l, t, r, b); }
+    public static Insets max(Insets a, Insets b) { return of(Math.max(a.left, b.left), Math.max(a.top, b.top), Math.max(a.right, b.right), Math.max(a.bottom, b.bottom)); }
+}
+=== FILE: androidx/core/view/OnApplyWindowInsetsListener.java
+package androidx.core.view;
+import android.view.View;
+public interface OnApplyWindowInsetsListener { WindowInsetsCompat onApplyWindowInsets(View v, WindowInsetsCompat insets); }
+=== FILE: androidx/core/view/ViewCompat.java
+package androidx.core.view;
+import android.view.View;
+import java.util.HashMap;
+import java.util.Map;
+public class ViewCompat {
+    public static final Map<View, OnApplyWindowInsetsListener> SIM = new HashMap<>();
+    public static void setOnApplyWindowInsetsListener(View v, OnApplyWindowInsetsListener l) { if (v == null) throw new NullPointerException(); SIM.put(v, l); }
+    public static void requestApplyInsets(View v) {}
+    public static void simDispatch(View v, WindowInsetsCompat i) { OnApplyWindowInsetsListener l = SIM.get(v); if (l != null) l.onApplyWindowInsets(v, i); }
+}
+=== FILE: androidx/core/view/WindowCompat.java
+package androidx.core.view;
+import android.view.View;
+import android.view.Window;
+public final class WindowCompat {
+    public static WindowInsetsControllerCompat getInsetsController(Window w, View v) { if (w == null || v == null) throw new NullPointerException(); return new WindowInsetsControllerCompat(); }
+    public static void setDecorFitsSystemWindows(Window w, boolean b) {}
+}
+=== FILE: androidx/core/view/WindowInsetsCompat.java
+package androidx.core.view;
+import androidx.core.graphics.Insets;
+public class WindowInsetsCompat {
+    public static final WindowInsetsCompat CONSUMED = new WindowInsetsCompat(Insets.NONE, Insets.NONE);
+    public static final class Type {
+        public static int statusBars() { return 1; } public static int navigationBars() { return 2; } public static int captionBar() { return 4; }
+        public static int systemBars() { return 7; } public static int displayCutout() { return 128; } public static int ime() { return 8; }
+    }
+    private final Insets bars, cutout, ime;
+    public WindowInsetsCompat(Insets bars, Insets cutout) { this(bars, cutout, Insets.NONE); }
+    public WindowInsetsCompat(Insets bars, Insets cutout, Insets ime) { this.bars = bars; this.cutout = cutout; this.ime = ime; }
+    public Insets getInsets(int typeMask) {
+        Insets r = Insets.NONE;
+        if ((typeMask & 8) != 0) r = Insets.max(r, ime);
+        if ((typeMask & 7) != 0) r = Insets.max(r, bars);
+        if ((typeMask & 128) != 0) r = Insets.max(r, cutout);
+        return r;
+    }
+}
+=== FILE: androidx/core/view/WindowInsetsControllerCompat.java
+package androidx.core.view;
+public final class WindowInsetsControllerCompat {
+    public static final int BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE = 2, BEHAVIOR_DEFAULT = 1;
+    public static int simHides;
+    public void setSystemBarsBehavior(int b) {} public void hide(int types) { simHides++; } public void show(int types) {}
+}
+=== FILE: androidx/core/widget/NestedScrollView.java
+package androidx.core.widget;
+import android.content.Context;
+import android.widget.FrameLayout;
+public class NestedScrollView extends FrameLayout {
+    public int simScrollY = 123;
+    public boolean simFullScrolled; public boolean fullScroll(int direction) { simFullScrolled = true; return true; }
+    public NestedScrollView(Context c) { super(c); }
+    @Override protected void simLimit() { if (getChildCount() > 0) throw new IllegalStateException("ScrollView can host only one direct child"); }
+    public void scrollTo(int x, int y) { simScrollY = y; }
+    public final void smoothScrollTo(int x, int y) { simScrollY = y; }
+}
+=== FILE: com/google/android/material/button/MaterialButton.java
+package com.google.android.material.button;
+import android.content.Context;
+import android.widget.Button;
+public class MaterialButton extends Button { public MaterialButton(Context c) { super(c); } public void setRippleColor(android.content.res.ColorStateList c) {} }
+=== FILE: com/google/android/material/card/MaterialCardView.java
+package com.google.android.material.card;
+import android.content.Context;
+import android.widget.FrameLayout;
+public class MaterialCardView extends FrameLayout { public MaterialCardView(Context c) { super(c); } }
+=== FILE: com/google/android/material/dialog/MaterialAlertDialogBuilder.java
+package com.google.android.material.dialog;
+import android.content.Context;
+import android.content.DialogInterface;
+import androidx.appcompat.app.AlertDialog;
+public class MaterialAlertDialogBuilder {
+    public static int simShown; public static AlertDialog simLast;
+    private final AlertDialog dialog = new AlertDialog();
+    public MaterialAlertDialogBuilder(Context c) { if (c == null) throw new NullPointerException(); context = c; }
+    public MaterialAlertDialogBuilder setTitle(CharSequence t) { dialog.simTitle = String.valueOf(t); return this; }
+    public MaterialAlertDialogBuilder setMessage(CharSequence t) { dialog.simMessage = String.valueOf(t); return this; }
+    public MaterialAlertDialogBuilder setView(android.view.View v) { dialog.simView = v; return this; }
+    private final Context context;
+    private void simButton(int which, CharSequence t) { com.google.android.material.button.MaterialButton b = new com.google.android.material.button.MaterialButton(context); b.setText(t); b.simTextColor = 0xFF6750A4; dialog.simButtons.put(which, b); }
+    public MaterialAlertDialogBuilder setPositiveButton(CharSequence t, DialogInterface.OnClickListener l) { dialog.simPositive = l; simButton(DialogInterface.BUTTON_POSITIVE, t); return this; }
+    public MaterialAlertDialogBuilder setNegativeButton(CharSequence t, DialogInterface.OnClickListener l) { dialog.simNegative = l; simButton(DialogInterface.BUTTON_NEGATIVE, t); return this; }
+    public MaterialAlertDialogBuilder setNeutralButton(CharSequence t, DialogInterface.OnClickListener l) { dialog.simNeutral = l; simButton(DialogInterface.BUTTON_NEUTRAL, t); return this; }
+    public MaterialAlertDialogBuilder setCancelable(boolean c) { return this; }
+    public AlertDialog create() { return dialog; }
+    public AlertDialog show() { simShown++; simLast = dialog; return dialog; }
+}
+=== FILE: com/google/android/material/materialswitch/MaterialSwitch.java
+package com.google.android.material.materialswitch;
+import android.content.Context;
+import android.content.res.ColorStateList;
+import androidx.appcompat.widget.SwitchCompat;
+public class MaterialSwitch extends SwitchCompat {
+    public MaterialSwitch(Context c) { super(c); }
+    public void setTrackDecorationTintList(ColorStateList l) {}
+    public void setThumbIconTintList(ColorStateList l) {}
+}
+=== FILE: com/google/android/material/slider/LabelFormatter.java
+package com.google.android.material.slider;
+public interface LabelFormatter { int LABEL_FLOATING = 0, LABEL_WITHIN_BOUNDS = 1, LABEL_GONE = 2, LABEL_VISIBLE = 3; }
+=== FILE: com/google/android/material/slider/Slider.java
+package com.google.android.material.slider;
+import android.content.Context;
+import android.view.View;
+import java.util.ArrayList;
+import java.util.List;
+public class Slider extends View {
+    public interface OnChangeListener { void onValueChange(Slider slider, float value, boolean fromUser); }
+    public interface OnSliderTouchListener { void onStartTrackingTouch(Slider slider); void onStopTrackingTouch(Slider slider); }
+    private float from = 0f, to = 1f, value = 0f, step = 0f;
+    private final List<OnChangeListener> change = new ArrayList<>(); private final List<OnSliderTouchListener> touch = new ArrayList<>();
+    public Slider(Context c) { super(c); }
+    public void setValueFrom(float v) { from = v; } public void setValueTo(float v) { to = v; } public void setStepSize(float s) { step = s; }
+    public float getValueFrom() { return from; } public float getValueTo() { return to; }
+    public float getValue() { return value; }
+    public void setValue(float v) { if (v == value) return; value = v; for (OnChangeListener l : new ArrayList<>(change)) l.onValueChange(this, value, false); }
+    public void addOnChangeListener(OnChangeListener l) { change.add(l); }
+    public void addOnSliderTouchListener(OnSliderTouchListener l) { touch.add(l); }
+    public void setLabelBehavior(int b) {} public void setThumbTintList(android.content.res.ColorStateList c) {} public void setTrackActiveTintList(android.content.res.ColorStateList c) {}
+    public void setTrackInactiveTintList(android.content.res.ColorStateList c) {} public void setHaloTintList(android.content.res.ColorStateList c) {}
+    public void simValidate() {
+        if (from >= to) throw new IllegalStateException("valueFrom(" + from + ") must be smaller than valueTo(" + to + ")");
+        if (Float.isNaN(value) || value < from || value > to) throw new IllegalStateException("Slider value(" + value + ") must be greater or equal to valueFrom(" + from + "), and lower or equal to valueTo(" + to + ")");
+        if (step < 0) throw new IllegalStateException("stepSize");
+        if (step > 0) { double n = (value - from) / step; if (Math.abs(Math.round(n) - n) > 0.0001) throw new IllegalStateException("Value(" + value + ") must be equal to valueFrom plus a multiple of stepSize"); }
+    }
+    public void simDrag(float... positions) {
+        for (OnSliderTouchListener l : new ArrayList<>(touch)) l.onStartTrackingTouch(this);
+        for (float p : positions) { float v = Math.max(from, Math.min(to, p)); if (v != value) { value = v; for (OnChangeListener l : new ArrayList<>(change)) l.onValueChange(this, value, true); } }
+        for (OnSliderTouchListener l : new ArrayList<>(touch)) l.onStopTrackingTouch(this);
+    }
+}
+=== FILE: com/google/android/material/snackbar/Snackbar.java
+package com.google.android.material.snackbar;
+import android.view.View;
+public class Snackbar {
+    public static final int LENGTH_SHORT = -1, LENGTH_LONG = 0, LENGTH_INDEFINITE = -2;
+    public static Snackbar simLast; public static int simShown;
+    public String simText; public String simAction; public View.OnClickListener simListener; private final View view;
+    private Snackbar(View v, CharSequence t) { view = v; simText = String.valueOf(t); }
+    public static Snackbar make(View v, CharSequence text, int duration) { if (v == null) throw new IllegalArgumentException("No suitable parent found from the given view"); return new Snackbar(v, text); }
+    public Snackbar setAction(CharSequence text, View.OnClickListener l) { simAction = String.valueOf(text); simListener = l; return this; }
+    public Snackbar setBackgroundTint(int c) { return this; } public Snackbar setTextColor(int c) { return this; } public Snackbar setActionTextColor(int c) { return this; }
+    public void show() { simLast = this; simShown++; }
+    public void simClickAction() { if (simListener != null) simListener.onClick(view); }
+}
+=== FILE: com/google/android/material/textfield/TextInputEditText.java
+package com.google.android.material.textfield;
+public class TextInputEditText extends android.widget.EditText {
+    public TextInputEditText(android.content.Context c) { super(c); }
+}
+=== FILE: com/google/android/material/textfield/TextInputLayout.java
+package com.google.android.material.textfield;
+public class TextInputLayout extends android.widget.LinearLayout {
+    public static final int END_ICON_CLEAR_TEXT = 2;
+    public CharSequence simHint, simHelper, simError; public int simCounterMax; public boolean simCounter; public int simEndIcon;
+    public TextInputLayout(android.content.Context c) { super(c); if (!(c instanceof android.view.ContextThemeWrapper)) throw new IllegalStateException("TextInputLayout needs a Material theme"); }
+    public void setHint(CharSequence h) { simHint = h; } public void setHelperText(CharSequence h) { simHelper = h; }
+    public void setCounterEnabled(boolean b) { simCounter = b; } public void setCounterMaxLength(int m) { simCounterMax = m; }
+    public void setEndIconMode(int m) { simEndIcon = m; } public void setError(CharSequence e) { simError = e; } public CharSequence getError() { return simError; }
+}
+=== FILE: org/json/JSONException.java
+package org.json;
+public class JSONException extends Exception { public JSONException(String m) { super(m); } }
+=== FILE: org/json/JSONObject.java
+package org.json;
+import java.util.Iterator;
+import java.util.LinkedHashMap;
+import java.util.Map;
+public class JSONObject {
+    public static final Object NULL = new Object() { @Override public String toString() { return "null"; } };
+    private final Map<String, Object> map = new LinkedHashMap<>();
+    public JSONObject() {}
+    public JSONObject(String text) throws JSONException {
+        Parser p = new Parser(text);
+        Object v = p.value();
+        p.skip();
+        if (p.i != text.length()) throw new JSONException("trailing characters at " + p.i);
+        if (!(v instanceof JSONObject)) throw new JSONException("not an object");
+        map.putAll(((JSONObject) v).map);
+    }
+    public JSONObject put(String k, boolean v) throws JSONException { map.put(k, v); return this; }
+    public JSONObject put(String k, int v) throws JSONException { map.put(k, v); return this; }
+    public JSONObject put(String k, long v) throws JSONException { map.put(k, v); return this; }
+    public JSONObject put(String k, double v) throws JSONException { if (Double.isNaN(v) || Double.isInfinite(v)) throw new JSONException("Forbidden numeric value: " + v); map.put(k, v); return this; }
+    public JSONObject put(String k, Object v) throws JSONException { if (k == null) throw new JSONException("null key"); if (v == null) map.remove(k); else map.put(k, v); return this; }
+    public Object opt(String k) { return map.get(k); }
+    public static String quote(String s) { if (s == null) return "\"\""; StringBuilder b = new StringBuilder("\""); for (char c : s.toCharArray()) { if (c == '"' || c == '\\') b.append('\\'); b.append(c); } return b.append('"').toString(); }
+    public JSONObject optJSONObject(String k) { Object v = map.get(k); return v instanceof JSONObject ? (JSONObject) v : null; }
+    public boolean has(String k) { return map.containsKey(k); }
+    public Iterator<String> keys() { return map.keySet().iterator(); }
+    public int length() { return map.size(); }
+    public String toString(int indent) throws JSONException { StringBuilder b = new StringBuilder(); write(b, indent, 0); return b.toString(); }
+    @Override public String toString() { StringBuilder b = new StringBuilder(); write(b, 0, 0); return b.toString(); }
+    void write(StringBuilder b, int indent, int depth) {
+        b.append('{'); boolean first = true;
+        for (Map.Entry<String, Object> e : map.entrySet()) {
+            if (!first) b.append(','); first = false;
+            if (indent > 0) { b.append('\n'); for (int i = 0; i < indent * (depth + 1); i++) b.append(' '); }
+            quote(b, e.getKey()); b.append(indent > 0 ? ": " : ":");
+            Object v = e.getValue();
+            if (v instanceof JSONObject) ((JSONObject) v).write(b, indent, depth + 1);
+            else if (v instanceof String) quote(b, (String) v);
+            else if (v instanceof Double) { double d = (Double) v; b.append(d == Math.rint(d) && Math.abs(d) < 1e15 ? String.valueOf((long) d) : String.valueOf(d)); }
+            else b.append(v);
+        }
+        if (indent > 0 && !map.isEmpty()) { b.append('\n'); for (int i = 0; i < indent * depth; i++) b.append(' '); }
+        b.append('}');
+    }
+    static void quote(StringBuilder b, String s) {
+        b.append('"');
+        for (char c : s.toCharArray()) { if (c == '"' || c == '\\') b.append('\\').append(c); else if (c == '\n') b.append("\\n"); else if (c < 0x20) b.append(String.format("\\u%04x", (int) c)); else b.append(c); }
+        b.append('"');
+    }
+    static final class Parser {
+        final String s; int i;
+        Parser(String s) { this.s = s; }
+        void skip() { while (i < s.length() && Character.isWhitespace(s.charAt(i))) i++; }
+        Object value() throws JSONException {
+            skip(); if (i >= s.length()) throw new JSONException("end of input");
+            char c = s.charAt(i);
+            if (c == '{') { i++; JSONObject o = new JSONObject(); skip(); if (peek('}')) { i++; return o; }
+                while (true) { skip(); if (!peek('"')) throw new JSONException("expected key at " + i); String k = string(); skip(); if (!peek(':')) throw new JSONException("expected : at " + i); i++;
+                    o.map.put(k, value()); skip(); if (peek(',')) { i++; continue; } if (peek('}')) { i++; return o; } throw new JSONException("expected , or } at " + i); } }
+            if (c == '[') { i++; java.util.List<Object> list = new java.util.ArrayList<>(); skip(); if (peek(']')) { i++; return list; }
+                while (true) { list.add(value()); skip(); if (peek(',')) { i++; continue; } if (peek(']')) { i++; return list; } throw new JSONException("bad array"); } }
+            if (c == '"') return string();
+            if (s.startsWith("true", i)) { i += 4; return Boolean.TRUE; }
+            if (s.startsWith("false", i)) { i += 5; return Boolean.FALSE; }
+            if (s.startsWith("null", i)) { i += 4; return NULL; }
+            int start = i; while (i < s.length() && "+-0123456789.eE".indexOf(s.charAt(i)) >= 0) i++;
+            String n = s.substring(start, i); if (n.isEmpty()) throw new JSONException("unexpected " + c + " at " + start);
+            try { if (n.indexOf('.') < 0 && n.indexOf('e') < 0 && n.indexOf('E') < 0) { long l = Long.parseLong(n); return l == (int) l ? (Object) (int) l : (Object) l; } return Double.parseDouble(n); }
+            catch (NumberFormatException e) { throw new JSONException("bad number " + n); }
+        }
+        boolean peek(char c) { return i < s.length() && s.charAt(i) == c; }
+        String string() throws JSONException {
+            i++; StringBuilder b = new StringBuilder();
+            while (i < s.length()) { char c = s.charAt(i++); if (c == '"') return b.toString();
+                if (c == '\\') { if (i >= s.length()) break; char e = s.charAt(i++); switch (e) { case 'n': b.append('\n'); break; case 't': b.append('\t'); break; case 'r': b.append('\r'); break; case 'b': b.append('\b'); break; case 'f': b.append('\f'); break;
+                    case 'u': if (i + 4 > s.length()) throw new JSONException("bad escape"); b.append((char) Integer.parseInt(s.substring(i, i + 4), 16)); i += 4; break; default: b.append(e); } }
+                else b.append(c); }
+            throw new JSONException("unterminated string");
+        }
+    }
+}
+=== FILE: com/flappybird/recreation/Json.java
+package com.flappybird.recreation;
+
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+
+final class Json {
+    private final String text;
+    private int at;
+
+    private Json(String text) {
+        this.text = text;
+    }
+
+    static Object parse(String text) {
+        if (text == null) return null;
+        Json reader = new Json(text.trim());
+        if (reader.text.isEmpty()) return null;
+        Object value = reader.value();
+        reader.space();
+        if (reader.at != reader.text.length()) throw new IllegalArgumentException("unexpected text after JSON");
+        return value;
+    }
+
+    @SuppressWarnings("unchecked")
+    static Map<String, Object> object(Object value) {
+        return value instanceof Map ? (Map<String, Object>) value : null;
+    }
+
+    static String string(Map<String, Object> map, String key) {
+        Object value = map == null ? null : map.get(key);
+        return value instanceof String ? (String) value : "";
+    }
+
+    static long number(Map<String, Object> map, String key) {
+        Object value = map == null ? null : map.get(key);
+        if (value instanceof Number) {
+            double d = ((Number) value).doubleValue();
+            return Double.isNaN(d) || Double.isInfinite(d) || d != Math.rint(d) ? Long.MIN_VALUE : (long) d;
+        }
+        return Long.MIN_VALUE;
+    }
+
+    private void space() {
+        while (at < text.length() && Character.isWhitespace(text.charAt(at))) at++;
+    }
+
+    private char next() {
+        if (at >= text.length()) throw new IllegalArgumentException("JSON ended early");
+        return text.charAt(at++);
+    }
+
+    private void expect(char c) {
+        space();
+        if (next() != c) throw new IllegalArgumentException("expected " + c);
+    }
+
+    private Object value() {
+        space();
+        if (at >= text.length()) throw new IllegalArgumentException("JSON ended early");
+        char c = text.charAt(at);
+        if (c == '{') {
+            at++;
+            Map<String, Object> map = new LinkedHashMap<>();
+            space();
+            if (text.startsWith("}", at)) {
+                at++;
+                return map;
+            }
+            while (true) {
+                space();
+                if (text.charAt(at) != '"') throw new IllegalArgumentException("expected a key");
+                String key = (String) value();
+                expect(':');
+                map.put(key, value());
+                space();
+                char end = next();
+                if (end == ',') continue;
+                if (end == '}') return map;
+                throw new IllegalArgumentException("expected , or }");
+            }
+        }
+        if (c == '[') {
+            at++;
+            List<Object> list = new ArrayList<>();
+            space();
+            if (text.startsWith("]", at)) {
+                at++;
+                return list;
+            }
+            while (true) {
+                list.add(value());
+                space();
+                char end = next();
+                if (end == ',') continue;
+                if (end == ']') return list;
+                throw new IllegalArgumentException("expected , or ]");
+            }
+        }
+        if (c == '"') {
+            at++;
+            StringBuilder out = new StringBuilder();
+            while (true) {
+                char ch = next();
+                if (ch == '"') return out.toString();
+                if (ch != '\\') {
+                    out.append(ch);
+                    continue;
+                }
+                char e = next();
+                switch (e) {
+                    case 'n': out.append('\n'); break;
+                    case 't': out.append('\t'); break;
+                    case 'r': out.append('\r'); break;
+                    case 'b': out.append('\b'); break;
+                    case 'f': out.append('\f'); break;
+                    case 'u':
+                        if (at + 4 > text.length()) throw new IllegalArgumentException("bad escape");
+                        out.append((char) Integer.parseInt(text.substring(at, at + 4), 16));
+                        at += 4;
+                        break;
+                    default: out.append(e);
+                }
+            }
+        }
+        if (text.startsWith("true", at)) {
+            at += 4;
+            return Boolean.TRUE;
+        }
+        if (text.startsWith("false", at)) {
+            at += 5;
+            return Boolean.FALSE;
+        }
+        if (text.startsWith("null", at)) {
+            at += 4;
+            return null;
+        }
+        int start = at;
+        while (at < text.length() && "+-0123456789.eE".indexOf(text.charAt(at)) >= 0) at++;
+        if (start == at) throw new IllegalArgumentException("unexpected character " + c);
+        return Double.parseDouble(text.substring(start, at));
+    }
+
+    static String write(Object value) {
+        StringBuilder out = new StringBuilder();
+        write(out, value);
+        return out.toString();
+    }
+
+    @SuppressWarnings("unchecked")
+    private static void write(StringBuilder out, Object value) {
+        if (value == null) {
+            out.append("null");
+        } else if (value instanceof String) {
+            String s = (String) value;
+            out.append('"');
+            for (int i = 0; i < s.length(); i++) {
+                char c = s.charAt(i);
+                if (c == '"' || c == '\\') out.append('\\').append(c);
+                else if (c < 0x20) out.append(String.format("\\u%04x", (int) c));
+                else out.append(c);
+            }
+            out.append('"');
+        } else if (value instanceof Double || value instanceof Float) {
+            double d = ((Number) value).doubleValue();
+            if (d == Math.rint(d) && Math.abs(d) < 1e15) out.append((long) d);
+            else out.append(d);
+        } else if (value instanceof Number || value instanceof Boolean) {
+            out.append(value);
+        } else if (value instanceof Map) {
+            out.append('{');
+            boolean first = true;
+            for (Map.Entry<String, Object> e : ((Map<String, Object>) value).entrySet()) {
+                if (!first) out.append(',');
+                first = false;
+                write(out, e.getKey());
+                out.append(':');
+                write(out, e.getValue());
+            }
+            out.append('}');
+        } else if (value instanceof List) {
+            out.append('[');
+            boolean first = true;
+            for (Object o : (List<Object>) value) {
+                if (!first) out.append(',');
+                first = false;
+                write(out, o);
+            }
+            out.append(']');
+        } else {
+            write(out, String.valueOf(value));
+        }
+    }
+}
+=== FILE: com/flappybird/recreation/Replayer.java
+package com.flappybird.recreation;
+
+import android.content.Context;
+import android.content.res.Resources;
+import android.view.Choreographer;
+import android.view.ViewGroup;
+
+import androidx.core.view.ViewCompat;
+
+import java.io.ByteArrayInputStream;
+import java.io.DataInputStream;
+import java.io.FilterInputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.lang.reflect.Field;
+import java.lang.reflect.Method;
+import java.util.List;
+import java.util.Map;
+import java.util.TreeMap;
+import java.util.zip.InflaterInputStream;
+
+final class Replayer {
+    static final int OK = 0;
+    static final int REJECTED = 1;
+    static final int SKIPPED = 2;
+
+    static final class Result {
+        int verdict = REJECTED;
+        String why = "";
+        int score = -1;
+        int mode;
+        long seed;
+        double seconds;
+        int flaps;
+        int steps;
+
+        Result fail(int verdict, String why) {
+            this.verdict = verdict;
+            this.why = why;
+            return this;
+        }
+    }
+
+    static final class Recording {
+        int format, rules, mode;
+        long seed;
+        int width, height, insetTop, insetBottom, insetLeft, insetRight;
+        float scale;
+        int pipeGap, pipeSpacing;
+        float pipeSpeed, gravity, flapVelocity;
+        double clock, lastFlapTime;
+        float birdX, baseBirdX, birdY, birdVelocityY, birdRotation, birdTiltVelocity, speedVariation, backgroundX, groundX;
+        int birdFrame;
+        float[] pipeX;
+        int[] pipeTop, pipeWidth, pipeHeight;
+        boolean[] pipeScored, pipeGolden;
+        Map<String, Object> prefs = new TreeMap<>();
+        int[] events;
+    }
+
+    private static final long MAX_INFLATED = 64L * 1024 * 1024;
+    private static final int MAX_HEADER = 1024 * 1024;
+    private static final int MAX_PIPES = 64;
+    private static final int MAX_PREFS = 4096;
+    private static final double MAX_FRAME_RATE = 260.0;
+
+    private Replayer() {
+    }
+
+    private static final class Limited extends FilterInputStream {
+        private long left;
+
+        Limited(InputStream in, long limit) {
+            super(in);
+            left = limit;
+        }
+
+        @Override
+        public int read() throws IOException {
+            if (left <= 0) throw new IOException("replay is too large");
+            int value = super.read();
+            if (value >= 0) left--;
+            return value;
+        }
+
+        @Override
+        public int read(byte[] buffer, int offset, int length) throws IOException {
+            if (left <= 0) throw new IOException("replay is too large");
+            int count = super.read(buffer, offset, (int) Math.min(length, left));
+            if (count > 0) left -= count;
+            return count;
+        }
+    }
+
+    static Recording decode(byte[] compressed) throws IOException {
+        DataInputStream in = new DataInputStream(new Limited(new InflaterInputStream(new ByteArrayInputStream(compressed)), MAX_INFLATED));
+        int headerLength = in.readInt();
+        if (headerLength <= 0 || headerLength > MAX_HEADER) throw new IOException("bad header size");
+        byte[] header = new byte[headerLength];
+        in.readFully(header);
+        int count = in.readInt();
+        if (count <= 0 || count > GameView.REPLAY_MAX_EVENTS) throw new IOException("bad event count");
+        Recording r = new Recording();
+        r.events = new int[count];
+        for (int i = 0; i < count; i++) r.events[i] = in.readInt();
+        if (in.read() != -1) throw new IOException("extra data after the events");
+        DataInputStream h = new DataInputStream(new ByteArrayInputStream(header));
+        r.format = h.readInt();
+        if (r.format != GameView.REPLAY_FORMAT) return r;
+        r.rules = h.readInt();
+        r.mode = h.readInt();
+        r.seed = h.readLong();
+        r.width = h.readInt();
+        r.height = h.readInt();
+        r.insetTop = h.readInt();
+        r.insetBottom = h.readInt();
+        r.insetLeft = h.readInt();
+        r.insetRight = h.readInt();
+        r.scale = h.readFloat();
+        r.pipeGap = h.readInt();
+        r.pipeSpacing = h.readInt();
+        r.pipeSpeed = h.readFloat();
+        r.gravity = h.readFloat();
+        r.flapVelocity = h.readFloat();
+        r.clock = h.readDouble();
+        r.lastFlapTime = h.readDouble();
+        r.birdX = h.readFloat();
+        r.baseBirdX = h.readFloat();
+        r.birdY = h.readFloat();
+        r.birdVelocityY = h.readFloat();
+        r.birdRotation = h.readFloat();
+        r.birdTiltVelocity = h.readFloat();
+        r.speedVariation = h.readFloat();
+        r.backgroundX = h.readFloat();
+        r.groundX = h.readFloat();
+        r.birdFrame = h.readInt();
+        int pipes = h.readInt();
+        if (pipes < 0 || pipes > MAX_PIPES) throw new IOException("bad pipe count");
+        r.pipeX = new float[pipes];
+        r.pipeTop = new int[pipes];
+        r.pipeWidth = new int[pipes];
+        r.pipeHeight = new int[pipes];
+        r.pipeScored = new boolean[pipes];
+        r.pipeGolden = new boolean[pipes];
+        for (int i = 0; i < pipes; i++) {
+            r.pipeX[i] = h.readFloat();
+            r.pipeTop[i] = h.readInt();
+            r.pipeWidth[i] = h.readInt();
+            r.pipeHeight[i] = h.readInt();
+            r.pipeScored[i] = h.readBoolean();
+            r.pipeGolden[i] = h.readBoolean();
+        }
+        int prefs = h.readInt();
+        if (prefs < 0 || prefs > MAX_PREFS) throw new IOException("bad settings count");
+        for (int i = 0; i < prefs; i++) {
+            String key = h.readUTF();
+            int type = h.readByte();
+            Object value;
+            if (type == 'I') value = h.readInt();
+            else if (type == 'F') value = h.readFloat();
+            else if (type == 'Z') value = h.readBoolean();
+            else if (type == 'J') value = h.readLong();
+            else if (type == 'S') value = h.readUTF();
+            else throw new IOException("bad setting type");
+            if (!key.startsWith("pref_")) throw new IOException("bad setting name");
+            r.prefs.put(key, value);
+        }
+        if (h.read() != -1) throw new IOException("extra data in the header");
+        return r;
+    }
+
+    private static Field field(Class<?> type, String name) throws NoSuchFieldException {
+        Field f = type.getDeclaredField(name);
+        f.setAccessible(true);
+        return f;
+    }
+
+    private static Object get(Object target, String name) throws ReflectiveOperationException {
+        return field(target.getClass(), name).get(target);
+    }
+
+    private static void set(Object target, String name, Object value) throws ReflectiveOperationException {
+        field(target.getClass(), name).set(target, value);
+    }
+
+    private static Object call(Object target, String name, Class<?>[] types, Object... args) throws ReflectiveOperationException {
+        Method m = target.getClass().getDeclaredMethod(name, types);
+        m.setAccessible(true);
+        return m.invoke(target, args);
+    }
+
+    private static Object state(String name) throws ReflectiveOperationException {
+        Field f = field(GameView.class, "gameState");
+        @SuppressWarnings({"unchecked", "rawtypes"})
+        Object value = Enum.valueOf((Class) f.getType(), name);
+        return value;
+    }
+
+    private static void resources() throws ReflectiveOperationException {
+        Resources.SIZES.clear();
+        Resources.NAMES.clear();
+        for (Field f : R.drawable.class.getDeclaredFields()) {
+            int id = f.getInt(null);
+            String name = f.getName();
+            int[] size = null;
+            if (name.equals("atlas")) size = new int[] {1024, 1024};
+            else if (name.startsWith("pipe_")) size = new int[] {52, 320};
+            else if (name.endsWith("flap")) size = new int[] {34, 24};
+            else if (name.equals("settingsbutton")) size = new int[] {26, 28};
+            else if (name.startsWith("number_")) size = new int[] {24, 36};
+            if (size != null) Resources.SIZES.put(id, size);
+            Resources.NAMES.put("drawable/" + name, id);
+        }
+    }
+
+    private static boolean same(float a, float b) {
+        return Float.floatToIntBits(a) == Float.floatToIntBits(b);
+    }
+
+    static Result run(byte[] compressed, int claimedScore, boolean claimedClassic) {
+        Result result = new Result();
+        Recording r;
+        try {
+            r = decode(compressed);
+        } catch (IOException | RuntimeException e) {
+            return result.fail(REJECTED, "the replay could not be read");
+        }
+        if (r.format != GameView.REPLAY_FORMAT || r.rules != GameView.REPLAY_RULES) {
+            return result.fail(SKIPPED, "it was recorded by a different version of the game");
+        }
+        result.mode = r.mode;
+        result.seed = r.seed;
+        if (r.mode != SettingsActivity.FAIR_STANDARD && r.mode != SettingsActivity.FAIR_CLASSIC) {
+            return result.fail(REJECTED, "the replay has no fair game mode");
+        }
+        if ((r.mode == SettingsActivity.FAIR_CLASSIC) != claimedClassic) return result.fail(REJECTED, "the game mode did not match the score");
+        if (SettingsActivity.fairPlayMode(r.prefs) != r.mode) return result.fail(REJECTED, "the settings were not fair");
+        if (r.width < 100 || r.height < 100 || r.width > 16384 || r.height > 16384) return result.fail(REJECTED, "the screen size was not possible");
+        if (r.insetTop < 0 || r.insetBottom < 0 || r.insetLeft < 0 || r.insetRight < 0
+                || r.insetTop + r.insetBottom >= r.height || r.insetLeft + r.insetRight >= r.width) {
+            return result.fail(REJECTED, "the screen size was not possible");
+        }
+        try {
+            return replay(r, claimedScore, result);
+        } catch (ReflectiveOperationException e) {
+            Throwable cause = e.getCause() != null ? e.getCause() : e;
+            return result.fail(SKIPPED, "the checker could not run the game (" + cause + ")");
+        } catch (RuntimeException e) {
+            return result.fail(REJECTED, "the game crashed while replaying (" + e + ")");
+        }
+    }
+
+    private static Result replay(Recording r, int claimedScore, Result result) throws ReflectiveOperationException {
+        Map<String, Object> prefs = Context.SIM_PREFS;
+        prefs.clear();
+        prefs.putAll(r.prefs);
+        prefs.put("boardAsked", true);
+        prefs.put(SettingsActivity.PREF_BOARD_AUTO_POST, false);
+        prefs.put(SettingsActivity.PREF_ACTIVITY_LOG_ENABLED, false);
+        prefs.put(SettingsActivity.PREF_SOUND_ENABLED, false);
+        Choreographer.getInstance().simReset();
+        ViewCompat.SIM.clear();
+        resources();
+        MainActivity activity = new MainActivity();
+        activity.onCreate(null);
+        ViewGroup container = (ViewGroup) activity.simContainer;
+        GameView view = null;
+        for (int i = 0; i < container.getChildCount(); i++) {
+            if (container.getChildAt(i) instanceof GameView) view = (GameView) container.getChildAt(i);
+        }
+        if (view == null) throw new NoSuchFieldException("no game view");
+        view.simAttach();
+        activity.onAttachedToWindow();
+        set(view, "windowInsetTop", r.insetTop);
+        set(view, "windowInsetBottom", r.insetBottom);
+        set(view, "windowInsetLeft", r.insetLeft);
+        set(view, "windowInsetRight", r.insetRight);
+        view.simLayout(r.width, r.height);
+        if ((Integer) get(view, "systemBarTop") != r.insetTop || (Integer) get(view, "systemBarBottom") != r.insetBottom
+                || (Integer) get(view, "safeInsetLeft") != r.insetLeft || (Integer) get(view, "safeInsetRight") != r.insetRight
+                || (Integer) get(view, "screenWidth") != r.width || (Integer) get(view, "screenHeight") != r.height) {
+            return result.fail(SKIPPED, "the checker could not rebuild the screen layout");
+        }
+        if ((Integer) get(view, "currentFairMode") != r.mode) return result.fail(REJECTED, "the settings were not fair");
+        set(view, "speedVariation", r.speedVariation);
+        call(view, "applyTuning", new Class<?>[0]);
+        if (!same((Float) get(view, "scale"), r.scale) || (Integer) get(view, "pipeGap") != r.pipeGap
+                || (Integer) get(view, "pipeSpacing") != r.pipeSpacing || !same((Float) get(view, "pipeSpeedPerSec"), r.pipeSpeed)
+                || !same((Float) get(view, "gravityPerSec"), r.gravity) || !same((Float) get(view, "flapVelocityPerSec"), r.flapVelocity)) {
+            return result.fail(REJECTED, "the game physics did not match the fair settings");
+        }
+        set(view, "gameState", state("WAITING"));
+        set(view, "clock", r.clock);
+        set(view, "lastFlapTime", r.lastFlapTime);
+        set(view, "birdX", r.birdX);
+        set(view, "baseBirdX", r.baseBirdX);
+        set(view, "birdY", r.birdY);
+        set(view, "birdVelocityY", r.birdVelocityY);
+        set(view, "birdRotation", r.birdRotation);
+        set(view, "birdTiltVelocity", r.birdTiltVelocity);
+        set(view, "backgroundX", r.backgroundX);
+        set(view, "groundX", r.groundX);
+        set(view, "birdFrame", r.birdFrame);
+        @SuppressWarnings("unchecked")
+        List<Pipe> pipes = (List<Pipe>) get(view, "pipes");
+        pipes.clear();
+        for (int i = 0; i < r.pipeX.length; i++) {
+            Pipe pipe = new Pipe(r.pipeX[i], r.pipeWidth[i], r.pipeHeight[i]);
+            pipe.topPipeY = r.pipeTop[i];
+            pipe.isScored = r.pipeScored[i];
+            pipe.isGolden = r.pipeGolden[i];
+            pipes.add(pipe);
+        }
+        boolean fixed = (Boolean) get(view, "settingFixedStepEnabled");
+        float fixedStep = (Float) field(GameView.class, "FIXED_STEP_SEC").get(null);
+        float maxStep = (Float) field(GameView.class, "MAX_FRAME_DELTA_SEC").get(null);
+        Method tap = GameView.class.getDeclaredMethod("handleGameplayTap");
+        tap.setAccessible(true);
+        Method update = GameView.class.getDeclaredMethod("update", float.class);
+        update.setAccessible(true);
+        Field gameState = field(GameView.class, "gameState");
+        Object playing = state("PLAYING");
+        Object waiting = state("WAITING");
+        Object over = state("GAME_OVER");
+        int last = 0;
+        boolean started = false;
+        double seconds = 0.0;
+        int flaps = 0;
+        int frames = 0;
+        int[] events = r.events;
+        for (int i = 0; i < events.length; i++) {
+            Object now = gameState.get(view);
+            int value = events[i];
+            if (value == GameView.REPLAY_FLAP) {
+                if (!started) {
+                    if (now != waiting) return result.fail(REJECTED, "the round did not start normally");
+                    tap.invoke(view);
+                    Pipe.reseed(r.seed);
+                    if (gameState.get(view) != playing) return result.fail(REJECTED, "the round did not start normally");
+                    started = true;
+                } else {
+                    if (now != playing) return result.fail(REJECTED, "the run did not play out the same way (the bird crashed sooner)");
+                    tap.invoke(view);
+                }
+                flaps++;
+                continue;
+            }
+            if (!started) return result.fail(REJECTED, "the round did not start with a flap");
+            if (now != playing) return result.fail(REJECTED, "the run did not play out the same way (the bird crashed sooner)");
+            int bits = value ^ last;
+            last = bits;
+            float dt = Float.intBitsToFloat(bits);
+            if (Float.isNaN(dt) || Float.isInfinite(dt) || dt <= 0f || dt > maxStep) return result.fail(REJECTED, "a frame had an impossible length");
+            if (fixed && !same(dt, fixedStep)) return result.fail(REJECTED, "a frame had an impossible length");
+            seconds += dt;
+            frames++;
+            update.invoke(view, dt);
+        }
+        if (!fixed && frames > 600 && frames > seconds * MAX_FRAME_RATE) return result.fail(REJECTED, "the frame rate was higher than any screen can show");
+        result.seconds = seconds;
+        result.flaps = flaps;
+        result.steps = events.length;
+        result.score = (Integer) get(view, "score");
+        if (gameState.get(view) != over) return result.fail(REJECTED, "the run did not play out the same way (the bird kept flying)");
+        if (result.score != claimedScore) {
+            return result.fail(REJECTED, "the replay scored " + result.score + ", not " + claimedScore);
+        }
+        result.verdict = OK;
+        result.why = "";
+        return result;
+    }
+}
+=== FILE: com/flappybird/recreation/Verifier.java
+package com.flappybird.recreation;
+
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.net.HttpURLConnection;
+import java.net.URL;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Paths;
+import java.security.KeyFactory;
+import java.security.PrivateKey;
+import java.security.Signature;
+import java.security.spec.PKCS8EncodedKeySpec;
+import java.util.ArrayList;
+import java.util.Base64;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+
+public final class Verifier {
+    static final String SCOPES = "https://www.googleapis.com/auth/firebase.database https://www.googleapis.com/auth/userinfo.email";
+    static final long REAL_TIME_SLACK_MS = 3000L;
+    static final long TIME_BUDGET_MS = 240000L;
+    static final int TIMEOUT_MS = 30000;
+
+    static String database;
+    static String accessToken;
+    static int verified, rejected, skipped, waiting;
+    static final List<String> report = new ArrayList<>();
+
+    static final class Reply {
+        int code;
+        String body = "";
+        String etag;
+    }
+
+    private Verifier() {
+    }
+
+    public static void main(String[] args) throws Exception {
+        String account = System.getenv("FIREBASE_SERVICE_ACCOUNT");
+        if (args.length > 0) account = new String(Files.readAllBytes(Paths.get(args[0])), StandardCharsets.UTF_8);
+        if (account == null || account.trim().isEmpty()) {
+            System.out.println("The FIREBASE_SERVICE_ACCOUNT secret is missing. See LEADERBOARD_SETUP.md.");
+            System.exit(1);
+        }
+        String url = System.getenv("DATABASE_URL");
+        if (url == null || url.trim().isEmpty()) url = SettingsActivity.Leaderboard.DATABASE_URL;
+        database = url.trim();
+        while (database.endsWith("/")) database = database.substring(0, database.length() - 1);
+        Map<String, Object> key;
+        try {
+            key = Json.object(Json.parse(account));
+        } catch (IllegalArgumentException e) {
+            key = null;
+        }
+        if (key == null || Json.string(key, "client_email").isEmpty() || Json.string(key, "private_key").isEmpty()) {
+            System.out.println("FIREBASE_SERVICE_ACCOUNT is not a service account key file.");
+            System.exit(1);
+        }
+        accessToken = signIn(key);
+        int code = run(System.currentTimeMillis() + TIME_BUDGET_MS);
+        for (String line : report) System.out.println(line);
+        System.out.println("Verified " + verified + ", rejected " + rejected + ", skipped " + skipped + ", still waiting " + waiting + ".");
+        System.out.flush();
+        System.exit(code);
+    }
+
+    static int run(long deadline) throws IOException {
+        Map<String, Object> pending = Json.object(Json.parse(call("GET", "/replays.json?shallow=true", null, false, null).body));
+        if (pending == null || pending.isEmpty()) {
+            report.add("No runs are waiting.");
+            return 0;
+        }
+        for (String user : pending.keySet()) {
+            if (System.currentTimeMillis() > deadline) {
+                waiting++;
+                continue;
+            }
+            Map<String, Object> slots = Json.object(Json.parse(call("GET", "/replays/" + enc(user) + ".json?shallow=true", null, false, null).body));
+            if (slots == null) continue;
+            for (String slot : slots.keySet()) {
+                try {
+                    check(user, slot);
+                } catch (IOException | RuntimeException e) {
+                    waiting++;
+                    report.add("Could not check a run from " + shortId(user) + ": " + e.getMessage());
+                }
+            }
+        }
+        return 0;
+    }
+
+    static String shortId(String user) {
+        return user.length() <= 6 ? user : user.substring(0, 6) + "...";
+    }
+
+    static String enc(String part) {
+        try {
+            return URLEncoder.encode(part, "UTF-8").replace("+", "%20");
+        } catch (IOException e) {
+            throw new IllegalStateException(e);
+        }
+    }
+
+    static boolean safeKey(String key) {
+        return key != null && key.matches("^-?[0-9]{1,20}$");
+    }
+
+    static void check(String user, String slot) throws IOException {
+        String place = "/replays/" + enc(user) + "/" + enc(slot);
+        long rules = Json.number(Json.object(Json.parse("{\"rv\":" + orNull(call("GET", place + "/rv.json", null, false, null).body) + "}")), "rv");
+        if (rules > GameView.REPLAY_RULES) {
+            waiting++;
+            report.add("A run from " + shortId(user) + " needs a newer checker. Copy the latest MainActivity.java into the repository.");
+            return;
+        }
+        Reply reply = call("GET", place + ".json", null, true, null);
+        Map<String, Object> entry = Json.object(Json.parse(reply.body));
+        if (entry == null) return;
+        int score = (int) Json.number(entry, "s");
+        boolean classic = Boolean.TRUE.equals(entry.get("c"));
+        String seed = Json.string(entry, "r");
+        long started = Json.number(entry, "st");
+        long sent = Json.number(entry, "t");
+        long week = Json.number(entry, "w");
+        String data = Json.string(entry, "d");
+        int outcome;
+        String why;
+        String owner = "";
+        Replayer.Result result = null;
+        if (!(slot.equals("a") || slot.equals("w")) || score < 1 || score > SettingsActivity.Leaderboard.MAX_SCORE || !safeKey(seed)
+                || started <= 0 || sent <= 0 || week == Long.MIN_VALUE || data.isEmpty()) {
+            outcome = Replayer.REJECTED;
+            why = "the upload was incomplete";
+        } else if (exists("/banned/" + enc(user) + ".json")) {
+            outcome = Replayer.REJECTED;
+            why = "this player is banned";
+        } else if (!(owner = seedOwner(seed)).isEmpty()) {
+            if (owner.equals(user)) {
+                call("DELETE", place + ".json", null, false, reply.etag);
+                return;
+            }
+            outcome = Replayer.REJECTED;
+            why = "this run was already used by another player";
+        } else {
+            byte[] bytes;
+            try {
+                bytes = Base64.getDecoder().decode(data);
+            } catch (IllegalArgumentException e) {
+                bytes = null;
+            }
+            if (bytes == null) {
+                outcome = Replayer.REJECTED;
+                why = "the replay could not be read";
+            } else {
+                result = Replayer.run(bytes, score, classic);
+                outcome = result.verdict;
+                why = result.why;
+                if (outcome == Replayer.OK && sent - started < result.seconds * 1000.0 - REAL_TIME_SLACK_MS) {
+                    outcome = Replayer.REJECTED;
+                    why = "the run was played faster than real time";
+                }
+                if (outcome == Replayer.OK && result.seed != Long.parseLong(seed)) {
+                    outcome = Replayer.REJECTED;
+                    why = "the replay belongs to a different round";
+                }
+            }
+        }
+        Map<String, Object> update = new LinkedHashMap<>();
+        Map<String, Object> verdict = new LinkedHashMap<>();
+        verdict.put("s", (double) Math.max(0, score));
+        verdict.put("c", classic);
+        verdict.put("ok", outcome == Replayer.OK);
+        verdict.put("why", why);
+        Map<String, Object> now = new LinkedHashMap<>();
+        now.put(".sv", "timestamp");
+        verdict.put("t", now);
+        update.put("verdicts/" + user, verdict);
+        if (outcome != Replayer.SKIPPED && safeKey(seed) && owner.isEmpty()) update.put("seeds/" + seed, user);
+        String name = "";
+        if (outcome == Replayer.OK) {
+            Map<String, Object> scores = Json.object(Json.parse(call("GET", "/scores/" + enc(user) + ".json", null, false, null).body));
+            name = Json.string(scores, "n");
+            String key = SettingsActivity.Leaderboard.nameKey(name);
+            String holder = key.isEmpty() ? "" : String.valueOf(Json.parse(orNull(call("GET", "/names/" + enc(key) + ".json", null, false, null).body)));
+            if (name.isEmpty() || !user.equals(holder)) {
+                outcome = Replayer.SKIPPED;
+                why = "the leaderboard name could not be confirmed. Set your name again and play another round";
+                verdict.put("ok", false);
+                verdict.put("why", why);
+                update.remove("seeds/" + seed);
+            } else {
+                publish(update, user, name, score, classic, sent, (int) week, result, scores);
+            }
+        }
+        call("PATCH", "/.json", Json.write(update), false, null);
+        Reply removed = call("DELETE", place + ".json", null, false, reply.etag);
+        if (removed.code == 412) report.add("A run from " + shortId(user) + " changed while it was being checked; it will be checked again.");
+        String who = name.isEmpty() ? shortId(user) : name;
+        if (outcome == Replayer.OK) {
+            verified++;
+            report.add("Verified " + score + (classic ? " (Classic)" : "") + " by " + who + String.format(" in %.1f s of play", result.seconds));
+        } else if (outcome == Replayer.SKIPPED) {
+            skipped++;
+            report.add("Skipped " + score + " by " + who + ": " + why);
+        } else {
+            rejected++;
+            report.add("Rejected " + score + " by " + who + ": " + why);
+        }
+    }
+
+    static String orNull(String body) {
+        String trimmed = body == null ? "" : body.trim();
+        return trimmed.isEmpty() ? "null" : trimmed;
+    }
+
+    static void publish(Map<String, Object> update, String user, String name, int score, boolean classic, long sent, int week,
+            Replayer.Result result, Map<String, Object> scores) throws IOException {
+        double seconds = Math.ceil(result.seconds);
+        Map<String, Object> best = Json.object(Json.parse(call("GET", "/vscores/" + enc(user) + ".json", null, false, null).body));
+        if (best == null || Json.number(best, "s") < score) {
+            Map<String, Object> entry = new LinkedHashMap<>();
+            entry.put("n", name);
+            entry.put("s", (double) score);
+            entry.put("c", classic);
+            entry.put("t", (double) sent);
+            entry.put("d", seconds);
+            update.put("vscores/" + user, entry);
+        }
+        if (week == SettingsActivity.Leaderboard.week(sent)) {
+            Map<String, Object> weekly = Json.object(Json.parse(call("GET", "/vweekly/" + enc(user) + ".json", null, false, null).body));
+            long savedWeek = Json.number(weekly, "w");
+            if (weekly == null || savedWeek < week || (savedWeek == week && Json.number(weekly, "s") < score)) {
+                Map<String, Object> entry = new LinkedHashMap<>();
+                entry.put("n", name);
+                entry.put("s", (double) score);
+                entry.put("c", classic);
+                entry.put("t", (double) sent);
+                entry.put("d", seconds);
+                entry.put("w", (double) week);
+                entry.put("k", (double) (week * SettingsActivity.Leaderboard.WEEK_KEY + score));
+                update.put("vweekly/" + user, entry);
+            }
+        }
+        if (Json.number(scores, "s") == score) update.put("scores/" + user + "/vs", (double) score);
+        Map<String, Object> posted = Json.object(Json.parse(call("GET", "/weekly/" + enc(user) + ".json", null, false, null).body));
+        if (Json.number(posted, "k") == week * SettingsActivity.Leaderboard.WEEK_KEY + score) update.put("weekly/" + user + "/vs", (double) score);
+    }
+
+    static String seedOwner(String seed) throws IOException {
+        Object value = Json.parse(orNull(call("GET", "/seeds/" + enc(seed) + ".json", null, false, null).body));
+        return value instanceof String ? (String) value : "";
+    }
+
+    static boolean exists(String path) throws IOException {
+        String body = call("GET", path + (path.contains("?") ? "&" : "?") + "shallow=true", null, false, null).body.trim();
+        return !body.isEmpty() && !body.equals("null");
+    }
+
+    static Reply call(String method, String path, String body, boolean wantTag, String ifMatch) throws IOException {
+        String address = database + path + (path.contains("?") ? "&" : "?") + "access_token=" + enc(accessToken);
+        HttpURLConnection connection = (HttpURLConnection) new URL(address).openConnection();
+        try {
+            boolean patch = "PATCH".equals(method);
+            connection.setRequestMethod(patch ? "POST" : method);
+            if (patch) connection.setRequestProperty("X-HTTP-Method-Override", "PATCH");
+            connection.setConnectTimeout(TIMEOUT_MS);
+            connection.setReadTimeout(TIMEOUT_MS);
+            connection.setUseCaches(false);
+            connection.setRequestProperty("Accept", "application/json");
+            if (wantTag) connection.setRequestProperty("X-Firebase-ETag", "true");
+            if (ifMatch != null) connection.setRequestProperty("if-match", ifMatch);
+            if (body != null) {
+                connection.setDoOutput(true);
+                connection.setRequestProperty("Content-Type", "application/json; charset=utf-8");
+                try (OutputStream out = connection.getOutputStream()) {
+                    out.write(body.getBytes(StandardCharsets.UTF_8));
+                }
+            }
+            Reply reply = new Reply();
+            reply.code = connection.getResponseCode();
+            reply.etag = connection.getHeaderField("ETag");
+            InputStream stream = reply.code >= 400 ? connection.getErrorStream() : connection.getInputStream();
+            reply.body = stream == null ? "" : read(stream);
+            if (reply.code >= 400 && reply.code != 412) {
+                throw new IOException(method + " " + path.replaceAll("\\?.*", "") + " failed with " + reply.code + ": "
+                        + (reply.body.length() > 200 ? reply.body.substring(0, 200) : reply.body));
+            }
+            return reply;
+        } finally {
+            connection.disconnect();
+        }
+    }
+
+    static String read(InputStream stream) throws IOException {
+        try (InputStream in = stream) {
+            ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+            byte[] buffer = new byte[16384];
+            int count;
+            while ((count = in.read(buffer)) != -1) bytes.write(buffer, 0, count);
+            return new String(bytes.toByteArray(), StandardCharsets.UTF_8);
+        }
+    }
+
+    static String base64Url(byte[] bytes) {
+        return Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
+    }
+
+    static String signIn(Map<String, Object> key) throws Exception {
+        String email = Json.string(key, "client_email");
+        String tokenUri = Json.string(key, "token_uri");
+        if (tokenUri.isEmpty()) tokenUri = "https://oauth2.googleapis.com/token";
+        String pem = Json.string(key, "private_key").replace("-----BEGIN PRIVATE KEY-----", "").replace("-----END PRIVATE KEY-----", "")
+                .replaceAll("\\s", "");
+        PrivateKey privateKey = KeyFactory.getInstance("RSA").generatePrivate(new PKCS8EncodedKeySpec(Base64.getDecoder().decode(pem)));
+        long now = System.currentTimeMillis() / 1000L;
+        Map<String, Object> claims = new LinkedHashMap<>();
+        claims.put("iss", email);
+        claims.put("scope", SCOPES);
+        claims.put("aud", tokenUri);
+        claims.put("iat", (double) now);
+        claims.put("exp", (double) (now + 3600));
+        String unsigned = base64Url("{\"alg\":\"RS256\",\"typ\":\"JWT\"}".getBytes(StandardCharsets.UTF_8)) + "."
+                + base64Url(Json.write(claims).getBytes(StandardCharsets.UTF_8));
+        Signature signer = Signature.getInstance("SHA256withRSA");
+        signer.initSign(privateKey);
+        signer.update(unsigned.getBytes(StandardCharsets.UTF_8));
+        String jwt = unsigned + "." + base64Url(signer.sign());
+        String form = "grant_type=" + enc("urn:ietf:params:oauth:grant-type:jwt-bearer") + "&assertion=" + enc(jwt);
+        HttpURLConnection connection = (HttpURLConnection) new URL(tokenUri).openConnection();
+        try {
+            connection.setRequestMethod("POST");
+            connection.setConnectTimeout(TIMEOUT_MS);
+            connection.setReadTimeout(TIMEOUT_MS);
+            connection.setDoOutput(true);
+            connection.setRequestProperty("Content-Type", "application/x-www-form-urlencoded");
+            try (OutputStream out = connection.getOutputStream()) {
+                out.write(form.getBytes(StandardCharsets.UTF_8));
+            }
+            int code = connection.getResponseCode();
+            InputStream stream = code >= 400 ? connection.getErrorStream() : connection.getInputStream();
+            String body = stream == null ? "" : read(stream);
+            String token = Json.string(Json.object(Json.parse(body)), "access_token");
+            if (code >= 400 || token.isEmpty()) throw new IOException("Google refused the service account key (" + code + ")");
+            return token;
+        } finally {
+            connection.disconnect();
+        }
+    }
+}
