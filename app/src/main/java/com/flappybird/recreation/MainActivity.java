@@ -1,5 +1,5 @@
 package com.flappybird.recreation;
-//breathe
+
 import android.content.ActivityNotFoundException;
 import android.content.Context;
 import android.content.Intent;
@@ -24,29 +24,46 @@ import android.graphics.RadialGradient;
 import android.graphics.Rect;
 import android.graphics.RectF;
 import android.graphics.Shader;
+import android.graphics.Typeface;
 import android.media.AudioAttributes;
 import android.net.Uri;
 import android.media.MediaPlayer;
 import android.media.SoundPool;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.SystemClock;
 import android.os.VibrationEffect;
 import android.os.Vibrator;
+import android.graphics.drawable.GradientDrawable;
+import android.text.Editable;
+import android.text.InputFilter;
+import android.text.InputType;
+import android.text.TextWatcher;
 import android.util.Log;
+import android.util.TypedValue;
 import android.view.Choreographer;
 import android.view.Display;
+import android.view.Gravity;
 import android.view.HapticFeedbackConstants;
 import android.view.KeyEvent;
 import android.view.MotionEvent;
 import android.view.PointerIcon;
 import android.view.View;
 import android.view.WindowManager;
+import android.view.animation.OvershootInterpolator;
+import android.view.inputmethod.EditorInfo;
+import android.view.inputmethod.InputMethodManager;
+import android.widget.EditText;
 import android.widget.FrameLayout;
+import android.widget.LinearLayout;
+import android.widget.TextView;
 import android.widget.Toast;
 
 import androidx.activity.EdgeToEdge;
+import androidx.activity.OnBackPressedCallback;
 import androidx.annotation.Nullable;
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.core.content.res.ResourcesCompat;
 import androidx.core.content.ContextCompat;
 import androidx.core.graphics.Insets;
 import androidx.core.view.ViewCompat;
@@ -54,7 +71,11 @@ import androidx.core.view.WindowCompat;
 import androidx.core.view.WindowInsetsCompat;
 import androidx.core.view.WindowInsetsControllerCompat;
 
+import java.io.ByteArrayOutputStream;
+import java.io.DataOutputStream;
+import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -62,15 +83,19 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Random;
 import java.util.Set;
+import java.util.TreeMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import static com.flappybird.recreation.SettingsActivity.*;
 
-public class MainActivity extends AppCompatActivity {
+public class MainActivity extends AppCompatActivity implements GameView.BoardHost {
 
     private static boolean crashLoggerInstalled;
 
     private GameView gameView;
+    private OnBackPressedCallback boardBack;
+    private OnBackPressedCallback nameBack;
+    private NamePanel namePanel;
 
     @Override
     protected void onCreate(@Nullable Bundle savedInstanceState) {
@@ -83,6 +108,83 @@ public class MainActivity extends AppCompatActivity {
         FrameLayout gameContainer = findViewById(R.id.game_container);
         gameView = new GameView(this);
         gameContainer.addView(gameView);
+        Typeface face = null;
+        try {
+            face = ResourcesCompat.getFont(this, R.font.flappy_font);
+        } catch (RuntimeException ignored) {
+        }
+        namePanel = new NamePanel(this, face != null ? face : Typeface.DEFAULT_BOLD);
+        gameContainer.addView(namePanel, new FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT));
+        getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
+
+        boardBack = new OnBackPressedCallback(false) {
+            @Override
+            public void handleOnBackPressed() {
+                if (gameView != null) gameView.closeBoardIfOpen();
+            }
+        };
+        getOnBackPressedDispatcher().addCallback(this, boardBack);
+        nameBack = new OnBackPressedCallback(false) {
+            @Override
+            public void handleOnBackPressed() {
+                if (namePanel != null && namePanel.cancellable()) closeNamePanel();
+            }
+        };
+        getOnBackPressedDispatcher().addCallback(this, nameBack);
+        gameView.setBoardHost(this);
+        gameView.post(() -> {
+            if (gameView != null && !isFinishing()) gameView.askFirstName();
+        });
+    }
+
+    @Override
+    public void boardVisible(boolean open) {
+        if (boardBack != null) boardBack.setEnabled(open);
+    }
+
+    @Override
+    public void askName(String current, boolean firstTime, final GameView.NameCallback callback) {
+        if (isFinishing() || namePanel == null) return;
+        namePanel.open(firstTime, current, new NamePanel.Listener() {
+            @Override
+            public void submit(final String name) {
+                SettingsActivity.Leaderboard.setName(MainActivity.this, name, MainActivity.this::runOnUiThread, (status, error) -> {
+                    if (namePanel == null || !namePanel.isOpen()) return;
+                    if (error != null) {
+                        namePanel.showError(error);
+                        return;
+                    }
+                    closeNamePanel();
+                    if (SettingsActivity.Leaderboard.OFFLINE.equals(status)) {
+                        Toast.makeText(MainActivity.this, "Name saved. It will be checked when you're online", Toast.LENGTH_SHORT).show();
+                    }
+                    callback.named(name);
+                });
+            }
+
+            @Override
+            public void cancel() {
+                closeNamePanel();
+            }
+        });
+        if (nameBack != null) nameBack.setEnabled(true);
+        if (gameView != null) gameView.setNameOverlay(true);
+    }
+
+    private void closeNamePanel() {
+        if (namePanel != null) namePanel.close();
+        if (nameBack != null) nameBack.setEnabled(false);
+        if (gameView != null) gameView.setNameOverlay(false);
+    }
+
+    @Override
+    public int namePanelHeight(float unit) {
+        return namePanel == null ? 0 : namePanel.panelHeight(unit);
+    }
+
+    @Override
+    public void placeNamePanel(int top, float unit) {
+        if (namePanel != null) namePanel.place(top, unit);
     }
 
     @Override
@@ -167,6 +269,35 @@ public class MainActivity extends AppCompatActivity {
 
 class GameView extends View implements Choreographer.FrameCallback {
 
+    interface NameCallback {
+        void named(String name);
+    }
+
+    interface BoardHost {
+        void boardVisible(boolean open);
+
+        void askName(String current, boolean firstTime, NameCallback callback);
+
+        int namePanelHeight(float unit);
+
+        void placeNamePanel(int top, float unit);
+    }
+
+    private static final int BOARD_ROWS = 10;
+    private static final float BOARD_ROW_HEIGHT = 19f;
+    private static final float BOARD_OPEN_SEC = 0.32f;
+    private static final float BOARD_CLOSE_SEC = 0.18f;
+    private static final int BOARD_TAB_IDLE = 0xFFC9C27E;
+    private static final int BOARD_DIVIDER = 0x55543847;
+    private static final int BOARD_PANEL = 0xFFDED895;
+    private static final int BOARD_PANEL_EDGE = 0xFFF8F0B0;
+    private static final int BOARD_DARK = 0xFF543847;
+    private static final int BOARD_ORANGE = 0xFFFC7858;
+    private static final int BOARD_OWN_ROW = 0x40FC7858;
+    private static final int BOARD_VERIFIED = 0xFF8E5CF7;
+    private static final String BOARD_SHOW_ALL_KEY = "boardShowUnverified";
+    private static final int BOARD_DIM = 0x99000000;
+
     private static final String TAG = "GameView";
 
     public static final String PREF_LIGHTNING_SCORES = "pref_lightning_scores";
@@ -228,7 +359,6 @@ class GameView extends View implements Choreographer.FrameCallback {
     private static final float PAUSE_FADE_SEC = 0.16f;
     private static final int PAUSE_DIM_ALPHA = 120;
     private static final int ATLAS_NEW_X = 224, ATLAS_NEW_Y = 1002, ATLAS_NEW_WIDTH = 32, ATLAS_NEW_HEIGHT = 14;
-    private static final String LEADERBOARD_MESSAGE = "Leaderboard unavailable. Try again later.";
     private static final String RATE_URL = "https://github.com/FlappyRecreator/FlappyB64bitAndroid";
     private static final String RATE_MESSAGE = "No browser found to open the project page.";
     private static final int FPS_COLOR_GOOD = 0xFF5BE35B;
@@ -493,6 +623,59 @@ class GameView extends View implements Choreographer.FrameCallback {
 
     private int livesLeft = 0;
     private double roundStartClock;
+    private int currentFairMode, roundFairMode;
+    private String fairBlocker;
+    private int scoreKey, scoreCheck;
+    private boolean roundTampered;
+    private final int sealKey = (int) (System.nanoTime() * 0x9E3779B1L) | 1;
+    private int settingsSeal, tuningSeal, roundPipes, pipesCheck;
+    static final int REPLAY_FORMAT = 1;
+    static final int REPLAY_RULES = 1;
+    static final int REPLAY_FLAP = 0xFFFFFFFF;
+    static final int REPLAY_MAX_EVENTS = 4000000;
+    private final Random seedSource = new Random();
+    private long replaySeed;
+    private boolean replayLive;
+    private byte[] replayHeader;
+    private int[] replayEvents;
+    private int replayCount, replayLastBits;
+    private Map<String, Object> replayPrefs;
+    private double roundActiveSeconds;
+    private long roundRealStart, roundUptimeStart, roundPausedMs, pausedSince = -1L;
+    private boolean settingBoardAutoPost = true;
+    private boolean settingBoardShowStatus = true, settingBoardOpenOnBest;
+    private int settingBoardTab;
+    private int settingBoardSize = 10;
+    private String boardStatusText;
+    private Paint boardStatusPaint;
+    private boolean nameOverlayOpen, boardSqueezed;
+    private int imeInset;
+    private float boardReserve, boardReserveShown;
+    private boolean boardOpen, boardClosing, boardLoading;
+    private float boardAnim, boardAlpha = 1f;
+    private int boardTab;
+    private String boardNote = "";
+    private Leaderboard.Board boardData = new Leaderboard.Board();
+    private final RectF boardPanel = new RectF();
+    private final RectF boardShape = new RectF();
+    private final Rect boardRowsRect = new Rect();
+    private final Rect boardYouRect = new Rect();
+    private float boardScroll, boardScrollMax, boardFling, boardRowStep = 1f;
+    private float boardScrollTarget = Float.NaN;
+    private boolean boardDragArmed, boardDragging;
+    private float boardDragStartY, boardDragLastY;
+    private long boardDragLastTime;
+    private List<Leaderboard.Entry> boardIndexed;
+    private int boardMineIndex = -1;
+    private final Rect boardCloseRect = new Rect();
+    private final Rect boardJoinRect = new Rect();
+    private final Rect boardTabAllRect = new Rect();
+    private final Rect boardToggleRect = new Rect();
+    private boolean boardShowAll;
+    private final Rect boardTabWeekRect = new Rect();
+    private Rect boardPressed;
+    private Paint boardPaint, boardTextPaint;
+    private BoardHost boardHost;
     private boolean settingGodFallEnabled;
     private float settingGodFallSeconds;
     private float offScreenSeconds;
@@ -687,6 +870,8 @@ class GameView extends View implements Choreographer.FrameCallback {
 
     private void listenForWindowInsets() {
         ViewCompat.setOnApplyWindowInsetsListener(this, (v, windowInsets) -> {
+            imeInset = Math.max(0, windowInsets.getInsets(WindowInsetsCompat.Type.ime()).bottom);
+            invalidate();
             Insets bars = windowInsets.getInsets(WindowInsetsCompat.Type.systemBars());
             Insets safe = windowInsets.getInsets(
                     WindowInsetsCompat.Type.systemBars() | WindowInsetsCompat.Type.displayCutout());
@@ -807,7 +992,36 @@ class GameView extends View implements Choreographer.FrameCallback {
         settingRampMinGap = intPref(stored, PREF_RAMP_MIN_GAP, DEFAULT_RAMP_MIN_GAP);
 
         parseLightningScores(textPref(stored, PREF_LIGHTNING_SCORES, DEFAULT_LIGHTNING_SCORES));
-        if (gameState == GameState.PLAYING) noteAssists();
+        fairBlocker = fairPlayBlocker(stored);
+        currentFairMode = fairBlocker == null ? fairPlayMode(stored) : FAIR_NONE;
+        settingBoardAutoPost = flagPref(stored, PREF_BOARD_AUTO_POST, DEFAULT_BOARD_AUTO_POST);
+        settingBoardShowStatus = flagPref(stored, PREF_BOARD_SHOW_STATUS, DEFAULT_BOARD_SHOW_STATUS);
+        settingBoardOpenOnBest = flagPref(stored, PREF_BOARD_OPEN_ON_BEST, DEFAULT_BOARD_OPEN_ON_BEST);
+        settingBoardTab = intPref(stored, PREF_BOARD_TAB, DEFAULT_BOARD_TAB) == 1 ? 1 : 0;
+        settingBoardSize = Leaderboard.boardSize(intPref(stored, PREF_BOARD_SIZE, DEFAULT_BOARD_SIZE));
+        sealSettings();
+        if (gameState == GameState.PLAYING) {
+            noteAssists();
+            if (roundFairMode != currentFairMode) roundFairMode = FAIR_NONE;
+        }
+    }
+
+    private void guardScore() {
+        scoreKey = (int) (System.nanoTime() * 0x9E3779B1L) | 1;
+        scoreCheck = score ^ scoreKey;
+    }
+
+    private void countPipe() {
+        if ((pipesCheck ^ scoreKey) != roundPipes) roundTampered = true;
+        roundPipes++;
+        pipesCheck = roundPipes ^ scoreKey;
+        checkSeals();
+    }
+
+    private void addScore(int points) {
+        if ((scoreCheck ^ scoreKey) != score) roundTampered = true;
+        score += points;
+        scoreCheck = score ^ scoreKey;
     }
 
     private void noteAssists() {
@@ -816,7 +1030,7 @@ class GameView extends View implements Choreographer.FrameCallback {
         if (settingScoreMultiplier > 1) roundAssists.add(settingScoreMultiplier + " points per pipe");
         if (settingPipeGap > 1.001f) roundAssists.add("wider gaps (" + Math.round(settingPipeGap * 100) + "%)");
         if (settingBirdHitbox < 0.999f) roundAssists.add("smaller hitbox (" + Math.round(settingBirdHitbox * 100) + "%)");
-        if (settingGameSpeed < 0.999f) roundAssists.add("slower game (" + Math.round(settingGameSpeed * 100) + "%)");
+        if (settingGameSpeed < 0.999f && currentFairMode != FAIR_CLASSIC) roundAssists.add("slower game (" + Math.round(settingGameSpeed * 100) + "%)");
     }
 
     private String roundAssistText() {
@@ -1134,6 +1348,7 @@ class GameView extends View implements Choreographer.FrameCallback {
     private void rescaleWorld(float previousScale, int previousTop, float previousBirdAnchorX,
                               float previousBgWidth, int previousPanelTargetY) {
         float ratio = scale / previousScale;
+        if (gameState == GameState.PLAYING) replayLive = false;
 
         cancelButtonPress();
         applyTuning();
@@ -1186,6 +1401,7 @@ class GameView extends View implements Choreographer.FrameCallback {
 
         speedVariation = 1.0f + (random.nextFloat() - 0.5f) * 2 * settingPipeSpeedVariation;
         score = 0;
+        guardScore();
         applyTuning();
 
         baseBirdX = gameplayBirdX;
@@ -1259,6 +1475,7 @@ class GameView extends View implements Choreographer.FrameCallback {
         spawnPipes();
 
         score = 0;
+        guardScore();
         displayedScore = 0;
         lastScoreTickTime = -1;
         currentMedal = MEDAL_NONE;
@@ -1266,6 +1483,7 @@ class GameView extends View implements Choreographer.FrameCallback {
     }
 
     private void applyTuning() {
+        if (gameState == GameState.PLAYING && (settingsFingerprint() ^ sealKey) != settingsSeal) roundTampered = true;
         float gravityDirection = settingUpsideDownEnabled ? -1 : 1;
         float pipeDirection = settingReversePipesEnabled ? -1 : 1;
         gravityPerSec = baseGravityPerSec * settingGravity * gravityDirection;
@@ -1288,6 +1506,7 @@ class GameView extends View implements Choreographer.FrameCallback {
             float share = Math.max(10, Math.min(90, settingBirdPosition)) / 100f;
             gameplayBirdX = screenWidth * (settingReversePipesEnabled ? 1f - share : share);
         }
+        sealTuning();
     }
 
     private int requiredPipeCount() {
@@ -1986,9 +2205,10 @@ class GameView extends View implements Choreographer.FrameCallback {
             }
             if (!pipe.isScored && passedBird) {
                 pipe.isScored = true;
-                score += settingScoreMultiplier;
+                countPipe();
+                addScore(settingScoreMultiplier);
                 if (pipe.isGolden) {
-                    score += settingGoldenPipeBonus;
+                    addScore(settingGoldenPipeBonus);
                     roundGoldenPoints += settingGoldenPipeBonus;
                 }
                 playSound(soundPoint);
@@ -2313,6 +2533,7 @@ class GameView extends View implements Choreographer.FrameCallback {
             }
         }
         roundEndCause = "";
+        round.append("; ").append(judgeRound(assists));
         SettingsActivity.ActivityLog.add(getContext(), "ROUND", round.toString());
         if (isNewBest) {
             SettingsActivity.ActivityLog.add(getContext(), "BEST", "New high score " + score + " (was " + previousBest + ")"
@@ -2320,6 +2541,898 @@ class GameView extends View implements Choreographer.FrameCallback {
         }
         if (earnedBest && earned >= 0) {
             SettingsActivity.ActivityLog.add(getContext(), "BEST", "Best earned by playing is now " + score + " (was " + earned + ")");
+        }
+    }
+
+    private int fingerprint(int hash, float value) {
+        return (hash ^ Float.floatToIntBits(value)) * 0x01000193;
+    }
+
+    private int fingerprint(int hash, int value) {
+        return (hash ^ value) * 0x01000193;
+    }
+
+    private int settingsFingerprint() {
+        int h = 0x811C9DC5;
+        h = fingerprint(h, settingGameSpeed);
+        h = fingerprint(h, settingGravity);
+        h = fingerprint(h, settingJumpStrength);
+        h = fingerprint(h, settingPipeGap);
+        h = fingerprint(h, settingBirdHangDelay);
+        h = fingerprint(h, settingPipeSpacing);
+        h = fingerprint(h, settingBirdHitbox);
+        h = fingerprint(h, settingMovingPipesEnabled ? 1 : 0);
+        h = fingerprint(h, settingNoClipEnabled ? 1 : 0);
+        h = fingerprint(h, settingUpsideDownEnabled ? 1 : 0);
+        h = fingerprint(h, settingReversePipesEnabled ? 1 : 0);
+        h = fingerprint(h, settingPipeVariation);
+        h = fingerprint(h, settingScoreMultiplier);
+        h = fingerprint(h, settingPipeSpeedVariation);
+        h = fingerprint(h, settingBirdSize);
+        h = fingerprint(h, settingPipeWidth);
+        h = fingerprint(h, settingJetpackModeEnabled ? 1 : 0);
+        h = fingerprint(h, settingDrunkModeEnabled ? 1 : 0);
+        h = fingerprint(h, settingGoldenPipeEnabled ? 1 : 0);
+        h = fingerprint(h, settingExtraLives);
+        h = fingerprint(h, settingAutopilotEnabled ? 1 : 0);
+        h = fingerprint(h, settingSpeedRampPercent);
+        h = fingerprint(h, settingGapShrinkPercent);
+        h = fingerprint(h, settingFixedStepEnabled ? 1 : 0);
+        h = fingerprint(h, settingMaxFallSpeed);
+        h = fingerprint(h, settingCeilingEnabled ? 1 : 0);
+        h = fingerprint(h, settingPixelStepsEnabled ? 1 : 0);
+        h = fingerprint(h, settingFlapLimitEnabled ? 1 : 0);
+        h = fingerprint(h, settingHitboxShape);
+        h = fingerprint(h, settingGapPlacement);
+        h = fingerprint(h, settingScorePoint);
+        h = fingerprint(h, settingBirdPosition);
+        h = fingerprint(h, settingStartHeight);
+        h = fingerprint(h, settingShowHitboxes ? 1 : 0);
+        h = fingerprint(h, settingWeatherEffect);
+        return h;
+    }
+
+    private int tuningFingerprint() {
+        int h = 0x01000193;
+        h = fingerprint(h, gravityPerSec);
+        h = fingerprint(h, flapVelocityPerSec);
+        h = fingerprint(h, pipeSpeedPerSec);
+        h = fingerprint(h, pipeGap);
+        h = fingerprint(h, pipeSpacing);
+        h = fingerprint(h, rotationDelayThresholdPerSec);
+        h = fingerprint(h, gameplayBirdX);
+        return h;
+    }
+
+    private void sealSettings() {
+        settingsSeal = settingsFingerprint() ^ sealKey;
+    }
+
+    private void sealTuning() {
+        tuningSeal = tuningFingerprint() ^ sealKey;
+    }
+
+    private void checkSeals() {
+        if ((settingsFingerprint() ^ sealKey) != settingsSeal || (tuningFingerprint() ^ sealKey) != tuningSeal) roundTampered = true;
+        if ((scoreCheck ^ scoreKey) != score || (pipesCheck ^ scoreKey) != roundPipes) roundTampered = true;
+    }
+
+    private void startRoundChecks() {
+        roundFairMode = currentFairMode;
+        roundTampered = false;
+        roundPipes = 0;
+        pipesCheck = scoreKey;
+        roundActiveSeconds = 0.0;
+        roundRealStart = SystemClock.elapsedRealtime();
+        roundUptimeStart = SystemClock.uptimeMillis();
+        roundPausedMs = 0L;
+        pausedSince = -1L;
+        boardStatusText = null;
+        trackPause();
+        startReplay();
+        if (roundFairMode != FAIR_NONE && settingBoardAutoPost) Leaderboard.startSession(getContext(), replaySeed);
+    }
+
+    static Map<String, Object> replayPrefs(Map<String, ?> all) {
+        Map<String, Object> picked = new TreeMap<>();
+        for (Map.Entry<String, ?> entry : all.entrySet()) {
+            Object value = entry.getValue();
+            if (entry.getKey() == null || !entry.getKey().startsWith("pref_")) continue;
+            if (value instanceof Integer || value instanceof Float || value instanceof Boolean || value instanceof String || value instanceof Long) {
+                picked.put(entry.getKey(), value);
+            }
+        }
+        return picked;
+    }
+
+    static void writePrefs(DataOutputStream out, Map<String, Object> values) throws IOException {
+        out.writeInt(values.size());
+        for (Map.Entry<String, Object> entry : values.entrySet()) {
+            Object value = entry.getValue();
+            out.writeUTF(entry.getKey());
+            if (value instanceof Integer) {
+                out.writeByte('I');
+                out.writeInt((Integer) value);
+            } else if (value instanceof Float) {
+                out.writeByte('F');
+                out.writeFloat((Float) value);
+            } else if (value instanceof Boolean) {
+                out.writeByte('Z');
+                out.writeBoolean((Boolean) value);
+            } else if (value instanceof Long) {
+                out.writeByte('J');
+                out.writeLong((Long) value);
+            } else {
+                out.writeByte('S');
+                out.writeUTF(String.valueOf(value));
+            }
+        }
+    }
+
+    private void startReplay() {
+        replaySeed = seedSource.nextLong() ^ System.nanoTime();
+        Pipe.reseed(replaySeed);
+        replayLive = false;
+        replayHeader = null;
+        replayEvents = null;
+        replayCount = 0;
+        replayLastBits = 0;
+        replayPrefs = null;
+        if (roundFairMode == FAIR_NONE || !settingBoardAutoPost || !Leaderboard.configured()) return;
+        try {
+            ByteArrayOutputStream bytes = new ByteArrayOutputStream(4096);
+            DataOutputStream out = new DataOutputStream(bytes);
+            out.writeInt(REPLAY_FORMAT);
+            out.writeInt(REPLAY_RULES);
+            out.writeInt(roundFairMode);
+            out.writeLong(replaySeed);
+            out.writeInt(screenWidth);
+            out.writeInt(screenHeight);
+            out.writeInt(systemBarTop);
+            out.writeInt(systemBarBottom);
+            out.writeInt(safeInsetLeft);
+            out.writeInt(safeInsetRight);
+            out.writeFloat(scale);
+            out.writeInt(pipeGap);
+            out.writeInt(pipeSpacing);
+            out.writeFloat(pipeSpeedPerSec);
+            out.writeFloat(gravityPerSec);
+            out.writeFloat(flapVelocityPerSec);
+            out.writeDouble(clock);
+            out.writeDouble(lastFlapTime);
+            out.writeFloat(birdX);
+            out.writeFloat(baseBirdX);
+            out.writeFloat(birdY);
+            out.writeFloat(birdVelocityY);
+            out.writeFloat(birdRotation);
+            out.writeFloat(birdTiltVelocity);
+            out.writeFloat(speedVariation);
+            out.writeFloat(backgroundX);
+            out.writeFloat(groundX);
+            out.writeInt(birdFrame);
+            out.writeInt(pipes.size());
+            for (int i = 0; i < pipes.size(); i++) {
+                Pipe pipe = pipes.get(i);
+                out.writeFloat(pipe.x);
+                out.writeInt(pipe.topPipeY);
+                out.writeInt(pipe.width);
+                out.writeInt(pipe.height);
+                out.writeBoolean(pipe.isScored);
+                out.writeBoolean(pipe.isGolden);
+            }
+            replayPrefs = replayPrefs(prefs.getAll());
+            writePrefs(out, replayPrefs);
+            out.flush();
+            replayHeader = bytes.toByteArray();
+            replayEvents = new int[16384];
+            replayLive = true;
+        } catch (IOException | RuntimeException e) {
+            replayLive = false;
+        }
+    }
+
+    private void recordEvent(int value) {
+        if (replayCount == replayEvents.length) {
+            if (replayCount >= REPLAY_MAX_EVENTS) {
+                replayLive = false;
+                replayEvents = null;
+                return;
+            }
+            replayEvents = Arrays.copyOf(replayEvents, Math.min(REPLAY_MAX_EVENTS, replayCount * 2));
+        }
+        replayEvents[replayCount++] = value;
+    }
+
+    private void recordStep(float dt) {
+        int bits = Float.floatToIntBits(dt);
+        recordEvent(bits ^ replayLastBits);
+        replayLastBits = bits;
+    }
+
+    private void step(float dt) {
+        if (replayLive && gameState == GameState.PLAYING && !isPaused) recordStep(dt);
+        update(dt);
+    }
+
+    private Leaderboard.Replay takeReplay() {
+        boolean usable = replayLive && replayHeader != null && replayEvents != null && replayCount > 0
+                && replayPrefs != null && replayPrefs.equals(replayPrefs(prefs.getAll()));
+        Leaderboard.Replay replay = usable ? new Leaderboard.Replay(replayHeader, replayEvents, replayCount, replaySeed, REPLAY_RULES) : null;
+        replayLive = false;
+        replayHeader = null;
+        replayEvents = null;
+        replayPrefs = null;
+        return replay;
+    }
+
+    private void trackPause() {
+        boolean inactive = gameState == GameState.PLAYING && (isPaused || !isRunning);
+        long now = SystemClock.elapsedRealtime();
+        if (inactive && pausedSince < 0L) {
+            pausedSince = now;
+        } else if (!inactive && pausedSince >= 0L) {
+            roundPausedMs += Math.max(0L, now - pausedSince);
+            pausedSince = -1L;
+        }
+    }
+
+    private double pausedSeconds() {
+        long open = pausedSince >= 0L ? Math.max(0L, SystemClock.elapsedRealtime() - pausedSince) : 0L;
+        return (roundPausedMs + open) / 1000.0;
+    }
+
+    private String clockProblem() {
+        double real = (SystemClock.elapsedRealtime() - roundRealStart) / 1000.0;
+        double activeReal = Math.max(0.0, real - pausedSeconds());
+        double uptime = (SystemClock.uptimeMillis() - roundUptimeStart) / 1000.0;
+        double game = Math.max(0.0, clock - roundStartClock);
+        if (uptime > real + 1.0 + real * 0.03) return "the device clocks disagree";
+        if (roundActiveSeconds > real + 1.0 + real * 0.03) return "the device clocks disagree";
+        if (game > roundActiveSeconds * 1.05 + 1.0) return "game time ran faster than real time";
+        if (roundActiveSeconds > 5.0 && game < roundActiveSeconds * 0.55) return "the game ran too slowly for a fair round";
+        if (activeReal > 5.0 && activeReal > game * 1.6 + 3.0) return "the game ran slower than real time";
+        return null;
+    }
+
+    private String judgeRound(String assists) {
+        Leaderboard.Replay replay = takeReplay();
+        if (!Leaderboard.configured()) return "leaderboard not set up";
+        checkSeals();
+        String reason = null;
+        boolean classic = roundFairMode == FAIR_CLASSIC;
+        float secondsPerPoint = classic ? Leaderboard.CLASSIC_SECONDS_PER_POINT : Leaderboard.STANDARD_SECONDS_PER_POINT;
+        double seconds = Math.max(0.0, clock - roundStartClock);
+        String clocks = clockProblem();
+        if (roundFairMode == FAIR_NONE || roundFairMode != currentFairMode) {
+            reason = fairBlocker != null ? fairKeyName(fairBlocker) + " changed" : "settings changed during the round";
+        } else if (!assists.isEmpty() || roundLivesUsed > 0 || roundGoldenPoints > 0) {
+            reason = "assists were used";
+        } else if (roundTampered) {
+            reason = "game values were changed while playing";
+        } else if (score != roundPipes) {
+            reason = "the score did not match the pipes passed";
+        } else if (score > Leaderboard.MAX_SCORE) {
+            reason = "the score is above the leaderboard limit";
+        } else if (seconds < score * (double) secondsPerPoint) {
+            reason = "the score was reached faster than the game allows";
+        } else if (roundFlaps < score) {
+            reason = "too few flaps for the score";
+        } else if (clocks != null) {
+            reason = clocks;
+        }
+        if (reason != null) {
+            if (roundTampered || clocks != null || seconds < score * (double) secondsPerPoint || score != roundPipes) {
+                SettingsActivity.ActivityLog.add(getContext(), "BOARD", "Round of " + score + " rejected for the leaderboard: " + reason);
+            }
+            boardStatusText = !settingBoardAutoPost ? "Posting is off" : "Not posted: " + reason;
+            return "not eligible for the leaderboard (" + reason + ")";
+        }
+        int whole = (int) Math.ceil(seconds);
+        int paused = (int) Math.ceil(pausedSeconds());
+        if (Leaderboard.offer(prefs, score, classic, whole, roundFlaps)) {
+            SettingsActivity.ActivityLog.add(getContext(), "BOARD", "New fair best " + score + (classic ? " (Classic)" : ""));
+        }
+        boardStatusText = null;
+        if (!settingBoardAutoPost) {
+            boardStatusText = "Posting is off";
+        } else if (Leaderboard.name(prefs).isEmpty() || Leaderboard.nameTaken(prefs)) {
+            boardStatusText = "Choose a leaderboard name to post scores";
+        } else if (score > 0 && (score > Leaderboard.posted(prefs) || score > Leaderboard.weekPosted(prefs)
+                || (replay != null && Leaderboard.wantsReplay(prefs, score)))) {
+            final boolean allTime = score > Leaderboard.posted(prefs);
+            final boolean newBest = allTime || score > Leaderboard.weekPosted(prefs);
+            boardStatusText = newBest ? "Posting..." : "Sending for verification...";
+            Leaderboard.submit(getContext(), score, classic, whole, roundFlaps, paused, replay, this::post, (status, error) -> {
+                if (Leaderboard.VERIFYING.equals(status)) {
+                    boardStatusText = newBest ? "Posted! Verifying your run..." : "Verifying your run...";
+                    if (boardOpen) refreshBoard();
+                    else if (settingBoardOpenOnBest && newBest) postDelayed(this::openBoardAfterBest, 900);
+                } else if (Leaderboard.POSTED.equals(status)) {
+                    boardStatusText = allTime ? "Posted! New all-time best" : "Posted! New weekly best";
+                    if (boardOpen) refreshBoard();
+                    else if (settingBoardOpenOnBest) postDelayed(this::openBoardAfterBest, 900);
+                } else if (error != null) {
+                    boardStatusText = "Not posted: " + error.substring(0, 1).toLowerCase(Locale.US) + error.substring(1);
+                } else {
+                    boardStatusText = null;
+                }
+            });
+        }
+        return classic ? "eligible for the leaderboard (Classic)" : "eligible for the leaderboard";
+    }
+
+    void setBoardHost(BoardHost host) {
+        boardHost = host;
+    }
+
+    void askFirstName() {
+        if (boardHost == null || !Leaderboard.configured() || nameOverlayOpen) return;
+        boolean taken = Leaderboard.nameTaken(prefs);
+        if (!taken && (Leaderboard.asked(prefs) || !Leaderboard.name(prefs).isEmpty())) return;
+        boardHost.askName(taken ? Leaderboard.name(prefs) : "", true, name -> {
+            if (boardOpen) refreshBoard();
+        });
+    }
+
+    private void openBoardAfterBest() {
+        if (gameState == GameState.PANEL_SLIDING && !boardOpen && !nameOverlayOpen) openBoard();
+    }
+
+    void setNameOverlay(boolean open) {
+        nameOverlayOpen = open;
+        if (!open) boardReserve = 0f;
+        boardPressed = null;
+        invalidate();
+    }
+
+    private float baseBoardUnit() {
+        float usableWidth = screenWidth - safeInsetLeft - safeInsetRight;
+        return Math.max(0.01f, Math.min(scale, Math.min(usableWidth / 252f, getPlayableHeight() / 360f)));
+    }
+
+    private float overlayBottom() {
+        return Math.min(systemBarTop + getPlayableHeight(), screenHeight - imeInset);
+    }
+
+    private void placeNamePanel() {
+        if (boardHost == null) return;
+        float unit = baseBoardUnit() * 0.95f;
+        float bottom = overlayBottom();
+        float panelHeight = boardHost.namePanelHeight(unit);
+        float room = bottom - systemBarTop - 8f * unit;
+        if (panelHeight > room && room > 0f && panelHeight > 0f) {
+            unit *= room / panelHeight;
+            panelHeight = boardHost.namePanelHeight(unit);
+        }
+        boardReserve = boardOpen ? panelHeight + 10f * unit : 0f;
+        float top = boardOpen && !boardSqueezed ? boardPanel.bottom + 6f * unit : systemBarTop + (bottom - systemBarTop - panelHeight) / 2f;
+        top = Math.max(systemBarTop, Math.min(top, bottom - panelHeight - 4f * unit));
+        boardHost.placeNamePanel(Math.round(top), unit);
+    }
+
+    private void drawNameBackdrop(Canvas canvas) {
+        if (boardPaint == null) boardPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        boardPaint.setColor(BOARD_DIM);
+        canvas.drawRect(0, 0, screenWidth, screenHeight, boardPaint);
+        placeNamePanel();
+    }
+
+    private void drawBoardStatus(Canvas canvas) {
+        if (boardStatusPaint == null) {
+            boardStatusPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+            Typeface face = null;
+            try {
+                face = ResourcesCompat.getFont(getContext(), R.font.flappy_font);
+            } catch (RuntimeException ignored) {
+            }
+            boardStatusPaint.setTypeface(face != null ? face : Typeface.DEFAULT_BOLD);
+            boardStatusPaint.setTextAlign(Paint.Align.CENTER);
+        }
+        float size = 7f * scale;
+        boardStatusPaint.setTextSize(size);
+        float maxWidth = screenWidth - safeInsetLeft - safeInsetRight - 16f * scale;
+        float width = boardStatusPaint.measureText(boardStatusText);
+        if (width > maxWidth && maxWidth > 0f) boardStatusPaint.setTextSize(size * maxWidth / width);
+        float x = safeInsetLeft + (screenWidth - safeInsetLeft - safeInsetRight) / 2f;
+        float y = playButtonRect.bottom + 14f * scale;
+        boardStatusPaint.setStyle(Paint.Style.STROKE);
+        boardStatusPaint.setStrokeWidth(Math.max(1f, scale * 1.2f));
+        boardStatusPaint.setColor(BOARD_DARK);
+        canvas.drawText(boardStatusText, x, y, boardStatusPaint);
+        boardStatusPaint.setStyle(Paint.Style.FILL);
+        boardStatusPaint.setColor(Color.WHITE);
+        canvas.drawText(boardStatusText, x, y, boardStatusPaint);
+    }
+
+    boolean closeBoardIfOpen() {
+        if (!boardOpen) return false;
+        closeBoard();
+        return true;
+    }
+
+    private void resetBoardScroll() {
+        boardScroll = 0f;
+        boardFling = 0f;
+        boardScrollTarget = Float.NaN;
+        boardDragArmed = false;
+        boardDragging = false;
+    }
+
+    private void openBoard() {
+        resetBoardScroll();
+        boardTab = settingBoardTab;
+        boardShowAll = Boolean.TRUE.equals(prefs.getAll().get(BOARD_SHOW_ALL_KEY));
+        boardOpen = true;
+        boardClosing = false;
+        boardAnim = 0f;
+        boardPressed = null;
+        if (boardHost != null) boardHost.boardVisible(true);
+        refreshBoard();
+    }
+
+    private void closeBoard() {
+        if (!boardOpen || boardClosing) return;
+        boardClosing = true;
+        boardPressed = null;
+    }
+
+    private void finishClosingBoard() {
+        boardOpen = false;
+        boardClosing = false;
+        boardAnim = 0f;
+        if (boardHost != null) boardHost.boardVisible(false);
+    }
+
+    private void animateBoard(float deltaTime) {
+        float step = Math.min(0.1f, Math.max(0f, deltaTime));
+        boardReserveShown += (boardReserve - boardReserveShown) * Math.min(1f, step * 12f);
+        if (Math.abs(boardReserve - boardReserveShown) < 0.5f) boardReserveShown = boardReserve;
+        if (!boardOpen) return;
+        if (!boardDragging) {
+            if (!Float.isNaN(boardScrollTarget)) {
+                boardScroll += (boardScrollTarget - boardScroll) * Math.min(1f, step * 12f);
+                if (Math.abs(boardScrollTarget - boardScroll) < 0.5f) {
+                    boardScroll = boardScrollTarget;
+                    boardScrollTarget = Float.NaN;
+                }
+            } else if (boardFling != 0f) {
+                boardScroll += boardFling * step;
+                boardFling *= Math.max(0f, 1f - step * 4f);
+                if (Math.abs(boardFling) < boardRowStep || boardScroll <= 0f || boardScroll >= boardScrollMax) boardFling = 0f;
+            }
+            boardScroll = Math.max(0f, Math.min(boardScrollMax, boardScroll));
+        }
+        if (boardClosing) {
+            boardAnim -= step / BOARD_CLOSE_SEC;
+            if (boardAnim <= 0f) finishClosingBoard();
+        } else if (boardAnim < 1f) {
+            boardAnim = Math.min(1f, boardAnim + step / BOARD_OPEN_SEC);
+        }
+    }
+
+    private String boardHint() {
+        if (Leaderboard.nameTaken(prefs)) return "Your name is taken. Tap NAME to choose another";
+        if (Leaderboard.name(prefs).isEmpty()) return "Tap NAME to choose a name";
+        if (!settingBoardAutoPost) return "Posting is off in Settings > System";
+        if (boardData.verifying && !boardShowAll) return "Verifying your latest run...";
+        long sinceVerdict = Leaderboard.now() - boardData.verdictTime;
+        if (!boardShowAll && boardData.verdictTime > 0 && sinceVerdict > -600000L && sinceVerdict < 86400000L && boardData.verdictScore > 0) {
+            if (boardData.verdictOk) return "Your " + boardData.verdictScore + " was verified!";
+            if (!boardData.verdictWhy.isEmpty()) return "Your " + boardData.verdictScore + " was not verified: " + boardData.verdictWhy;
+        }
+        if (currentFairMode == FAIR_NONE) return "Not posting: " + fairKeyName(fairBlocker) + " changed";
+        List<Leaderboard.Entry> entries = boardEntries();
+        if (entries.isEmpty()) return boardShowAll ? "No scores yet. Be the first!" : "No verified scores yet";
+        if (boardTab == 1) {
+            long left = Math.max(0L, boardData.weekEnds - Leaderboard.now());
+            long hours = left / 3600000L;
+            return hours >= 24 ? "Resets in " + hours / 24 + "d " + hours % 24 + "h" : "Resets in " + Math.max(1L, hours) + "h";
+        }
+        return currentFairMode == FAIR_CLASSIC ? "Your scores post as Classic" : "";
+    }
+
+    private List<Leaderboard.Entry> boardEntries() {
+        if (boardTab == 0) return boardShowAll ? boardData.allTime : boardData.verifiedAllTime;
+        return boardShowAll ? boardData.weekly : boardData.verifiedWeekly;
+    }
+
+    private Leaderboard.Entry boardMine() {
+        if (boardTab == 0) return boardShowAll ? boardData.mineAllTime : boardData.mineVerifiedAllTime;
+        return boardShowAll ? boardData.mineWeekly : boardData.mineVerifiedWeekly;
+    }
+
+    private int boardRank() {
+        if (boardTab == 0) return boardShowAll ? boardData.rankAllTime : boardData.rankVerifiedAllTime;
+        return boardShowAll ? boardData.rankWeekly : boardData.rankVerifiedWeekly;
+    }
+
+    private void refreshBoard() {
+        if (!Leaderboard.configured()) {
+            boardLoading = false;
+            boardNote = "The leaderboard is not set up in this build";
+            return;
+        }
+        boardLoading = true;
+        boardNote = "Loading...";
+        Leaderboard.fetch(getContext(), settingBoardSize, this::post, (board, error) -> {
+            boardLoading = false;
+            if (board != null) {
+                boardData = board;
+                boardNote = boardHint();
+            } else {
+                boardNote = error != null ? error : Leaderboard.NO_CONNECTION;
+            }
+        });
+    }
+
+    private void askBoardName() {
+        if (boardHost == null || !Leaderboard.configured()) return;
+        boardHost.askName(Leaderboard.name(prefs), false, name -> {
+            if (boardOpen) refreshBoard();
+        });
+    }
+
+    private boolean onBoardTouch(int action, int x, int y) {
+        boolean ready = !boardClosing && boardAnim >= 1f && !nameOverlayOpen;
+        if (action == MotionEvent.ACTION_DOWN) {
+            boardPressed = !ready ? null : boardCloseRect.contains(x, y) ? boardCloseRect : boardJoinRect.contains(x, y) ? boardJoinRect
+                    : boardTabAllRect.contains(x, y) ? boardTabAllRect : boardTabWeekRect.contains(x, y) ? boardTabWeekRect
+                    : boardToggleRect.contains(x, y) ? boardToggleRect : boardYouRect.contains(x, y) ? boardYouRect : null;
+            boardDragArmed = ready && boardScrollMax > 0f && boardRowsRect.contains(x, y);
+            boardDragging = false;
+            boardDragStartY = y;
+            boardDragLastY = y;
+            boardDragLastTime = SystemClock.uptimeMillis();
+            if (boardDragArmed) {
+                boardFling = 0f;
+                boardScrollTarget = Float.NaN;
+            }
+        } else if (action == MotionEvent.ACTION_MOVE) {
+            if (boardDragArmed) {
+                if (!boardDragging && Math.abs(y - boardDragStartY) > boardRowStep * 0.4f) {
+                    boardDragging = true;
+                    boardPressed = null;
+                    boardDragLastY = y;
+                }
+                if (boardDragging) {
+                    long now = SystemClock.uptimeMillis();
+                    float moved = y - boardDragLastY;
+                    float seconds = Math.max(0.001f, (now - boardDragLastTime) / 1000f);
+                    boardScroll = Math.max(0f, Math.min(boardScrollMax, boardScroll - moved));
+                    boardFling = boardFling * 0.3f + (-moved / seconds) * 0.7f;
+                    boardDragLastY = y;
+                    boardDragLastTime = now;
+                }
+            }
+        } else if (action == MotionEvent.ACTION_UP) {
+            Rect pressed = boardPressed;
+            boardPressed = null;
+            boolean dragged = boardDragging;
+            boardDragArmed = false;
+            boardDragging = false;
+            if (dragged) {
+                if (SystemClock.uptimeMillis() - boardDragLastTime > 80L) boardFling = 0f;
+                return true;
+            }
+            boardFling = 0f;
+            if (ready && pressed != null && pressed.contains(x, y)) {
+                playSound(soundSwooshing);
+                if (pressed == boardCloseRect) closeBoard();
+                else if (pressed == boardJoinRect) askBoardName();
+                else if (pressed == boardYouRect) scrollBoardToMine();
+                else if (pressed == boardToggleRect) {
+                    boardShowAll = !boardShowAll;
+                    resetBoardScroll();
+                    prefs.edit().putBoolean(BOARD_SHOW_ALL_KEY, boardShowAll).apply();
+                    if (!boardLoading && boardData != null) boardNote = boardHint();
+                } else {
+                    int tab = pressed == boardTabAllRect ? 0 : 1;
+                    if (tab != boardTab) resetBoardScroll();
+                    boardTab = tab;
+                    if (!boardLoading && boardData != null) boardNote = boardHint();
+                }
+            }
+        } else if (action == MotionEvent.ACTION_CANCEL) {
+            boardPressed = null;
+            boardDragArmed = false;
+            boardDragging = false;
+            boardFling = 0f;
+        }
+        return true;
+    }
+
+    private void scrollBoardToMine() {
+        if (boardMineIndex < 0) return;
+        float view = BOARD_ROWS * boardRowStep;
+        float target = boardMineIndex * boardRowStep - (view - boardRowStep) / 2f;
+        boardFling = 0f;
+        boardScrollTarget = Math.max(0f, Math.min(boardScrollMax, target));
+    }
+
+    boolean scrollBoard(float rows) {
+        if (!boardOpen || boardClosing || boardScrollMax <= 0f) return false;
+        boardFling = 0f;
+        float from = Float.isNaN(boardScrollTarget) ? boardScroll : boardScrollTarget;
+        boardScrollTarget = Math.max(0f, Math.min(boardScrollMax, from + rows * boardRowStep));
+        return true;
+    }
+
+    private int faded(int color) {
+        int alpha = Math.round(Color.alpha(color) * boardAlpha);
+        return (color & 0x00FFFFFF) | (Math.max(0, Math.min(255, alpha)) << 24);
+    }
+
+    private void boardText(Canvas canvas, String text, float x, float y, float size, int color, Paint.Align align, float maxWidth) {
+        boardTextPaint.setTextSize(size);
+        boardTextPaint.setTextAlign(align);
+        boardTextPaint.setColor(faded(color));
+        float width = boardTextPaint.measureText(text);
+        if (maxWidth > 0f && width > maxWidth) boardTextPaint.setTextSize(size * maxWidth / width);
+        canvas.drawText(text, x, y, boardTextPaint);
+    }
+
+    private void boardButton(Canvas canvas, Rect rect, String label, float unit) {
+        float drop = boardPressed == rect ? unit * 1.5f : 0f;
+        boardPaint.setColor(faded(BOARD_DARK));
+        boardShape.set(rect.left, rect.top + unit * 1.5f, rect.right, rect.bottom + unit * 1.5f);
+        canvas.drawRoundRect(boardShape, unit * 3f, unit * 3f, boardPaint);
+        boardShape.set(rect.left, rect.top + drop, rect.right, rect.bottom + drop);
+        canvas.drawRoundRect(boardShape, unit * 3f, unit * 3f, boardPaint);
+        boardPaint.setColor(faded(Color.WHITE));
+        boardShape.inset(unit * 1.5f, unit * 1.5f);
+        canvas.drawRoundRect(boardShape, unit * 2f, unit * 2f, boardPaint);
+        boardText(canvas, label, rect.exactCenterX(), rect.exactCenterY() + drop + unit * 3.6f, unit * 10f, BOARD_ORANGE,
+                Paint.Align.CENTER, rect.width() - unit * 8f);
+    }
+
+    private void boardTab(Canvas canvas, Rect rect, String label, boolean selected, float unit) {
+        boardShape.set(rect);
+        boardPaint.setColor(faded(selected ? BOARD_ORANGE : BOARD_TAB_IDLE));
+        canvas.drawRoundRect(boardShape, unit * 3f, unit * 3f, boardPaint);
+        if (selected) {
+            boardPaint.setColor(faded(BOARD_DARK));
+            boardShape.set(rect.left + unit * 2f, rect.bottom - unit * 1.5f, rect.right - unit * 2f, rect.bottom);
+            canvas.drawRect(boardShape, boardPaint);
+        }
+        boardText(canvas, label, rect.exactCenterX(), rect.exactCenterY() + unit * 3f, unit * 8.5f,
+                selected ? Color.WHITE : BOARD_DARK, Paint.Align.CENTER, rect.width() - unit * 6f);
+    }
+
+    private void boardRow(Canvas canvas, Leaderboard.Entry entry, String rank, float left, float width, float rowTop, float unit, boolean mine) {
+        float rowHeight = BOARD_ROW_HEIGHT * unit;
+        float baseline = rowTop + 13.5f * unit;
+        if (mine) {
+            boardPaint.setColor(faded(BOARD_OWN_ROW));
+            boardShape.set(left + 7f * unit, rowTop + unit, left + width - 7f * unit, rowTop + rowHeight - unit);
+            canvas.drawRoundRect(boardShape, unit * 2f, unit * 2f, boardPaint);
+        }
+        boardText(canvas, rank, left + 32f * unit, baseline, 10f * unit, BOARD_ORANGE, Paint.Align.RIGHT, 26f * unit);
+        String score = String.valueOf(entry.score);
+        boardText(canvas, score, left + width - 13f * unit, baseline, 11f * unit, BOARD_DARK, Paint.Align.RIGHT, 0f);
+        float scoreWidth = boardTextPaint.measureText(score);
+        float badgeRoom = 0f;
+        if (entry.verified) {
+            badgeRoom = 13f * unit;
+            verifiedBadge(canvas, left + width - 13f * unit - scoreWidth - 7.5f * unit, rowTop + 9.5f * unit, unit);
+        }
+        float nameLeft = left + 37f * unit;
+        float nameRoom = width - 37f * unit - 13f * unit - scoreWidth - badgeRoom - 6f * unit - (entry.classic ? 40f * unit : 0f);
+        boardText(canvas, entry.name, nameLeft, baseline, 10f * unit, BOARD_DARK, Paint.Align.LEFT, nameRoom);
+        if (entry.classic) {
+            float nameWidth = Math.min(nameRoom, boardTextPaint.measureText(entry.name));
+            float tagLeft = nameLeft + nameWidth + 4f * unit;
+            boardPaint.setColor(faded(BOARD_ORANGE));
+            boardShape.set(tagLeft, rowTop + 4.5f * unit, tagLeft + 36f * unit, rowTop + 14.5f * unit);
+            canvas.drawRoundRect(boardShape, unit * 2f, unit * 2f, boardPaint);
+            boardText(canvas, "CLASSIC", tagLeft + 18f * unit, rowTop + 12f * unit, 6.5f * unit, Color.WHITE, Paint.Align.CENTER, 32f * unit);
+        }
+    }
+
+    private void verifiedBadge(Canvas canvas, float x, float y, float unit) {
+        boardPaint.setColor(faded(BOARD_DARK));
+        canvas.drawCircle(x, y + unit * 0.8f, 5.2f * unit, boardPaint);
+        boardPaint.setColor(faded(BOARD_VERIFIED));
+        canvas.drawCircle(x, y, 5.2f * unit, boardPaint);
+        boardPaint.setColor(faded(Color.WHITE));
+        boardPaint.setStyle(Paint.Style.STROKE);
+        boardPaint.setStrokeWidth(1.5f * unit);
+        boardPaint.setStrokeCap(Paint.Cap.ROUND);
+        canvas.drawLine(x - 2.4f * unit, y + 0.1f * unit, x - 0.6f * unit, y + 1.9f * unit, boardPaint);
+        canvas.drawLine(x - 0.6f * unit, y + 1.9f * unit, x + 2.6f * unit, y - 1.9f * unit, boardPaint);
+        boardPaint.setStyle(Paint.Style.FILL);
+        boardPaint.setStrokeCap(Paint.Cap.BUTT);
+    }
+
+    private void boardToggle(Canvas canvas, Rect rect, float unit) {
+        float box = 9f * unit;
+        float drop = boardPressed == rect ? unit : 0f;
+        float boxLeft = rect.left + unit;
+        float boxTop = rect.exactCenterY() - box / 2f + drop;
+        boardShape.set(boxLeft, boxTop, boxLeft + box, boxTop + box);
+        boardPaint.setColor(faded(BOARD_DARK));
+        canvas.drawRoundRect(boardShape, unit * 2f, unit * 2f, boardPaint);
+        boardShape.inset(unit * 1.2f, unit * 1.2f);
+        boardPaint.setColor(faded(boardShowAll ? BOARD_ORANGE : Color.WHITE));
+        canvas.drawRoundRect(boardShape, unit * 1.2f, unit * 1.2f, boardPaint);
+        if (boardShowAll) {
+            float cx = boxLeft + box / 2f, cy = boxTop + box / 2f;
+            boardPaint.setColor(faded(Color.WHITE));
+            boardPaint.setStyle(Paint.Style.STROKE);
+            boardPaint.setStrokeWidth(1.4f * unit);
+            boardPaint.setStrokeCap(Paint.Cap.ROUND);
+            canvas.drawLine(cx - 2.2f * unit, cy, cx - 0.6f * unit, cy + 1.7f * unit, boardPaint);
+            canvas.drawLine(cx - 0.6f * unit, cy + 1.7f * unit, cx + 2.4f * unit, cy - 1.8f * unit, boardPaint);
+            boardPaint.setStyle(Paint.Style.FILL);
+            boardPaint.setStrokeCap(Paint.Cap.BUTT);
+        }
+        boardText(canvas, "SHOW UNVERIFIED", boxLeft + box + 4f * unit, rect.exactCenterY() + 2.6f * unit + drop, 7f * unit, BOARD_DARK,
+                Paint.Align.LEFT, rect.right - (boxLeft + box + 4f * unit));
+    }
+
+    private void drawBoard(Canvas canvas) {
+        if (boardPaint == null) boardPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        if (boardTextPaint == null) {
+            boardTextPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+            Typeface face = null;
+            try {
+                face = ResourcesCompat.getFont(getContext(), R.font.flappy_font);
+            } catch (RuntimeException ignored) {
+            }
+            boardTextPaint.setTypeface(face != null ? face : Typeface.DEFAULT_BOLD);
+        }
+        float t = Math.max(0f, Math.min(1f, boardAnim));
+        float eased;
+        if (boardClosing) {
+            eased = t * t;
+            boardAlpha = t;
+        } else {
+            float back = 1.70158f;
+            float x = t - 1f;
+            eased = 1f + (back + 1f) * x * x * x + back * x * x;
+            boardAlpha = Math.min(1f, t * 1.8f);
+        }
+        float panelScale = 0.82f + 0.18f * eased;
+
+        float usableWidth = screenWidth - safeInsetLeft - safeInsetRight;
+        float area = getPlayableHeight();
+        if (nameOverlayOpen || boardReserveShown > 0f) area = Math.max(0f, overlayBottom() - systemBarTop - boardReserveShown);
+        float unit = Math.max(0.01f, Math.min(scale, Math.min(usableWidth / 252f, area / 360f)));
+        boardSqueezed = nameOverlayOpen && unit < baseBoardUnit() * 0.45f;
+        float rowHeight = BOARD_ROW_HEIGHT * unit;
+        float width = 236f * unit;
+        float height = 150f * unit + (BOARD_ROWS + 1) * rowHeight;
+        float left = safeInsetLeft + (usableWidth - width) / 2f;
+        float top = systemBarTop + (area - height) / 2f;
+
+        boardPaint.setColor(faded(BOARD_DIM));
+        canvas.drawRect(0, 0, screenWidth, screenHeight, boardPaint);
+
+        boardPanel.set(left, top, left + width, top + height);
+        if (nameOverlayOpen) placeNamePanel();
+        if (boardSqueezed) return;
+        canvas.save();
+        canvas.scale(panelScale, panelScale, boardPanel.centerX(), boardPanel.centerY());
+        canvas.translate(0f, (1f - eased) * 24f * unit);
+
+        boardPaint.setColor(faded(BOARD_DARK));
+        canvas.drawRoundRect(boardPanel, unit * 5f, unit * 5f, boardPaint);
+        boardShape.set(boardPanel);
+        boardShape.inset(unit * 2f, unit * 2f);
+        boardPaint.setColor(faded(BOARD_PANEL_EDGE));
+        canvas.drawRoundRect(boardShape, unit * 4f, unit * 4f, boardPaint);
+        boardShape.inset(unit * 1.5f, unit * 1.5f);
+        boardPaint.setColor(faded(BOARD_PANEL));
+        canvas.drawRoundRect(boardShape, unit * 3f, unit * 3f, boardPaint);
+
+        boardText(canvas, "LEADERBOARD", left + width / 2f, top + 24f * unit, 15f * unit, BOARD_ORANGE, Paint.Align.CENTER, width - 24f * unit);
+
+        float tabTop = top + 32f * unit;
+        float tabWidth = 96f * unit;
+        float tabGap = 6f * unit;
+        float tabsLeft = left + (width - tabWidth * 2f - tabGap) / 2f;
+        boardTabAllRect.set((int) tabsLeft, (int) tabTop, (int) (tabsLeft + tabWidth), (int) (tabTop + 18f * unit));
+        boardTabWeekRect.set((int) (tabsLeft + tabWidth + tabGap), (int) tabTop, (int) (tabsLeft + tabWidth * 2f + tabGap), (int) (tabTop + 18f * unit));
+        boardTab(canvas, boardTabAllRect, "ALL TIME", boardTab == 0, unit);
+        boardTab(canvas, boardTabWeekRect, "WEEKLY", boardTab == 1, unit);
+
+        String own = Leaderboard.uid(prefs);
+        List<Leaderboard.Entry> entries = boardEntries();
+        Leaderboard.Entry mine = boardMine();
+        int rank = boardRank();
+        float rowsTop = tabTop + 24f * unit;
+        float rowsHeight = BOARD_ROWS * rowHeight;
+        int count = entries.size();
+        if (entries != boardIndexed) {
+            boardIndexed = entries;
+            boardMineIndex = -1;
+            for (int i = 0; i < count && !own.isEmpty(); i++) {
+                if (own.equals(entries.get(i).uid)) {
+                    boardMineIndex = i;
+                    break;
+                }
+            }
+        }
+        boardRowStep = rowHeight;
+        boardScrollMax = Math.max(0f, (count - BOARD_ROWS) * rowHeight);
+        boardScroll = Math.max(0f, Math.min(boardScrollMax, boardScroll));
+        boardRowsRect.set((int) left, (int) rowsTop, (int) (left + width), (int) (rowsTop + rowsHeight));
+        canvas.save();
+        canvas.clipRect(left, rowsTop, left + width, rowsTop + rowsHeight);
+        int first = Math.max(0, (int) (boardScroll / rowHeight));
+        int last = Math.min(count, first + BOARD_ROWS + 1);
+        for (int row = first; row < last; row++) {
+            boardRow(canvas, entries.get(row), String.valueOf(row + 1), left, width, rowsTop + row * rowHeight - boardScroll, unit,
+                    row == boardMineIndex);
+        }
+        canvas.restore();
+        if (boardScrollMax > 0f) {
+            float trackTop = rowsTop + 2f * unit;
+            float track = rowsHeight - 4f * unit;
+            float thumb = Math.max(14f * unit, track * BOARD_ROWS / count);
+            float thumbTop = trackTop + (track - thumb) * (boardScroll / boardScrollMax);
+            float barRight = left + width - 5f * unit;
+            boardPaint.setColor(faded(BOARD_DIVIDER));
+            boardShape.set(barRight - 2.5f * unit, trackTop, barRight, trackTop + track);
+            canvas.drawRoundRect(boardShape, unit * 1.25f, unit * 1.25f, boardPaint);
+            boardPaint.setColor(faded(BOARD_DARK));
+            boardShape.set(barRight - 2.5f * unit, thumbTop, barRight, thumbTop + thumb);
+            canvas.drawRoundRect(boardShape, unit * 1.25f, unit * 1.25f, boardPaint);
+        }
+        float youTop = rowsTop + rowsHeight;
+        boardYouRect.setEmpty();
+        if (!boardLoading) {
+            float mineTop = boardMineIndex * rowHeight - boardScroll;
+            boolean hidden = boardMineIndex >= 0 && (mineTop < -rowHeight * 0.5f || mineTop > rowsHeight - rowHeight * 0.5f);
+            Leaderboard.Entry pinned = null;
+            String place = null;
+            if (hidden) {
+                pinned = entries.get(boardMineIndex);
+                place = "#" + (boardMineIndex + 1);
+                boardYouRect.set((int) left, (int) youTop, (int) (left + width), (int) (youTop + rowHeight + 2f * unit));
+            } else if (boardMineIndex < 0 && mine != null && mine.score > 0) {
+                pinned = mine;
+                place = rank > 0 ? "#" + rank : rank < 0 ? Leaderboard.RANK_LIMIT + "+" : "-";
+            }
+            if (pinned != null) {
+                boardPaint.setColor(faded(BOARD_DIVIDER));
+                boardShape.set(left + 12f * unit, youTop + unit, left + width - 12f * unit, youTop + unit * 1.8f);
+                canvas.drawRect(boardShape, boardPaint);
+                float drop = boardPressed == boardYouRect ? unit : 0f;
+                boardRow(canvas, pinned, place, left, width, youTop + 2f * unit + drop, unit, true);
+            }
+        }
+
+        float footerTop = youTop + rowHeight;
+        if (!boardNote.isEmpty()) {
+            boardText(canvas, boardNote, left + width / 2f, footerTop + 15f * unit, 8f * unit, BOARD_DARK, Paint.Align.CENTER, width - 20f * unit);
+        }
+        float buttonTop = footerTop + 24f * unit;
+        float buttonWidth = 84f * unit;
+        float buttonHeight = 26f * unit;
+        float gap = 16f * unit;
+        boolean canName = Leaderboard.configured();
+        float buttonsLeft = left + (width - (canName ? buttonWidth * 2f + gap : buttonWidth)) / 2f;
+        if (canName) {
+            boardJoinRect.set((int) buttonsLeft, (int) buttonTop, (int) (buttonsLeft + buttonWidth), (int) (buttonTop + buttonHeight));
+            boardButton(canvas, boardJoinRect, "NAME", unit);
+            buttonsLeft += buttonWidth + gap;
+        } else {
+            boardJoinRect.setEmpty();
+        }
+        boardCloseRect.set((int) buttonsLeft, (int) buttonTop, (int) (buttonsLeft + buttonWidth), (int) (buttonTop + buttonHeight));
+        boardButton(canvas, boardCloseRect, "OK", unit);
+        if (canName) {
+            float toggleWidth = 92f * unit;
+            float toggleTop = buttonTop + buttonHeight + 2f * unit;
+            float toggleLeft = left + (width - toggleWidth) / 2f;
+            boardToggleRect.set((int) toggleLeft, (int) toggleTop, (int) (toggleLeft + toggleWidth), (int) (toggleTop + 22f * unit));
+            boardToggle(canvas, boardToggleRect, unit);
+        }
+        canvas.restore();
+        if (!canName) {
+            boardTabAllRect.setEmpty();
+            boardTabWeekRect.setEmpty();
+            boardToggleRect.setEmpty();
         }
     }
 
@@ -2450,6 +3563,11 @@ class GameView extends View implements Choreographer.FrameCallback {
         drawHud(canvas);
         if (settingShowFps) drawFps(canvas);
         if (isPaused) drawPauseOverlay(canvas);
+        if (boardStatusText != null && settingBoardShowStatus && gameState == GameState.PANEL_SLIDING && !playButtonRect.isEmpty()) {
+            drawBoardStatus(canvas);
+        }
+        if (boardOpen) drawBoard(canvas);
+        if (nameOverlayOpen && !boardOpen) drawNameBackdrop(canvas);
 
         if (transitionAlpha > 0) {
             transitionPaint.setAlpha((int) transitionAlpha);
@@ -3117,6 +4235,15 @@ class GameView extends View implements Choreographer.FrameCallback {
     }
 
     @Override
+    public boolean onGenericMotionEvent(MotionEvent event) {
+        if (boardOpen && !nameOverlayOpen && event.getActionMasked() == MotionEvent.ACTION_SCROLL) {
+            float amount = event.getAxisValue(MotionEvent.AXIS_VSCROLL);
+            if (amount != 0f && scrollBoard(-amount * 3f)) return true;
+        }
+        return super.onGenericMotionEvent(event);
+    }
+
+    @Override
     public boolean onTouchEvent(MotionEvent event) {
         if (!isReady) return true;
         int touchX = (int) event.getX();
@@ -3124,6 +4251,8 @@ class GameView extends View implements Choreographer.FrameCallback {
 
         int action = event.getActionMasked();
         if (event.getToolType(0) == MotionEvent.TOOL_TYPE_MOUSE) hasMouse = true;
+        if (nameOverlayOpen) return true;
+        if (boardOpen) return onBoardTouch(action, touchX, touchY);
         if (action == MotionEvent.ACTION_DOWN && isSecondaryClick(event)) {
             secondaryClickHeld = true;
             if (settingRightClickPauses) togglePause();
@@ -3200,6 +4329,9 @@ class GameView extends View implements Choreographer.FrameCallback {
 
     private boolean overButton(int x, int y) {
         if (x < 0 || y < 0) return false;
+        if (boardOpen) return boardCloseRect.contains(x, y) || boardJoinRect.contains(x, y)
+                || boardTabAllRect.contains(x, y) || boardTabWeekRect.contains(x, y) || boardToggleRect.contains(x, y)
+                || boardYouRect.contains(x, y);
         if (gameState == GameState.HOME) {
             return playButtonRect.contains(x, y) || scoreButtonRect.contains(x, y)
                     || rateButtonRect.contains(x, y) || settingsButtonRect.contains(x, y);
@@ -3232,12 +4364,26 @@ class GameView extends View implements Choreographer.FrameCallback {
     }
 
     boolean onGameKey(int keyCode, KeyEvent event, boolean down) {
-        if (!isReady || !settingKeyboardEnabled || keyCode == KeyEvent.KEYCODE_UNKNOWN || event == null) return false;
+        if (!isReady || !settingKeyboardEnabled || keyCode == KeyEvent.KEYCODE_UNKNOWN || event == null || nameOverlayOpen) return false;
         boolean flapKey = keyCode == keyFlap || keyCode == keyFlapAlt;
         boolean playKey = keyCode == keyPlay;
         boolean settingsKey = keyCode == keySettings;
         boolean running = gameState == GameState.PLAYING;
         boolean pauseKey = keyCode == keyPause || (keyCode == KeyEvent.KEYCODE_ESCAPE && running);
+        if (boardOpen) {
+            boolean closes = flapKey || playKey || keyCode == KeyEvent.KEYCODE_ESCAPE || keyCode == KeyEvent.KEYCODE_ENTER;
+            if (closes && down && event.getRepeatCount() == 0) closeBoard();
+            if (!closes) {
+                float rows = keyCode == KeyEvent.KEYCODE_DPAD_UP ? -1f : keyCode == KeyEvent.KEYCODE_DPAD_DOWN ? 1f
+                        : keyCode == KeyEvent.KEYCODE_PAGE_UP ? -BOARD_ROWS : keyCode == KeyEvent.KEYCODE_PAGE_DOWN ? BOARD_ROWS
+                        : keyCode == KeyEvent.KEYCODE_MOVE_HOME ? -100000f : keyCode == KeyEvent.KEYCODE_MOVE_END ? 100000f : 0f;
+                if (rows != 0f) {
+                    if (down) scrollBoard(rows);
+                    return true;
+                }
+            }
+            return closes || settingsKey || pauseKey;
+        }
         if (!flapKey && !playKey && !settingsKey && !(pauseKey && running)) return false;
         if (down && event.getRepeatCount() > 0) return true;
         if (pauseKey && running) {
@@ -3314,6 +4460,7 @@ class GameView extends View implements Choreographer.FrameCallback {
     private void resumeFromPause() {
         if (!isPaused) return;
         isPaused = false;
+        trackPause();
         updateWeatherSounds();
         invalidate();
     }
@@ -3367,6 +4514,8 @@ class GameView extends View implements Choreographer.FrameCallback {
             roundGoldenPoints = 0;
             roundLivesUsed = 0;
             roundAssists.clear();
+            guardScore();
+            startRoundChecks();
             offScreenSeconds = 0f;
             roundEndCause = "";
             roundFrames = 0;
@@ -3376,15 +4525,22 @@ class GameView extends View implements Choreographer.FrameCallback {
             roundSlowFrameLimit = 1.5f / displayRefreshRate();
             noteAssists();
             updateWeatherSounds();
-            if (playerFlaps) flap();
+            if (playerFlaps) {
+                if (replayLive) recordEvent(REPLAY_FLAP);
+                flap();
+            }
         } else if (gameState == GameState.PLAYING) {
-            if (playerFlaps) flap();
+            if (playerFlaps) {
+                if (replayLive) recordEvent(REPLAY_FLAP);
+                flap();
+            }
         }
     }
 
     private void pauseGame() {
         if (gameState != GameState.PLAYING) return;
         isPaused = true;
+        trackPause();
         pauseFade = 0f;
         touchHeld = false;
         flapKeyHeld = false;
@@ -3403,7 +4559,7 @@ class GameView extends View implements Choreographer.FrameCallback {
                     gameState = GameState.TRANSITION_TO_WAITING;
                     isFadingOut = true;
                 } else if (button == scoreButtonRect) {
-                    Toast.makeText(getContext(), LEADERBOARD_MESSAGE, Toast.LENGTH_SHORT).show();
+                    openBoard();
                 } else if (button == rateButtonRect) {
                     openRatePage();
                 } else if (button == settingsButtonRect) {
@@ -3414,7 +4570,7 @@ class GameView extends View implements Choreographer.FrameCallback {
                 if (button == playButtonRect) {
                     isRestarting = true;
                 } else if (button == scoreButtonRect) {
-                    Toast.makeText(getContext(), LEADERBOARD_MESSAGE, Toast.LENGTH_SHORT).show();
+                    openBoard();
                 } else if (button == settingsButtonRect) {
                     openSettings();
                 }
@@ -3575,6 +4731,7 @@ class GameView extends View implements Choreographer.FrameCallback {
     private void startLoop() {
         if (isRunning) return;
         isRunning = true;
+        trackPause();
         lastFrameTimeNanos = 0;
         stepAccumulator = 0f;
         choreographer.postFrameCallback(this);
@@ -3582,6 +4739,7 @@ class GameView extends View implements Choreographer.FrameCallback {
 
     private void stopLoop() {
         isRunning = false;
+        trackPause();
         choreographer.removeFrameCallback(this);
     }
 
@@ -3606,7 +4764,10 @@ class GameView extends View implements Choreographer.FrameCallback {
         if (deltaTime <= 0) return;
         fpsFrames++;
         fpsTimer += deltaTime;
+        animateBoard(deltaTime);
         if (gameState == GameState.PLAYING && !isPaused) {
+            roundActiveSeconds += deltaTime;
+            checkSeals();
             roundFrames++;
             roundFrameSeconds += deltaTime;
             if (deltaTime > roundWorstFrame) roundWorstFrame = deltaTime;
@@ -3626,14 +4787,14 @@ class GameView extends View implements Choreographer.FrameCallback {
             stepAccumulator += Math.min(deltaTime, FIXED_STEP_SEC * MAX_FIXED_STEPS);
             int steps = 0;
             while (stepAccumulator >= FIXED_STEP_SEC && steps < MAX_FIXED_STEPS) {
-                update(FIXED_STEP_SEC);
+                step(FIXED_STEP_SEC);
                 stepAccumulator -= FIXED_STEP_SEC;
                 steps++;
             }
             if (steps == 0) return;
         } else {
             stepAccumulator = 0f;
-            update(Math.min(deltaTime, MAX_FRAME_DELTA_SEC));
+            step(Math.min(deltaTime, MAX_FRAME_DELTA_SEC));
         }
         invalidate();
     }
@@ -4083,6 +5244,10 @@ class Pipe {
 
     private static final Random random = new Random();
     private static float pipeHeadWidth, pipeHeadHeight;
+
+    static void reseed(long seed) {
+        random.setSeed(seed);
+    }
     private static float pipeBodyWidth, pipeBodyOffsetX;
 
     float x;
@@ -4211,5 +5376,355 @@ class Pipe {
         float xPos = x + pipeBodyOffsetX + (pipeBodyWidth - visualWidth) / 2.0f;
         bottomBodyRect.set((int) xPos, (int) top, (int) (xPos + visualWidth), (int) (top + FAR_OFF_SCREEN));
         return bottomBodyRect;
+    }
+}
+
+final class NamePanel extends FrameLayout {
+
+    interface Listener {
+        void submit(String name);
+
+        void cancel();
+    }
+
+    static final int PANEL = 0xFFDED895;
+    static final int PANEL_EDGE = 0xFFF8F0B0;
+    static final int DARK = 0xFF543847;
+    static final int ORANGE = 0xFFFC7858;
+    static final float WIDTH_UNITS = 200f;
+    private static final String HELP = "Letters, numbers, spaces and _";
+
+    private final Card card;
+    private final TextView title;
+    private final TextView message;
+    private final EditText field;
+    private final TextView status;
+    private final TextView counter;
+    private final PixelButton cancel;
+    private final PixelButton ok;
+    private Listener listener;
+    private float unit = -1f;
+    private boolean busy;
+    private boolean firstTime;
+
+    static final class Card extends LinearLayout {
+        private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final RectF shape = new RectF();
+        float unit = 1f;
+
+        Card(Context context) {
+            super(context);
+            setOrientation(VERTICAL);
+            setWillNotDraw(false);
+        }
+
+        @Override
+        protected void onDraw(Canvas canvas) {
+            shape.set(0, 0, getWidth(), getHeight());
+            paint.setColor(DARK);
+            canvas.drawRoundRect(shape, unit * 5f, unit * 5f, paint);
+            shape.inset(unit * 2f, unit * 2f);
+            paint.setColor(PANEL_EDGE);
+            canvas.drawRoundRect(shape, unit * 4f, unit * 4f, paint);
+            shape.inset(unit * 1.5f, unit * 1.5f);
+            paint.setColor(PANEL);
+            canvas.drawRoundRect(shape, unit * 3f, unit * 3f, paint);
+            super.onDraw(canvas);
+        }
+    }
+
+    static final class PixelButton extends View {
+        private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final Paint text = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final RectF shape = new RectF();
+        private String label;
+        private boolean down;
+        float unit = 1f;
+
+        PixelButton(Context context, String label, Typeface face) {
+            super(context);
+            this.label = label;
+            text.setTypeface(face);
+            text.setTextAlign(Paint.Align.CENTER);
+            setClickable(true);
+            setFocusable(true);
+            setContentDescription(label);
+        }
+
+        void setLabel(String label) {
+            this.label = label;
+            setContentDescription(label);
+            invalidate();
+        }
+
+        String label() {
+            return label;
+        }
+
+        @Override
+        public boolean onTouchEvent(MotionEvent event) {
+            if (!isEnabled()) return false;
+            int action = event.getActionMasked();
+            boolean inside = event.getX() >= 0 && event.getY() >= 0 && event.getX() <= getWidth() && event.getY() <= getHeight();
+            if (action == MotionEvent.ACTION_DOWN) {
+                down = true;
+            } else if (action == MotionEvent.ACTION_UP) {
+                boolean click = down && inside;
+                down = false;
+                if (click) performClick();
+            } else if (action == MotionEvent.ACTION_CANCEL || (action == MotionEvent.ACTION_MOVE && !inside)) {
+                down = false;
+            }
+            invalidate();
+            return true;
+        }
+
+        @Override
+        protected void onDraw(Canvas canvas) {
+            float drop = down ? unit * 1.5f : 0f;
+            int alpha = isEnabled() ? 255 : 120;
+            paint.setColor(DARK);
+            paint.setAlpha(alpha);
+            shape.set(0, unit * 1.5f, getWidth(), getHeight());
+            canvas.drawRoundRect(shape, unit * 3f, unit * 3f, paint);
+            shape.set(0, drop, getWidth(), getHeight() - unit * 1.5f + drop);
+            canvas.drawRoundRect(shape, unit * 3f, unit * 3f, paint);
+            paint.setColor(Color.WHITE);
+            paint.setAlpha(alpha);
+            shape.inset(unit * 1.5f, unit * 1.5f);
+            canvas.drawRoundRect(shape, unit * 2f, unit * 2f, paint);
+            text.setColor(ORANGE);
+            text.setAlpha(alpha);
+            text.setTextSize(unit * 9f);
+            canvas.drawText(label, getWidth() / 2f, (getHeight() - unit * 1.5f) / 2f + drop + unit * 3.2f, text);
+        }
+    }
+
+    NamePanel(Context context, Typeface face) {
+        super(context);
+        card = new Card(context);
+        title = new TextView(context);
+        title.setTypeface(face);
+        title.setTextColor(ORANGE);
+        title.setGravity(Gravity.CENTER);
+        message = new TextView(context);
+        message.setTypeface(face);
+        message.setTextColor(DARK);
+        message.setGravity(Gravity.CENTER);
+        field = new EditText(context);
+        field.setTypeface(face);
+        field.setTextColor(DARK);
+        field.setHintTextColor(0x99543847);
+        field.setHint("TYPE A NAME");
+        field.setSingleLine(true);
+        field.setGravity(Gravity.CENTER);
+        field.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS | InputType.TYPE_TEXT_VARIATION_PERSON_NAME);
+        field.setImeOptions(EditorInfo.IME_ACTION_DONE | EditorInfo.IME_FLAG_NO_EXTRACT_UI);
+        field.setFilters(new InputFilter[] {new InputFilter.LengthFilter(SettingsActivity.Leaderboard.NAME_MAX)});
+        field.setContentDescription("Leaderboard name");
+        LinearLayout info = new LinearLayout(context);
+        info.setOrientation(LinearLayout.HORIZONTAL);
+        status = new TextView(context);
+        status.setTypeface(face);
+        status.setTextColor(0xB3543847);
+        counter = new TextView(context);
+        counter.setTypeface(face);
+        counter.setTextColor(0xB3543847);
+        counter.setGravity(Gravity.END);
+        info.addView(status, new LinearLayout.LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f));
+        info.addView(counter, new LinearLayout.LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT));
+        LinearLayout buttons = new LinearLayout(context);
+        buttons.setOrientation(LinearLayout.HORIZONTAL);
+        buttons.setGravity(Gravity.CENTER);
+        cancel = new PixelButton(context, "CANCEL", face);
+        ok = new PixelButton(context, "OK", face);
+        buttons.addView(cancel);
+        buttons.addView(ok);
+        card.addView(title);
+        card.addView(message);
+        card.addView(field);
+        card.addView(info);
+        card.addView(buttons);
+        addView(card, new FrameLayout.LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT, Gravity.CENTER_HORIZONTAL | Gravity.TOP));
+        setVisibility(GONE);
+        setClickable(false);
+
+        ok.setOnClickListener(v -> submit());
+        cancel.setOnClickListener(v -> {
+            if (!busy && listener != null) listener.cancel();
+        });
+        field.setOnEditorActionListener((view, action, event) -> {
+            if (action != EditorInfo.IME_ACTION_DONE) return false;
+            submit();
+            return true;
+        });
+        field.addTextChangedListener(new TextWatcher() {
+            @Override
+            public void beforeTextChanged(CharSequence text, int start, int count, int after) {
+            }
+
+            @Override
+            public void onTextChanged(CharSequence text, int start, int before, int count) {
+            }
+
+            @Override
+            public void afterTextChanged(Editable text) {
+                if (busy) return;
+                refreshState(null);
+            }
+        });
+    }
+
+    void open(boolean firstTime, String current, Listener listener) {
+        this.firstTime = firstTime;
+        this.listener = listener;
+        busy = false;
+        title.setText(firstTime ? "CHOOSE A NAME" : "YOUR NAME");
+        message.setText(firstTime ? "Shown on the online leaderboard. Fair rounds post automatically; turn that off in Settings > System." : "");
+        message.setVisibility(firstTime ? VISIBLE : GONE);
+        cancel.setVisibility(firstTime ? GONE : VISIBLE);
+        field.setEnabled(true);
+        field.setText(current == null ? "" : current);
+        field.setSelection(field.getText() == null ? 0 : field.getText().length());
+        refreshState(null);
+        setVisibility(VISIBLE);
+        card.setAlpha(0f);
+        card.setScaleX(0.85f);
+        card.setScaleY(0.85f);
+        card.animate().alpha(1f).scaleX(1f).scaleY(1f).setDuration(220).setInterpolator(new OvershootInterpolator(1.6f)).start();
+        field.requestFocus();
+        post(() -> {
+            InputMethodManager keyboard = (InputMethodManager) getContext().getSystemService(Context.INPUT_METHOD_SERVICE);
+            if (keyboard != null) keyboard.showSoftInput(field, InputMethodManager.SHOW_IMPLICIT);
+        });
+    }
+
+    void close() {
+        InputMethodManager keyboard = (InputMethodManager) getContext().getSystemService(Context.INPUT_METHOD_SERVICE);
+        if (keyboard != null) keyboard.hideSoftInputFromWindow(field.getWindowToken(), 0);
+        field.clearFocus();
+        busy = false;
+        listener = null;
+        setVisibility(GONE);
+    }
+
+    boolean isOpen() {
+        return getVisibility() == VISIBLE;
+    }
+
+    boolean cancellable() {
+        return !firstTime && !busy;
+    }
+
+    void setBusy(boolean busy) {
+        this.busy = busy;
+        field.setEnabled(!busy);
+        cancel.setEnabled(!busy);
+        refreshState(busy ? "Checking..." : null);
+    }
+
+    void showError(String error) {
+        setBusy(false);
+        refreshState(error);
+    }
+
+    private String typedName() {
+        return SettingsActivity.Leaderboard.cleanName(field.getText() == null ? "" : field.getText().toString());
+    }
+
+    private void refreshState(String note) {
+        String raw = field.getText() == null ? "" : field.getText().toString();
+        boolean valid = !typedName().isEmpty();
+        boolean error = note != null && !note.equals("Checking...");
+        if (note == null && !raw.isEmpty() && !valid) {
+            note = "Use at least one letter or number";
+            error = true;
+        }
+        status.setText(note != null ? note : HELP);
+        status.setTextColor(error ? ORANGE : 0xB3543847);
+        counter.setText(raw.length() + "/" + SettingsActivity.Leaderboard.NAME_MAX);
+        ok.setEnabled(valid && !busy);
+    }
+
+    private void submit() {
+        if (busy || listener == null) return;
+        String name = typedName();
+        if (name.isEmpty()) {
+            refreshState("Use at least one letter or number");
+            return;
+        }
+        setBusy(true);
+        listener.submit(name);
+    }
+
+    int panelHeight(float unit) {
+        applyUnit(unit);
+        card.measure(MeasureSpec.makeMeasureSpec(Math.round(WIDTH_UNITS * unit), MeasureSpec.EXACTLY),
+                MeasureSpec.makeMeasureSpec(0, MeasureSpec.UNSPECIFIED));
+        return card.getMeasuredHeight();
+    }
+
+    void place(int top, float unit) {
+        applyUnit(unit);
+        FrameLayout.LayoutParams params = (FrameLayout.LayoutParams) card.getLayoutParams();
+        int width = Math.round(WIDTH_UNITS * unit);
+        if (params.topMargin != top || params.width != width) {
+            params.topMargin = top;
+            params.width = width;
+            card.setLayoutParams(params);
+        }
+    }
+
+    private void applyUnit(float unit) {
+        if (Math.abs(unit - this.unit) < 0.001f) return;
+        this.unit = unit;
+        card.unit = unit;
+        int side = Math.round(10f * unit);
+        card.setPadding(side, Math.round(9f * unit), side, Math.round(9f * unit));
+        title.setTextSize(TypedValue.COMPLEX_UNIT_PX, 13f * unit);
+        message.setTextSize(TypedValue.COMPLEX_UNIT_PX, 6.5f * unit);
+        field.setTextSize(TypedValue.COMPLEX_UNIT_PX, 10f * unit);
+        status.setTextSize(TypedValue.COMPLEX_UNIT_PX, 6.5f * unit);
+        counter.setTextSize(TypedValue.COMPLEX_UNIT_PX, 6.5f * unit);
+        GradientDrawable box = new GradientDrawable();
+        box.setColor(PANEL_EDGE);
+        box.setCornerRadius(3f * unit);
+        box.setStroke(Math.max(1, Math.round(1.5f * unit)), DARK);
+        field.setBackground(box);
+        field.setPadding(Math.round(6f * unit), 0, Math.round(6f * unit), 0);
+        LinearLayout.LayoutParams messageParams = new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT);
+        messageParams.topMargin = Math.round(4f * unit);
+        message.setLayoutParams(messageParams);
+        LinearLayout.LayoutParams fieldParams = new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, Math.round(22f * unit));
+        fieldParams.topMargin = Math.round(7f * unit);
+        field.setLayoutParams(fieldParams);
+        LinearLayout.LayoutParams infoParams = new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT);
+        infoParams.topMargin = Math.round(3f * unit);
+        ((View) status.getParent()).setLayoutParams(infoParams);
+        LinearLayout.LayoutParams rowParams = new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, Math.round(24f * unit));
+        rowParams.topMargin = Math.round(7f * unit);
+        ((View) ok.getParent()).setLayoutParams(rowParams);
+        LinearLayout.LayoutParams cancelParams = new LinearLayout.LayoutParams(Math.round(70f * unit), LayoutParams.MATCH_PARENT);
+        cancelParams.rightMargin = Math.round(10f * unit);
+        cancel.setLayoutParams(cancelParams);
+        ok.setLayoutParams(new LinearLayout.LayoutParams(Math.round(70f * unit), LayoutParams.MATCH_PARENT));
+        cancel.unit = unit;
+        ok.unit = unit;
+    }
+
+    EditText field() {
+        return field;
+    }
+
+    PixelButton okButton() {
+        return ok;
+    }
+
+    PixelButton cancelButton() {
+        return cancel;
+    }
+
+    String statusText() {
+        return String.valueOf(status.getText());
     }
 }

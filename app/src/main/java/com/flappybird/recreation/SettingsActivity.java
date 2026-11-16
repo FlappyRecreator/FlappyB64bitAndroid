@@ -34,6 +34,7 @@ import android.graphics.drawable.GradientDrawable;
 import android.graphics.drawable.RippleDrawable;
 import android.net.Uri;
 import android.os.Build;
+import android.app.Activity;
 import android.app.ActivityManager;
 import android.content.res.Configuration;
 import android.os.PowerManager;
@@ -45,9 +46,11 @@ import android.text.TextUtils;
 import android.text.TextWatcher;
 import android.transition.AutoTransition;
 import android.transition.TransitionManager;
+import android.util.Base64;
 import android.util.DisplayMetrics;
 import android.util.Log;
 import android.view.Choreographer;
+import android.view.ContextThemeWrapper;
 import android.view.Gravity;
 import android.view.HapticFeedbackConstants;
 import android.view.KeyEvent;
@@ -83,11 +86,14 @@ import com.google.android.material.materialswitch.MaterialSwitch;
 import com.google.android.material.slider.LabelFormatter;
 import com.google.android.material.slider.Slider;
 import com.google.android.material.snackbar.Snackbar;
+import com.google.android.material.textfield.TextInputEditText;
+import com.google.android.material.textfield.TextInputLayout;
 
 import org.json.JSONException;
 import org.json.JSONObject;
 
 import java.io.ByteArrayOutputStream;
+import java.io.DataOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
@@ -95,6 +101,9 @@ import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.net.HttpURLConnection;
+import java.net.URL;
+import java.net.URLEncoder;
 import java.text.DateFormat;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
@@ -108,8 +117,13 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Random;
 import java.util.TimeZone;
+import java.util.concurrent.Executor;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Future;
+import java.util.zip.Deflater;
+import java.util.zip.DeflaterOutputStream;
 import java.util.concurrent.RejectedExecutionException;
 import java.security.SecureRandom;
 import java.util.Set;
@@ -221,6 +235,11 @@ public class SettingsActivity extends AppCompatActivity {
     public static final String PREF_KEY_SETTINGS = "pref_key_settings";
     public static final String PREF_RIGHT_CLICK_PAUSES = "pref_right_click_pauses";
     public static final String PREF_HIDE_CURSOR = "pref_hide_cursor";
+    public static final String PREF_BOARD_AUTO_POST = "pref_board_auto_post";
+    public static final String PREF_BOARD_SHOW_STATUS = "pref_board_show_status";
+    public static final String PREF_BOARD_OPEN_ON_BEST = "pref_board_open_on_best";
+    public static final String PREF_BOARD_TAB = "pref_board_tab";
+    public static final String PREF_BOARD_SIZE = "pref_board_size";
 
     public static final int DEFAULT_BIRD_COLOR = -1;
     public static final int DEFAULT_BACKGROUND = -1;
@@ -322,6 +341,105 @@ public class SettingsActivity extends AppCompatActivity {
     public static final int DEFAULT_KEY_SETTINGS = KeyEvent.KEYCODE_S;
     public static final boolean DEFAULT_RIGHT_CLICK_PAUSES = true;
     public static final boolean DEFAULT_HIDE_CURSOR = true;
+    public static final boolean DEFAULT_BOARD_AUTO_POST = true;
+    public static final boolean DEFAULT_BOARD_SHOW_STATUS = true;
+    public static final boolean DEFAULT_BOARD_OPEN_ON_BEST = false;
+    public static final int DEFAULT_BOARD_TAB = 0;
+    public static final int DEFAULT_BOARD_SIZE = 0;
+    static final int[] BOARD_SIZES = {10, 25, 50, 100, 0};
+
+    public static final int FAIR_NONE = 0;
+    public static final int FAIR_STANDARD = 1;
+    public static final int FAIR_CLASSIC = 2;
+    public static final String FAIR_MIXED = "mixed";
+    private static final int WEATHER_SLOW_MOTION = 2;
+
+    private static Object[][] fairRules() {
+        return new Object[][] {
+                {PREF_GAME_SPEED, DEFAULT_GAME_SPEED, CLASSIC_SPEED},
+                {PREF_GRAVITY, DEFAULT_GRAVITY, CLASSIC_GRAVITY},
+                {PREF_JUMP_STRENGTH, DEFAULT_JUMP_STRENGTH, CLASSIC_FLAP},
+                {PREF_BIRD_HANG_DELAY, DEFAULT_BIRD_HANG_DELAY, null},
+                {PREF_PIPE_GAP, DEFAULT_PIPE_GAP, CLASSIC_GAP},
+                {PREF_PIPE_SPACING, DEFAULT_PIPE_SPACING, CLASSIC_SPACING},
+                {PREF_BIRD_HITBOX, DEFAULT_BIRD_HITBOX, null},
+                {PREF_PIPE_VARIATION, DEFAULT_PIPE_VARIATION, null},
+                {PREF_SCORE_MULTIPLIER, DEFAULT_SCORE_MULTIPLIER, null},
+                {PREF_MOVING_PIPES_ENABLED, DEFAULT_MOVING_PIPES_ENABLED, false},
+                {PREF_PIPE_MOVE_TIER_1_SCORE, DEFAULT_PIPE_MOVE_TIER_1_SCORE, null},
+                {PREF_PIPE_MOVE_TIER_2_SCORE, DEFAULT_PIPE_MOVE_TIER_2_SCORE, null},
+                {PREF_NO_CLIP_ENABLED, DEFAULT_NO_CLIP_ENABLED, null},
+                {PREF_UPSIDE_DOWN_ENABLED, DEFAULT_UPSIDE_DOWN_ENABLED, null},
+                {PREF_REVERSE_PIPES_ENABLED, DEFAULT_REVERSE_PIPES_ENABLED, null},
+                {PREF_PIPE_SPEED_VARIATION, DEFAULT_PIPE_SPEED_VARIATION, null},
+                {PREF_BIRD_SIZE, DEFAULT_BIRD_SIZE, null},
+                {PREF_PIPE_WIDTH, DEFAULT_PIPE_WIDTH, null},
+                {PREF_JETPACK_MODE_ENABLED, DEFAULT_JETPACK_MODE_ENABLED, null},
+                {PREF_DRUNK_MODE_ENABLED, DEFAULT_DRUNK_MODE_ENABLED, null},
+                {PREF_GOLDEN_PIPE_ENABLED, DEFAULT_GOLDEN_PIPE_ENABLED, null},
+                {PREF_EXTRA_LIVES, DEFAULT_EXTRA_LIVES, null},
+                {PREF_AUTOPILOT_ENABLED, DEFAULT_AUTOPILOT_ENABLED, null},
+                {PREF_SPEED_RAMP, DEFAULT_SPEED_RAMP, null},
+                {PREF_GAP_SHRINK, DEFAULT_GAP_SHRINK, null},
+                {PREF_FIXED_STEP_ENABLED, DEFAULT_FIXED_STEP_ENABLED, true},
+                {PREF_MAX_FALL_SPEED, DEFAULT_MAX_FALL_SPEED, CLASSIC_MAX_FALL_SPEED},
+                {PREF_CEILING_ENABLED, DEFAULT_CEILING_ENABLED, false},
+                {PREF_PIXEL_STEPS_ENABLED, DEFAULT_PIXEL_STEPS_ENABLED, true},
+                {PREF_FLAP_LIMIT_ENABLED, DEFAULT_FLAP_LIMIT_ENABLED, true},
+                {PREF_HITBOX_SHAPE, DEFAULT_HITBOX_SHAPE, HITBOX_SHAPE_SQUARE},
+                {PREF_GAP_PLACEMENT, DEFAULT_GAP_PLACEMENT, GAP_PLACEMENT_CLASSIC},
+                {PREF_SCORE_POINT, DEFAULT_SCORE_POINT, SCORE_POINT_CLASSIC},
+                {PREF_BIRD_POSITION, DEFAULT_BIRD_POSITION, CLASSIC_BIRD_POSITION},
+                {PREF_START_HEIGHT, DEFAULT_START_HEIGHT, CLASSIC_START_HEIGHT},
+                {PREF_SHOW_HITBOXES, DEFAULT_SHOW_HITBOXES, null},
+        };
+    }
+
+    private static boolean sameValue(Object stored, Object wanted) {
+        if (stored == null) return false;
+        if (wanted instanceof Boolean) return wanted.equals(stored);
+        if (wanted instanceof Number) {
+            return stored instanceof Number && Math.abs(((Number) stored).doubleValue() - ((Number) wanted).doubleValue()) < 0.0005;
+        }
+        return wanted.equals(stored);
+    }
+
+    public static String fairPlayBlocker(Map<String, ?> stored) {
+        boolean standard = true;
+        boolean classic = true;
+        for (Object[] rule : fairRules()) {
+            String key = (String) rule[0];
+            Object value = stored.containsKey(key) ? stored.get(key) : rule[1];
+            boolean asDefault = sameValue(value, rule[1]);
+            boolean asClassic = sameValue(value, rule[2] != null ? rule[2] : rule[1]);
+            if (!asDefault && !asClassic) return key;
+            standard &= asDefault;
+            classic &= asClassic;
+        }
+        Object weather = stored.get(PREF_WEATHER_EFFECT);
+        if (weather != null && !(weather instanceof Integer && (Integer) weather != WEATHER_SLOW_MOTION)) return PREF_WEATHER_EFFECT;
+        return standard || classic ? null : FAIR_MIXED;
+    }
+
+    public static int fairPlayMode(Map<String, ?> stored) {
+        if (fairPlayBlocker(stored) != null) return FAIR_NONE;
+        for (Object[] rule : fairRules()) {
+            String key = (String) rule[0];
+            if (stored.containsKey(key) && !sameValue(stored.get(key), rule[1])) return FAIR_CLASSIC;
+        }
+        return FAIR_STANDARD;
+    }
+
+    public static String fairKeyName(String key) {
+        if (key == null) return "";
+        if (FAIR_MIXED.equals(key)) return "a mix of Classic and normal settings";
+        if (PREF_NO_CLIP_ENABLED.equals(key)) return "God mode";
+        if (PREF_WEATHER_EFFECT.equals(key)) return "thunderstorm";
+        String name = key.startsWith("pref_") ? key.substring(5) : key;
+        if (name.endsWith("_enabled")) name = name.substring(0, name.length() - 8);
+        if (name.endsWith("_percent")) name = name.substring(0, name.length() - 8);
+        return name.replace('_', ' ');
+    }
 
     public static long installSalt(SharedPreferences store) {
         return installSalt(store, store.getAll());
@@ -614,6 +732,988 @@ public class SettingsActivity extends AppCompatActivity {
         }
     }
 
+    public static final class Leaderboard {
+        static String DATABASE_URL = "https://flappybird-recreation09876-default-rtdb.firebaseio.com";
+        static String API_KEY = "AIzaSyBALKV08ofRI-1ES4tz_EG8DyX6BgoEtMc";
+        static String SIGN_UP_URL = "https://identitytoolkit.googleapis.com/v1/accounts:signUp";
+        static String DELETE_ACCOUNT_URL = "https://identitytoolkit.googleapis.com/v1/accounts:delete";
+        static String TOKEN_URL = "https://securetoken.googleapis.com/v1/token";
+        static boolean allowInsecure;
+        static Executor worker;
+        static long retryDelayMs = 1500;
+
+        static final int MAX_SCORE = 9999;
+        static final int NAME_MAX = 12;
+        static final int RANK_LIMIT = 1000;
+        static final float STANDARD_SECONDS_PER_POINT = 1.43f;
+        static final float CLASSIC_SECONDS_PER_POINT = 1.25f;
+        static final long WEEK_MS = 604800000L;
+        static final long WEEK_START_MS = 345600000L;
+        static final long WEEK_KEY = 100000L;
+        static final String POSTED = "posted";
+        static final String REFUSED = "refused";
+        static final String CURRENT = "current";
+        static final String NO_CONNECTION = "No connection. Try again later";
+        static final String NAME_TAKEN = "That name is taken";
+        static final String OFFLINE = "offline";
+        static final String VERIFYING = "verifying";
+        static final int REPLAY_TEXT_MAX = 2500000;
+
+        private static final String KEY_BEST = "boardBest";
+        private static final String KEY_CLASSIC = "boardClassic";
+        private static final String KEY_SECONDS = "boardSeconds";
+        private static final String KEY_FLAPS = "boardFlaps";
+        private static final String KEY_SEAL = "boardSeal";
+        private static final String KEY_POSTED = "boardPosted";
+        private static final String KEY_WEEK_POSTED = "boardWeekPosted";
+        private static final String KEY_WEEK = "boardWeek";
+        private static final String KEY_NAME = "boardName";
+        private static final String KEY_NAME_SENT = "boardNameSent";
+        private static final String KEY_NAME_CLAIMED = "boardNameClaimed";
+        private static final String KEY_NAME_TAKEN = "boardNameTaken";
+        private static final String KEY_ASKED = "boardAsked";
+        private static final String KEY_UID = "boardUid";
+        private static final String KEY_REFRESH = "boardRefresh";
+        private static final String KEY_REPLAY_BEST = "boardReplayBest";
+        private static final String KEY_REPLAY_WEEK_BEST = "boardReplayWeekBest";
+        private static final String KEY_REPLAY_WEEK = "boardReplayWeek";
+        private static final String JSON_TYPE = "application/json; charset=utf-8";
+        private static final String FORM_TYPE = "application/x-www-form-urlencoded";
+        private static final int TIMEOUT_MS = 8000;
+        private static final int MAX_REPLY_BYTES = 512 * 1024;
+
+        private static String idToken;
+        private static long idTokenUntil;
+        private static ExecutorService fetchPool;
+        private static volatile long serverOffset;
+
+        interface Poster {
+            void post(Runnable task);
+        }
+
+        interface Callback<T> {
+            void done(T value, String error);
+        }
+
+        static final class Entry {
+            String uid = "";
+            String name = "";
+            int score;
+            boolean classic;
+            boolean verified;
+            long time;
+        }
+
+        static final class Board {
+            List<Entry> allTime = new ArrayList<>();
+            List<Entry> weekly = new ArrayList<>();
+            List<Entry> verifiedAllTime = new ArrayList<>();
+            List<Entry> verifiedWeekly = new ArrayList<>();
+            Entry mineAllTime;
+            Entry mineWeekly;
+            Entry mineVerifiedAllTime;
+            Entry mineVerifiedWeekly;
+            int rankAllTime;
+            int rankWeekly;
+            int rankVerifiedAllTime;
+            int rankVerifiedWeekly;
+            boolean verifying;
+            int verdictScore;
+            boolean verdictOk;
+            String verdictWhy = "";
+            long verdictTime;
+            long weekEnds;
+        }
+
+        static final class Replay {
+            final byte[] header;
+            final int[] events;
+            final int count;
+            final long seed;
+            final int rules;
+
+            Replay(byte[] header, int[] events, int count, long seed, int rules) {
+                this.header = header;
+                this.events = events;
+                this.count = count;
+                this.seed = seed;
+                this.rules = rules;
+            }
+
+            String encode() throws IOException {
+                ByteArrayOutputStream bytes = new ByteArrayOutputStream(Math.max(1024, count));
+                Deflater deflater = new Deflater(Deflater.BEST_COMPRESSION);
+                try {
+                    DataOutputStream out = new DataOutputStream(new DeflaterOutputStream(bytes, deflater, 8192));
+                    out.writeInt(header.length);
+                    out.write(header);
+                    out.writeInt(count);
+                    for (int i = 0; i < count; i++) out.writeInt(events[i]);
+                    out.close();
+                } finally {
+                    deflater.end();
+                }
+                return Base64.encodeToString(bytes.toByteArray(), Base64.NO_WRAP);
+            }
+        }
+
+        static final class NameTaken extends Exception {
+            private static final long serialVersionUID = 1L;
+
+            NameTaken(String name) {
+                super("The name \"" + name + "\" belongs to another player");
+            }
+        }
+
+        static final class HttpError extends IOException {
+            private static final long serialVersionUID = 1L;
+            final int code;
+            final String body;
+
+            HttpError(int code, String body) {
+                super("HTTP " + code + " " + (body.length() > 160 ? body.substring(0, 160) : body));
+                this.code = code;
+                this.body = body;
+            }
+        }
+
+        private Leaderboard() {
+        }
+
+        static boolean configured() {
+            if (API_KEY == null || API_KEY.trim().isEmpty() || DATABASE_URL == null) return false;
+            String address = DATABASE_URL.trim();
+            return address.startsWith("https://") || (allowInsecure && address.startsWith("http://"));
+        }
+
+        static long now() {
+            return System.currentTimeMillis() + serverOffset;
+        }
+
+        static int week(long time) {
+            return (int) Math.floor((time - WEEK_START_MS) / (double) WEEK_MS);
+        }
+
+        static long weekEnds(int week) {
+            return (week + 1L) * WEEK_MS + WEEK_START_MS;
+        }
+
+        private static String base() {
+            String address = DATABASE_URL.trim();
+            while (address.endsWith("/")) address = address.substring(0, address.length() - 1);
+            return address;
+        }
+
+        private static SharedPreferences store(Context context) {
+            return context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
+        }
+
+        private static Context app(Context context) {
+            Context app = context.getApplicationContext();
+            return app != null ? app : context;
+        }
+
+        private static String text(SharedPreferences store, String key) {
+            Object value = store.getAll().get(key);
+            return value instanceof String ? (String) value : "";
+        }
+
+        private static int whole(Map<String, ?> all, String key) {
+            Object value = all.get(key);
+            return value instanceof Integer ? (Integer) value : 0;
+        }
+
+        private static String recordSeal(SharedPreferences store, int score, boolean classic, int seconds, int flaps) {
+            return scoreSeal(score, "board|" + classic + "|" + seconds + "|" + flaps, installSalt(store));
+        }
+
+        static boolean recordIntact(SharedPreferences store) {
+            Map<String, ?> all = store.getAll();
+            if (!all.containsKey(KEY_BEST)) return true;
+            Object seal = all.get(KEY_SEAL);
+            return seal instanceof String && seal.equals(recordSeal(store, whole(all, KEY_BEST),
+                    Boolean.TRUE.equals(all.get(KEY_CLASSIC)), whole(all, KEY_SECONDS), whole(all, KEY_FLAPS)));
+        }
+
+        static int best(SharedPreferences store) {
+            int best = whole(store.getAll(), KEY_BEST);
+            return best > 0 && best <= MAX_SCORE && recordIntact(store) ? best : 0;
+        }
+
+        static boolean bestIsClassic(SharedPreferences store) {
+            return Boolean.TRUE.equals(store.getAll().get(KEY_CLASSIC));
+        }
+
+        static int posted(SharedPreferences store) {
+            return whole(store.getAll(), KEY_POSTED);
+        }
+
+        static int weekPosted(SharedPreferences store) {
+            Map<String, ?> all = store.getAll();
+            return whole(all, KEY_WEEK) == week(now()) ? whole(all, KEY_WEEK_POSTED) : 0;
+        }
+
+        static int replayBest(SharedPreferences store) {
+            return whole(store.getAll(), KEY_REPLAY_BEST);
+        }
+
+        static int replayWeekBest(SharedPreferences store) {
+            Map<String, ?> all = store.getAll();
+            return whole(all, KEY_REPLAY_WEEK) == week(now()) ? whole(all, KEY_REPLAY_WEEK_BEST) : 0;
+        }
+
+        static boolean wantsReplay(SharedPreferences store, int score) {
+            return score > 0 && score <= MAX_SCORE && (score > replayBest(store) || score > replayWeekBest(store));
+        }
+
+        static String name(SharedPreferences store) {
+            return text(store, KEY_NAME);
+        }
+
+        static String uid(SharedPreferences store) {
+            return text(store, KEY_UID);
+        }
+
+        static boolean nameTaken(SharedPreferences store) {
+            return Boolean.TRUE.equals(store.getAll().get(KEY_NAME_TAKEN));
+        }
+
+        static String nameKey(String name) {
+            return cleanName(name).toLowerCase(Locale.US).replace(' ', '_');
+        }
+
+        static boolean asked(SharedPreferences store) {
+            return Boolean.TRUE.equals(store.getAll().get(KEY_ASKED));
+        }
+
+        static boolean offer(SharedPreferences store, int score, boolean classic, int seconds, int flaps) {
+            if (score <= 0 || score > MAX_SCORE || score <= best(store)) return false;
+            store.edit()
+                    .putInt(KEY_BEST, score)
+                    .putBoolean(KEY_CLASSIC, classic)
+                    .putInt(KEY_SECONDS, seconds)
+                    .putInt(KEY_FLAPS, flaps)
+                    .putString(KEY_SEAL, recordSeal(store, score, classic, seconds, flaps))
+                    .apply();
+            return true;
+        }
+
+        static String cleanName(String raw) {
+            if (raw == null) return "";
+            StringBuilder out = new StringBuilder();
+            for (int i = 0; i < raw.length() && out.length() < NAME_MAX; i++) {
+                char c = raw.charAt(i);
+                boolean letter = (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '_';
+                if (letter) out.append(c);
+                else if (c == ' ' && out.length() > 0 && out.charAt(out.length() - 1) != ' ') out.append(c);
+            }
+            return out.toString().trim();
+        }
+
+        private static synchronized Executor worker() {
+            if (worker == null) {
+                worker = Executors.newSingleThreadExecutor(task -> {
+                    Thread thread = new Thread(task, "Leaderboard");
+                    thread.setDaemon(true);
+                    thread.setPriority(Thread.MIN_PRIORITY);
+                    return thread;
+                });
+            }
+            return worker;
+        }
+
+        private static String readText(InputStream stream) throws IOException {
+            try (InputStream in = stream) {
+                ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+                byte[] buffer = new byte[4096];
+                int count;
+                while ((count = in.read(buffer)) != -1) {
+                    if (bytes.size() + count > MAX_REPLY_BYTES) throw new IOException("Reply too large");
+                    bytes.write(buffer, 0, count);
+                }
+                return bytes.toString("UTF-8");
+            }
+        }
+
+        private static String request(String method, String address, String body, String type) throws IOException {
+            HttpURLConnection connection = (HttpURLConnection) new URL(address).openConnection();
+            try {
+                boolean patch = "PATCH".equals(method);
+                connection.setRequestMethod(patch ? "POST" : method);
+                if (patch) connection.setRequestProperty("X-HTTP-Method-Override", "PATCH");
+                connection.setConnectTimeout(TIMEOUT_MS);
+                connection.setReadTimeout(TIMEOUT_MS);
+                connection.setUseCaches(false);
+                connection.setRequestProperty("Accept", "application/json");
+                if (body != null) {
+                    connection.setDoOutput(true);
+                    connection.setRequestProperty("Content-Type", type);
+                    try (OutputStream out = connection.getOutputStream()) {
+                        out.write(body.getBytes("UTF-8"));
+                    }
+                }
+                int code = connection.getResponseCode();
+                long date = connection.getDate();
+                if (date > 0 && address.startsWith(base())) serverOffset = date - System.currentTimeMillis();
+                InputStream stream = code >= 400 ? connection.getErrorStream() : connection.getInputStream();
+                String reply = stream == null ? "" : readText(stream);
+                if (code >= 400) throw new HttpError(code, reply);
+                return reply;
+            } finally {
+                connection.disconnect();
+            }
+        }
+
+        private static String string(Object value) {
+            return value instanceof String ? (String) value : "";
+        }
+
+        private static long number(Object value) {
+            if (value instanceof Number) return ((Number) value).longValue();
+            if (value instanceof String) {
+                try {
+                    return Long.parseLong((String) value);
+                } catch (NumberFormatException e) {
+                    return 0;
+                }
+            }
+            return 0;
+        }
+
+        private static JSONObject parse(String reply) throws JSONException {
+            String trimmed = reply == null ? "" : reply.trim();
+            return trimmed.isEmpty() || trimmed.equals("null") ? null : new JSONObject(trimmed);
+        }
+
+        private static synchronized String token(SharedPreferences store, boolean fresh) throws IOException, JSONException {
+            long now = System.nanoTime() / 1000000L;
+            if (!fresh && idToken != null && now < idTokenUntil && !uid(store).isEmpty()) return idToken;
+            String key = URLEncoder.encode(API_KEY.trim(), "UTF-8");
+            String refresh = text(store, KEY_REFRESH);
+            String token = "";
+            String newRefresh = "";
+            String user = "";
+            long seconds = 0;
+            if (!refresh.isEmpty()) {
+                try {
+                    JSONObject reply = parse(request("POST", TOKEN_URL + "?key=" + key,
+                            "grant_type=refresh_token&refresh_token=" + URLEncoder.encode(refresh, "UTF-8"), FORM_TYPE));
+                    if (reply != null) {
+                        token = string(reply.opt("id_token"));
+                        newRefresh = string(reply.opt("refresh_token"));
+                        user = string(reply.opt("user_id"));
+                        seconds = number(reply.opt("expires_in"));
+                    }
+                } catch (HttpError e) {
+                    if (e.code != 400 && e.code != 401 && e.code != 403) throw e;
+                }
+            }
+            if (token.isEmpty() || user.isEmpty()) {
+                JSONObject reply = parse(request("POST", SIGN_UP_URL + "?key=" + key, "{\"returnSecureToken\":true}", JSON_TYPE));
+                if (reply == null) throw new IOException("Empty sign-in reply");
+                token = string(reply.opt("idToken"));
+                newRefresh = string(reply.opt("refreshToken"));
+                user = string(reply.opt("localId"));
+                seconds = number(reply.opt("expiresIn"));
+                if (token.isEmpty() || user.isEmpty()) throw new IOException("Sign-in reply had no token");
+            }
+            SharedPreferences.Editor editor = store.edit().putString(KEY_UID, user);
+            if (!newRefresh.isEmpty()) editor.putString(KEY_REFRESH, newRefresh);
+            if (!user.equals(uid(store))) editor.putInt(KEY_POSTED, 0).putInt(KEY_WEEK_POSTED, 0).putInt(KEY_REPLAY_BEST, 0)
+                    .putInt(KEY_REPLAY_WEEK_BEST, 0).remove(KEY_NAME_SENT).remove(KEY_NAME_CLAIMED);
+            editor.apply();
+            idToken = token;
+            idTokenUntil = now + Math.max(60L, seconds - 120L) * 1000L;
+            return token;
+        }
+
+        private static String path(String branch, String user, String token) throws IOException {
+            return base() + "/" + branch + "/" + URLEncoder.encode(user, "UTF-8") + ".json?auth=" + URLEncoder.encode(token, "UTF-8");
+        }
+
+        private static JSONObject serverTime() throws JSONException {
+            return new JSONObject().put(".sv", "timestamp");
+        }
+
+        private static JSONObject scoreEntry(String name, int score, boolean classic, int seconds, int flaps, int paused, int version, long time)
+                throws JSONException {
+            JSONObject entry = new JSONObject();
+            entry.put("n", name);
+            entry.put("s", score);
+            entry.put("c", classic);
+            entry.put("d", seconds);
+            entry.put("f", flaps);
+            entry.put("p", paused);
+            entry.put("v", version);
+            if (time > 0) entry.put("t", time);
+            else entry.put("t", serverTime());
+            return entry;
+        }
+
+        private static JSONObject copyWithName(JSONObject existing, String name) throws JSONException {
+            JSONObject entry = new JSONObject();
+            java.util.Iterator<String> keys = existing.keys();
+            while (keys.hasNext()) {
+                String key = keys.next();
+                entry.put(key, existing.opt(key));
+            }
+            entry.put("n", name);
+            return entry;
+        }
+
+        private static int versionCode(Context context) {
+            try {
+                return context.getPackageManager().getPackageInfo(context.getPackageName(), 0).versionCode;
+            } catch (Exception e) {
+                return 0;
+            }
+        }
+
+        private static String nameOwner(String key) throws IOException {
+            String reply = request("GET", base() + "/names/" + URLEncoder.encode(key, "UTF-8") + ".json", null, null).trim();
+            if (reply.isEmpty() || reply.equals("null")) return null;
+            return reply.startsWith("\"") && reply.endsWith("\"") && reply.length() >= 2 ? reply.substring(1, reply.length() - 1) : reply;
+        }
+
+        private static void claimName(SharedPreferences store, String token, String name) throws IOException, NameTaken {
+            String key = nameKey(name);
+            String user = uid(store);
+            String owner = nameOwner(key);
+            if (owner != null && !owner.equals(user)) throw new NameTaken(name);
+            if (owner == null) {
+                try {
+                    request("PUT", path("names", key, token), JSONObject.quote(user), JSON_TYPE);
+                } catch (HttpError e) {
+                    if (e.code != 401 && e.code != 403) throw e;
+                    String now = nameOwner(key);
+                    if (now != null && !now.equals(user)) throw new NameTaken(name);
+                    throw e;
+                }
+            }
+        }
+
+        private static JSONObject ensureEntry(Context context, SharedPreferences store, String token) throws IOException, JSONException, NameTaken {
+            return ensureEntry(context, store, token, name(store));
+        }
+
+        private static JSONObject ensureEntry(Context context, SharedPreferences store, String token, String name)
+                throws IOException, JSONException, NameTaken {
+            String user = uid(store);
+            String key = nameKey(name);
+            String claimed = text(store, KEY_NAME_CLAIMED);
+            try {
+                claimName(store, token, name);
+            } catch (NameTaken taken) {
+                if (name.equals(name(store))) store.edit().putBoolean(KEY_NAME_TAKEN, true).apply();
+                throw taken;
+            }
+            JSONObject existing = parse(request("GET", path("scores", user, token), null, null));
+            if (existing == null) {
+                JSONObject fresh = scoreEntry(name, 0, false, 0, 0, 0, versionCode(context), 0);
+                request("PUT", path("scores", user, token), fresh.toString(), JSON_TYPE);
+                existing = parse(request("GET", path("scores", user, token), null, null));
+                if (existing == null) throw new IOException("Entry was not saved");
+            } else if (!name.equals(string(existing.opt("n")))) {
+                existing = copyWithName(existing, name);
+                request("PUT", path("scores", user, token), existing.toString(), JSON_TYPE);
+                JSONObject weekly = parse(request("GET", path("weekly", user, token), null, null));
+                if (weekly != null && number(weekly.opt("w")) == week(now()) && !name.equals(string(weekly.opt("n")))) {
+                    request("PUT", path("weekly", user, token), copyWithName(weekly, name).toString(), JSON_TYPE);
+                }
+                for (String branch : new String[] {"vscores", "vweekly"}) {
+                    try {
+                        request("PUT", base() + "/" + branch + "/" + URLEncoder.encode(user, "UTF-8") + "/n.json?auth="
+                                + URLEncoder.encode(token, "UTF-8"), JSONObject.quote(name), JSON_TYPE);
+                    } catch (HttpError ignored) {
+                    }
+                }
+            }
+            if (!claimed.isEmpty() && !claimed.equals(key)) {
+                try {
+                    request("DELETE", path("names", claimed, token), null, null);
+                } catch (IOException ignored) {
+                }
+            }
+            store.edit().putString(KEY_NAME_SENT, name).putString(KEY_NAME_CLAIMED, key).putString(KEY_NAME, name)
+                    .putBoolean(KEY_NAME_TAKEN, false).putInt(KEY_POSTED, (int) number(existing.opt("s"))).apply();
+            return existing;
+        }
+
+        private static String describe(Exception error) {
+            if (error instanceof HttpError) {
+                HttpError http = (HttpError) error;
+                if (http.code == 401 || http.code == 403) return "The leaderboard refused the request";
+                if (http.code == 400) return "The leaderboard is not set up correctly";
+                return "Leaderboard error " + http.code;
+            }
+            return NO_CONNECTION;
+        }
+
+        private static void log(Context context, String message) {
+            ActivityLog.add(context, "BOARD", message);
+        }
+
+        private static <T> void finish(Poster poster, final Callback<T> callback, final T value, final String error) {
+            if (callback == null) return;
+            Runnable task = () -> callback.done(value, error);
+            if (poster != null) poster.post(task);
+            else task.run();
+        }
+
+        private static boolean ready(SharedPreferences store) {
+            return configured() && !name(store).isEmpty();
+        }
+
+        static void setName(final Context context, String rawName, final Poster poster, final Callback<String> callback) {
+            final String name = cleanName(rawName);
+            if (name.isEmpty()) {
+                finish(poster, callback, null, "Use at least one letter or number");
+                return;
+            }
+            final SharedPreferences store = store(context);
+            final Context app = app(context);
+            if (!configured()) {
+                store.edit().putString(KEY_NAME, name).putBoolean(KEY_ASKED, true).putBoolean(KEY_NAME_TAKEN, false).apply();
+                log(app, "Leaderboard name set to \"" + name + "\"");
+                finish(poster, callback, CURRENT, null);
+                return;
+            }
+            worker().execute(() -> {
+                try {
+                    ensureEntry(app, store, token(store, false), name);
+                    store.edit().putBoolean(KEY_ASKED, true).apply();
+                    log(app, "Leaderboard name set to \"" + name + "\"");
+                    finish(poster, callback, CURRENT, null);
+                } catch (NameTaken e) {
+                    log(app, "Leaderboard name \"" + name + "\" is taken");
+                    finish(poster, callback, null, NAME_TAKEN);
+                } catch (HttpError e) {
+                    log(app, "Saving the leaderboard name failed: " + e);
+                    finish(poster, callback, null, describe(e));
+                } catch (IOException | JSONException | RuntimeException e) {
+                    store.edit().putString(KEY_NAME, name).putBoolean(KEY_ASKED, true).putBoolean(KEY_NAME_TAKEN, false).apply();
+                    log(app, "Leaderboard name \"" + name + "\" saved on this device; it will be checked when you're online (" + e + ")");
+                    finish(poster, callback, OFFLINE, null);
+                }
+            });
+        }
+
+        static void join(Context context, String rawName, Poster poster, Callback<String> callback) {
+            setName(context, rawName, poster, callback);
+        }
+
+        static void markAsked(Context context) {
+            store(context).edit().putBoolean(KEY_ASKED, true).apply();
+        }
+
+        static void startSession(final Context context, final long seed) {
+            final SharedPreferences store = store(context);
+            if (!ready(store)) return;
+            final Context app = app(context);
+            worker().execute(() -> {
+                try {
+                    String token = token(store, false);
+                    if (!name(store).equals(text(store, KEY_NAME_SENT))) ensureEntry(app, store, token);
+                    String session = new JSONObject().put("t", serverTime()).put("r", Long.toString(seed)).toString();
+                    try {
+                        request("PUT", path("sessions", uid(store), token), session, JSON_TYPE);
+                    } catch (HttpError e) {
+                        if (e.code != 401) throw e;
+                        token = token(store, true);
+                        request("PUT", path("sessions", uid(store), token), session, JSON_TYPE);
+                    }
+                } catch (NameTaken e) {
+                    log(app, "Leaderboard round not started: " + e.getMessage());
+                } catch (IOException | JSONException | RuntimeException e) {
+                    if (e instanceof HttpError) log(app, "Starting a leaderboard round failed: " + e);
+                }
+            });
+        }
+
+        static void submit(final Context context, final int score, final boolean classic, final int seconds, final int flaps,
+                final int paused, final Replay replay, final Poster poster, final Callback<String> callback) {
+            final SharedPreferences store = store(context);
+            boolean wanted = replay != null && wantsReplay(store, score);
+            if (!ready(store) || score <= 0 || score > MAX_SCORE || (score <= posted(store) && score <= weekPosted(store) && !wanted)) {
+                finish(poster, callback, CURRENT, null);
+                return;
+            }
+            final Context app = app(context);
+            worker().execute(() -> {
+                IOException lastError = null;
+                for (int attempt = 0; attempt < 3; attempt++) {
+                    if (attempt > 0) {
+                        try {
+                            Thread.sleep(retryDelayMs * attempt);
+                        } catch (InterruptedException e) {
+                            Thread.currentThread().interrupt();
+                            break;
+                        }
+                    }
+                    try {
+                        String status = post(app, store, score, classic, seconds, flaps, paused, replay);
+                        finish(poster, callback, status, null);
+                        return;
+                    } catch (NameTaken e) {
+                        log(app, "Score " + score + " was not posted: " + e.getMessage());
+                        finish(poster, callback, REFUSED, NAME_TAKEN);
+                        return;
+                    } catch (HttpError e) {
+                        String why = e.code == 401 || e.code == 403 ? "the server refused it" : "error " + e.code;
+                        if (e.code == 401 || e.code == 403) store.edit().remove(KEY_NAME_SENT).remove(KEY_NAME_CLAIMED).apply();
+                        log(app, "Score " + score + " was not posted: " + why + " (" + e.getMessage() + ")");
+                        finish(poster, callback, REFUSED, describe(e));
+                        return;
+                    } catch (IOException e) {
+                        lastError = e;
+                    } catch (JSONException | RuntimeException e) {
+                        log(app, "Posting score " + score + " failed: " + e);
+                        finish(poster, callback, null, describe(e));
+                        return;
+                    }
+                }
+                log(app, "Score " + score + " could not be posted, no connection" + (lastError != null ? " (" + lastError.getMessage() + ")" : ""));
+                finish(poster, callback, null, NO_CONNECTION);
+            });
+        }
+
+        private static String post(Context app, SharedPreferences store, int score, boolean classic, int seconds, int flaps, int paused,
+                Replay replay) throws IOException, JSONException, NameTaken {
+            String token = token(store, false);
+            String user = uid(store);
+            JSONObject current = ensureEntry(app, store, token);
+            JSONObject weekly = parse(request("GET", path("weekly", user, token), null, null));
+            int thisWeek = week(now());
+            int allTime = (int) number(current.opt("s"));
+            int weekScore = weekly != null && number(weekly.opt("w")) == thisWeek ? (int) number(weekly.opt("s")) : 0;
+            store.edit().putInt(KEY_WEEK, thisWeek).putInt(KEY_WEEK_POSTED, weekScore).apply();
+            JSONObject update = new JSONObject();
+            int version = versionCode(app);
+            String name = name(store);
+            if (score > allTime) {
+                update.put("scores/" + user, scoreEntry(name, score, classic, seconds, flaps, paused, version, 0));
+            }
+            if (score > weekScore) {
+                JSONObject entry = scoreEntry(name, score, classic, seconds, flaps, paused, version, 0);
+                entry.put("w", thisWeek);
+                entry.put("k", thisWeek * WEEK_KEY + score);
+                update.put("weekly/" + user, entry);
+            }
+            String status = CURRENT;
+            if (update.length() > 0) {
+                request("PATCH", base() + "/.json?auth=" + URLEncoder.encode(token, "UTF-8"), update.toString(), JSON_TYPE);
+                SharedPreferences.Editor editor = store.edit().putInt(KEY_WEEK, thisWeek).putInt(KEY_WEEK_POSTED, Math.max(score, weekScore));
+                if (score > allTime) editor.putInt(KEY_POSTED, score);
+                editor.apply();
+                log(app, "Score " + score + " posted to the " + (score > allTime ? "all-time and weekly" : "weekly") + " leaderboard"
+                        + (classic ? " (Classic)" : ""));
+                status = POSTED;
+            }
+            if (replay != null && wantsReplay(store, score) && sendReplay(app, store, token, score, classic, replay, version)) {
+                status = VERIFYING;
+            }
+            return status;
+        }
+
+        private static boolean sendReplay(Context app, SharedPreferences store, String token, int score, boolean classic, Replay replay,
+                int version) throws IOException, JSONException {
+            String user = uid(store);
+            JSONObject session = parse(request("GET", path("sessions", user, token), null, null));
+            String seed = Long.toString(replay.seed);
+            if (session == null || !seed.equals(string(session.opt("r"))) || number(session.opt("t")) <= 0) {
+                log(app, "Run of " + score + " was not sent for verification: its round was not registered with the leaderboard");
+                return false;
+            }
+            String data = replay.encode();
+            if (data.length() > REPLAY_TEXT_MAX) {
+                log(app, "Run of " + score + " was too long to send for verification");
+                return false;
+            }
+            int thisWeek = week(now());
+            boolean allTime = score > replayBest(store);
+            JSONObject entry = new JSONObject();
+            entry.put("s", score);
+            entry.put("c", classic);
+            entry.put("r", seed);
+            entry.put("st", number(session.opt("t")));
+            entry.put("t", serverTime());
+            entry.put("w", thisWeek);
+            entry.put("v", version);
+            entry.put("rv", replay.rules);
+            entry.put("d", data);
+            String slot = allTime ? "a" : "w";
+            String place = base() + "/replays/" + URLEncoder.encode(user, "UTF-8") + "/" + slot;
+            String auth = "auth=" + URLEncoder.encode(token, "UTF-8");
+            long started = number(session.opt("t"));
+            try {
+                request("PUT", place + ".json?print=silent&" + auth, entry.toString(), JSON_TYPE);
+            } catch (HttpError e) {
+                if (e.code != 401 && e.code != 403) throw e;
+                if (!String.valueOf(started).equals(request("GET", place + "/st.json?" + auth, null, null).trim())) {
+                    log(app, "Run of " + score + " was not accepted for verification (" + e.getMessage() + ")");
+                    return false;
+                }
+            }
+            SharedPreferences.Editor editor = store.edit().putInt(KEY_REPLAY_WEEK, thisWeek)
+                    .putInt(KEY_REPLAY_WEEK_BEST, Math.max(score, replayWeekBest(store)));
+            if (allTime) editor.putInt(KEY_REPLAY_BEST, score);
+            editor.apply();
+            log(app, "Run of " + score + " sent for verification (" + (data.length() / 1024 + 1) + " KB)");
+            return true;
+        }
+
+        private static Entry entry(String key, JSONObject raw, boolean verified) {
+            Entry entry = new Entry();
+            entry.uid = key;
+            entry.name = cleanName(string(raw.opt("n")));
+            entry.score = (int) Math.max(0L, Math.min(MAX_SCORE, number(raw.opt("s"))));
+            entry.classic = Boolean.TRUE.equals(raw.opt("c"));
+            entry.time = number(raw.opt("t"));
+            entry.verified = verified || (entry.score > 0 && raw.has("vs") && number(raw.opt("vs")) == entry.score);
+            return entry;
+        }
+
+        private static List<Entry> list(JSONObject reply, boolean verified) {
+            List<Entry> entries = new ArrayList<>();
+            if (reply == null) return entries;
+            java.util.Iterator<String> keys = reply.keys();
+            while (keys.hasNext()) {
+                String key = keys.next();
+                JSONObject raw = reply.optJSONObject(key);
+                if (raw == null) continue;
+                Entry entry = entry(key, raw, verified);
+                if (entry.score > 0 && !entry.name.isEmpty()) entries.add(entry);
+            }
+            java.util.Collections.sort(entries, (a, b) -> a.score != b.score ? Integer.compare(b.score, a.score) : Long.compare(a.time, b.time));
+            return entries;
+        }
+
+        private static boolean listed(List<Entry> entries, String user) {
+            for (Entry entry : entries) if (entry.uid.equals(user)) return true;
+            return false;
+        }
+
+        private static synchronized ExecutorService fetchPool() {
+            if (fetchPool == null) {
+                fetchPool = Executors.newFixedThreadPool(4, task -> {
+                    Thread thread = new Thread(task, "LeaderboardFetch");
+                    thread.setDaemon(true);
+                    return thread;
+                });
+            }
+            return fetchPool;
+        }
+
+        private static Future<String> later(final String address) {
+            return fetchPool().submit(() -> request("GET", address, null, null));
+        }
+
+        private static JSONObject result(Future<String> reply) throws IOException, JSONException {
+            if (reply == null) return null;
+            try {
+                return parse(reply.get());
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw new IOException("Interrupted");
+            } catch (ExecutionException e) {
+                Throwable cause = e.getCause();
+                if (cause instanceof IOException) throw (IOException) cause;
+                if (cause instanceof JSONException) throw (JSONException) cause;
+                if (cause instanceof RuntimeException) throw (RuntimeException) cause;
+                throw new IOException(String.valueOf(cause));
+            }
+        }
+
+        private static JSONObject quiet(Future<String> reply) {
+            try {
+                return result(reply);
+            } catch (IOException | JSONException | RuntimeException e) {
+                return null;
+            }
+        }
+
+        private static int rank(Future<String> reply) throws IOException, JSONException {
+            if (reply == null) return 0;
+            JSONObject above = result(reply);
+            int count = above == null ? 0 : above.length();
+            return count >= RANK_LIMIT ? -1 : count + 1;
+        }
+
+        private static Future<String> rankQuery(String branch, String index, long from, long to) {
+            return later(base() + "/" + branch + ".json?orderBy=%22" + index + "%22&startAt=" + from
+                    + (to > 0 ? "&endAt=" + to : "") + "&limitToFirst=" + RANK_LIMIT);
+        }
+
+        static int boardSize(int choice) {
+            return choice >= 0 && choice < BOARD_SIZES.length ? BOARD_SIZES[choice] : BOARD_SIZES[DEFAULT_BOARD_SIZE];
+        }
+
+        static void fetch(final Context context, final int limit, final Poster poster, final Callback<Board> callback) {
+            if (!configured()) {
+                finish(poster, callback, null, "The leaderboard is not set up in this build");
+                return;
+            }
+            final SharedPreferences store = store(context);
+            final Context app = app(context);
+            worker().execute(() -> {
+                try {
+                    Board board = new Board();
+                    int thisWeek = week(now());
+                    long first = thisWeek * WEEK_KEY + 1;
+                    long last = thisWeek * WEEK_KEY + MAX_SCORE;
+                    String size = limit > 0 ? "&limitToLast=" + limit : "";
+                    String weekRange = "?orderBy=%22k%22&startAt=" + first + "&endAt=" + last + size;
+                    String scoreRange = "?orderBy=%22s%22&startAt=1" + size;
+                    Future<String> allTop = later(base() + "/scores.json" + scoreRange);
+                    Future<String> weekTop = later(base() + "/weekly.json" + weekRange);
+                    Future<String> verifiedTop = later(base() + "/vscores.json" + scoreRange);
+                    Future<String> verifiedWeekTop = later(base() + "/vweekly.json" + weekRange);
+                    board.weekEnds = weekEnds(thisWeek);
+                    String user = uid(store);
+                    Future<String> mine = null, mineWeek = null, mineVerified = null, mineVerifiedWeek = null, verdict = null, pending = null;
+                    if (!user.isEmpty()) {
+                        String encoded = URLEncoder.encode(user, "UTF-8");
+                        mine = later(base() + "/scores/" + encoded + ".json");
+                        mineWeek = later(base() + "/weekly/" + encoded + ".json");
+                        mineVerified = later(base() + "/vscores/" + encoded + ".json");
+                        mineVerifiedWeek = later(base() + "/vweekly/" + encoded + ".json");
+                        try {
+                            String token = token(store, false);
+                            verdict = later(path("verdicts", user, token));
+                            pending = later(base() + "/replays/" + encoded + ".json?shallow=true&auth=" + URLEncoder.encode(token, "UTF-8"));
+                        } catch (IOException | JSONException e) {
+                            verdict = null;
+                        }
+                    }
+                    board.allTime = list(result(allTop), false);
+                    board.weekly = list(result(weekTop), false);
+                    board.verifiedAllTime = list(quiet(verifiedTop), true);
+                    board.verifiedWeekly = list(quiet(verifiedWeekTop), true);
+                    Future<String> rankAll = null, rankWeek = null, rankVerified = null, rankVerifiedWeek = null;
+                    JSONObject raw = result(mine);
+                    if (raw != null) {
+                        board.mineAllTime = entry(user, raw, false);
+                        if (board.mineAllTime.score > 0 && !listed(board.allTime, user)) {
+                            rankAll = rankQuery("scores", "s", board.mineAllTime.score + 1, 0);
+                        }
+                    }
+                    raw = result(mineWeek);
+                    if (raw != null && number(raw.opt("w")) == thisWeek) {
+                        board.mineWeekly = entry(user, raw, false);
+                        if (board.mineWeekly.score > 0 && !listed(board.weekly, user)) {
+                            rankWeek = rankQuery("weekly", "k", first + board.mineWeekly.score, last);
+                        }
+                    }
+                    boolean verifiedKnown = true;
+                    try {
+                        raw = result(mineVerified);
+                    } catch (IOException | JSONException | RuntimeException e) {
+                        raw = null;
+                        verifiedKnown = false;
+                    }
+                    if (raw != null) {
+                        board.mineVerifiedAllTime = entry(user, raw, true);
+                        if (board.mineVerifiedAllTime.score > 0 && !listed(board.verifiedAllTime, user)) {
+                            rankVerified = rankQuery("vscores", "s", board.mineVerifiedAllTime.score + 1, 0);
+                        }
+                    }
+                    try {
+                        raw = result(mineVerifiedWeek);
+                    } catch (IOException | JSONException | RuntimeException e) {
+                        raw = null;
+                        verifiedKnown = false;
+                    }
+                    if (raw != null && number(raw.opt("w")) == thisWeek) {
+                        board.mineVerifiedWeekly = entry(user, raw, true);
+                        if (board.mineVerifiedWeekly.score > 0 && !listed(board.verifiedWeekly, user)) {
+                            rankVerifiedWeek = rankQuery("vweekly", "k", first + board.mineVerifiedWeekly.score, last);
+                        }
+                    }
+                    JSONObject judged = quiet(verdict);
+                    if (judged != null) {
+                        board.verdictScore = (int) number(judged.opt("s"));
+                        board.verdictOk = Boolean.TRUE.equals(judged.opt("ok"));
+                        board.verdictWhy = string(judged.opt("why"));
+                        board.verdictTime = number(judged.opt("t"));
+                    }
+                    if (pending != null) {
+                        boolean pendingKnown = true;
+                        try {
+                            board.verifying = result(pending) != null;
+                        } catch (IOException | JSONException | RuntimeException e) {
+                            pendingKnown = false;
+                        }
+                        if (pendingKnown && verifiedKnown && !board.verifying) {
+                            int verifiedBest = board.mineVerifiedAllTime != null ? board.mineVerifiedAllTime.score : 0;
+                            int verifiedWeek = board.mineVerifiedWeekly != null ? board.mineVerifiedWeekly.score : 0;
+                            store.edit().putInt(KEY_REPLAY_BEST, verifiedBest).putInt(KEY_REPLAY_WEEK_BEST, verifiedWeek)
+                                    .putInt(KEY_REPLAY_WEEK, thisWeek).apply();
+                        }
+                    }
+                    board.rankAllTime = rank(rankAll);
+                    board.rankWeekly = rank(rankWeek);
+                    try {
+                        board.rankVerifiedAllTime = rank(rankVerified);
+                        board.rankVerifiedWeekly = rank(rankVerifiedWeek);
+                    } catch (IOException | JSONException e) {
+                        board.rankVerifiedAllTime = 0;
+                    }
+                    finish(poster, callback, board, null);
+                } catch (IOException | JSONException | RuntimeException e) {
+                    log(app, "Loading the leaderboard failed: " + e);
+                    finish(poster, callback, null, describe(e));
+                }
+            });
+        }
+
+        static void leave(final Context context, final Poster poster, final Callback<Boolean> callback) {
+            final SharedPreferences store = store(context);
+            final Context app = app(context);
+            final Runnable forget = () -> {
+                store.edit().remove(KEY_BEST).remove(KEY_CLASSIC).remove(KEY_SECONDS).remove(KEY_FLAPS).remove(KEY_SEAL)
+                        .remove(KEY_POSTED).remove(KEY_WEEK_POSTED).remove(KEY_WEEK).remove(KEY_NAME).remove(KEY_NAME_SENT)
+                        .remove(KEY_UID).remove(KEY_REFRESH).remove(KEY_NAME_CLAIMED).remove(KEY_NAME_TAKEN).remove(KEY_REPLAY_BEST)
+                        .remove(KEY_REPLAY_WEEK_BEST).remove(KEY_REPLAY_WEEK).putBoolean(KEY_ASKED, true).apply();
+                synchronized (Leaderboard.class) {
+                    idToken = null;
+                }
+            };
+            if (!configured() || uid(store).isEmpty()) {
+                forget.run();
+                finish(poster, callback, true, null);
+                return;
+            }
+            worker().execute(() -> {
+                try {
+                    String token = token(store, false);
+                    String user = uid(store);
+                    for (String branch : new String[] {"replays", "verdicts", "vscores", "vweekly"}) {
+                        try {
+                            request("DELETE", path(branch, user, token), null, null);
+                        } catch (HttpError ignored) {
+                        }
+                    }
+                    request("DELETE", path("scores", user, token), null, null);
+                    request("DELETE", path("weekly", user, token), null, null);
+                    request("DELETE", path("sessions", user, token), null, null);
+                    String claimed = text(store, KEY_NAME_CLAIMED);
+                    if (!claimed.isEmpty()) request("DELETE", path("names", claimed, token), null, null);
+                    try {
+                        request("POST", DELETE_ACCOUNT_URL + "?key=" + URLEncoder.encode(API_KEY.trim(), "UTF-8"),
+                                new JSONObject().put("idToken", token).toString(), JSON_TYPE);
+                    } catch (IOException ignored) {
+                    }
+                    forget.run();
+                    log(app, "Leaderboard entry removed");
+                    finish(poster, callback, true, null);
+                } catch (IOException | JSONException | RuntimeException e) {
+                    log(app, "Removing the leaderboard entry failed: " + e);
+                    finish(poster, callback, false, describe(e));
+                }
+            });
+        }
+    }
+
     public static boolean isUsableKey(int code) {
         if (code == KeyEvent.KEYCODE_UNKNOWN) return true;
         if (code < 0 || code > KeyEvent.getMaxKeyCode()) return false;
@@ -842,6 +1942,7 @@ public class SettingsActivity extends AppCompatActivity {
         resolveAllKeyConflicts(null);
         for (Setting setting : settings) loggedValues.put(setting.key, setting.textValue());
         ActivityLog.add(this, "SETTINGS", "Settings opened");
+        refreshBoardName();
         syncAllViews();
         refreshDependencies(false, true);
         refreshSlots();
@@ -858,6 +1959,7 @@ public class SettingsActivity extends AppCompatActivity {
         hideSystemBars();
         if (previewView != null) previewView.setHostResumed(true);
         if (currentPage == ABOUT_PAGE) refreshAbout();
+        refreshBoardName();
     }
 
     @Override
@@ -1793,6 +2895,14 @@ public class SettingsActivity extends AppCompatActivity {
         keyRow(group, "row_key_settings", "Open settings", "From the home and score screens", DEFAULT_KEY_SETTINGS);
         toggleRow(group, "row_right_click_pause", "Right click pauses", "Right mouse button pauses and resumes a run");
         toggleRow(group, "row_hide_cursor", "Hide the mouse pointer", "Hidden during a run until you move the mouse");
+        group = addGroup(page, "Online leaderboard");
+        toggleRow(group, "row_board_auto_post", "Post scores automatically", "Fair rounds go to the online leaderboard when you're connected");
+        actionRow(group, "button_board_name", "Leaderboard name", "Not set", COLOR_ON);
+        actionRow(group, "button_board_rules", "What counts as a real score", "Checking your settings...", COLOR_ON);
+        toggleRow(group, "row_board_show_status", "Show posting status", "A short note on the score screen says whether the round was posted");
+        toggleRow(group, "row_board_open_on_best", "Open the leaderboard after a new best", "Shows where you placed when a posted score beats your best");
+        choiceRow(group, "row_board_tab", "Leaderboard opens on", "All time", "Weekly");
+        choiceRow(group, "row_board_size", "Scores shown on the leaderboard", "10", "25", "50", "100", "All");
         group = addGroup(page, "Interface");
         toggleRow(group, "row_hide_settings_icon", "Hide settings button", "The top right corner still opens settings");
         toggleRow(group, "row_classic_menu", "Original menu buttons", "Rate button on the home screen and a leaderboard button after a crash");
@@ -1890,6 +3000,14 @@ public class SettingsActivity extends AppCompatActivity {
         infoRow(group, "about_setup", "Your setup", "");
         actionRow(group, "about_copy", "Copy app info", "Version, device and setup details to paste into a bug report", COLOR_ON);
 
+        group = addGroup(page, "Online leaderboard");
+        infoRow(group, "about_board_status", "Leaderboard", "");
+        infoRow(group, "about_board_entry", "Your entry", "");
+        actionRow(group, "about_board_leave", "Remove my leaderboard entry", "Deletes your name and score from the online leaderboard", COLOR_ERROR);
+        rowView("about_board_leave").setOnClickListener(v -> confirm("Remove leaderboard entry",
+                "Your name and score will be deleted from the online leaderboard. Your local high score is kept.", "Remove",
+                this::leaveLeaderboard));
+
         group = addGroup(page, "Links");
         actionRow(group, "about_github", "GitHub page", "Source code, updates and the license", COLOR_ON);
         actionRow(group, "about_report", "Report a bug", "Opens the issues page. Attaching your activity log helps a lot", COLOR_ON);
@@ -1900,6 +3018,44 @@ public class SettingsActivity extends AppCompatActivity {
         rowView("about_report").setOnClickListener(v -> {
             openLink(PROJECT_URL + "/issues");
             announce("Tip: attach your activity log to the report", "Open log", view -> showActivityLog());
+        });
+    }
+
+    private String settingTitle(String key) {
+        Setting setting = settingsByKey.get(key);
+        String title = setting == null || setting.row == null ? null : firstText(setting.row);
+        return title != null ? title : fairKeyName(key);
+    }
+
+    private String leaderboardStatus() {
+        if (!Leaderboard.configured()) return "Not available in this build";
+        Map<String, Object> current = snapshot();
+        String blocker = fairPlayBlocker(current);
+        if (blocker == null) {
+            return fairPlayMode(current) == FAIR_CLASSIC ? "Your scores count, with a Classic label" : "Your scores count";
+        }
+        if (FAIR_MIXED.equals(blocker)) return "Scores are not posted: mix of Classic and normal settings. Use Reset to defaults or Classic feel";
+        if (PREF_WEATHER_EFFECT.equals(blocker)) return "Scores are not posted: thunderstorm slows time when lightning strikes";
+        return "Scores are not posted: \"" + settingTitle(blocker) + "\" is changed";
+    }
+
+    private String leaderboardEntry() {
+        String name = Leaderboard.name(prefs);
+        if (name.isEmpty()) return "No name set. Choose one in Settings > System";
+        int best = Leaderboard.best(prefs);
+        int posted = Leaderboard.posted(prefs);
+        String text = name + "  \u00B7  all-time " + posted + "  \u00B7  this week " + Leaderboard.weekPosted(prefs);
+        if (best > posted) text += "  \u00B7  best fair round " + best + (Leaderboard.bestIsClassic(prefs) ? " (Classic)" : "");
+        Setting autoPost = settingsByKey.get(PREF_BOARD_AUTO_POST);
+        if (autoPost instanceof ToggleSetting && !((ToggleSetting) autoPost).value) text += "  \u00B7  posting is off";
+        return text;
+    }
+
+    private void leaveLeaderboard() {
+        announce("Removing your entry\u2026", null, null);
+        Leaderboard.leave(this, this::runOnUiThread, (done, error) -> {
+            announce(error == null ? "Leaderboard entry removed" : "Could not remove it: " + error, null, null);
+            refreshAbout();
         });
     }
 
@@ -1957,6 +3113,16 @@ public class SettingsActivity extends AppCompatActivity {
         int changed = changedSettings();
         summaries.get("about_setup").setText(changed == 0 ? "All " + settings.size() + " settings at their defaults"
                 : changed + " of " + settings.size() + " settings changed from the defaults");
+        summaries.get("about_board_status").setText(leaderboardStatus());
+        summaries.get("about_board_entry").setText(leaderboardEntry());
+        boolean joined = !Leaderboard.uid(prefs).isEmpty() || !Leaderboard.name(prefs).isEmpty();
+        View leave = rowView("about_board_leave");
+        if (joined) dependencyHidden.remove(leave);
+        else dependencyHidden.add(leave);
+        if (!searching) {
+            leave.setVisibility(joined ? View.VISIBLE : View.GONE);
+            styleAllGroups();
+        }
     }
 
     private String appInfoText() {
@@ -2154,6 +3320,167 @@ public class SettingsActivity extends AppCompatActivity {
         ToggleSetting hideCursor = toggle(PREF_HIDE_CURSOR, DEFAULT_HIDE_CURSOR, rowView("row_hide_cursor"));
         hideCursor.note = "used in the game";
         hideCursor.randomizable = false;
+        ToggleSetting autoPost = toggle(PREF_BOARD_AUTO_POST, DEFAULT_BOARD_AUTO_POST, rowView("row_board_auto_post"));
+        autoPost.note = "used in the game";
+        autoPost.randomizable = false;
+        ToggleSetting showStatus = toggle(PREF_BOARD_SHOW_STATUS, DEFAULT_BOARD_SHOW_STATUS, rowView("row_board_show_status"));
+        showStatus.note = "used in the game";
+        showStatus.randomizable = false;
+        ToggleSetting openOnBest = toggle(PREF_BOARD_OPEN_ON_BEST, DEFAULT_BOARD_OPEN_ON_BEST, rowView("row_board_open_on_best"));
+        openOnBest.note = "used in the game";
+        openOnBest.randomizable = false;
+        ChoiceSetting boardTab = new ChoiceSetting(PREF_BOARD_TAB, DEFAULT_BOARD_TAB, rowView("row_board_tab"),
+                new int[]{0, 1}, new int[]{COLOR_PRIMARY, COLOR_SKY}, null);
+        boardTab.randomizable = false;
+        ChoiceSetting boardSize = new ChoiceSetting(PREF_BOARD_SIZE, DEFAULT_BOARD_SIZE, rowView("row_board_size"),
+                new int[]{0, 1, 2, 3, 4}, new int[]{COLOR_PRIMARY, COLOR_SKY, 0xFF9C8CFF, 0xFF9BE15D, 0xFFFC7858}, null);
+        boardSize.randomizable = false;
+        boardSize.note = "used in the game";
+        rowView("button_board_rules").setOnClickListener(v -> showScoreRules());
+        rowView("button_board_name").setOnClickListener(v -> showNameDialog(this, Leaderboard.name(prefs), false, (name, result) ->
+                Leaderboard.setName(this, name, this::runOnUiThread, (status, error) -> {
+                    result.done(error);
+                    refreshBoardName();
+                    refreshAbout();
+                    if (Leaderboard.OFFLINE.equals(status)) announce("Name saved. It will be checked when you're online", null, null);
+                })));
+    }
+
+    public interface NameResult {
+        void done(String error);
+    }
+
+    public interface NameSaver {
+        void save(String name, NameResult result);
+    }
+
+    public static AlertDialog showNameDialog(Activity activity, String current, final boolean firstTime, final NameSaver saver) {
+        Context themed = new ContextThemeWrapper(activity, R.style.Theme_Material3Expressive_Dark_NoActionBar);
+        float density = activity.getResources().getDisplayMetrics().density;
+        final TextInputLayout layout = new TextInputLayout(themed);
+        layout.setHint("Name");
+        layout.setCounterEnabled(true);
+        layout.setCounterMaxLength(Leaderboard.NAME_MAX);
+        layout.setHelperText("Letters, numbers, spaces and _");
+        layout.setEndIconMode(TextInputLayout.END_ICON_CLEAR_TEXT);
+        final TextInputEditText field = new TextInputEditText(layout.getContext());
+        field.setSingleLine(true);
+        field.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS | InputType.TYPE_TEXT_VARIATION_PERSON_NAME);
+        field.setImeOptions(EditorInfo.IME_ACTION_DONE);
+        field.setFilters(new InputFilter[] {new InputFilter.LengthFilter(Leaderboard.NAME_MAX)});
+        if (current != null && !current.isEmpty()) {
+            field.setText(current);
+            field.setSelection(field.getText() == null ? 0 : field.getText().length());
+        }
+        layout.addView(field, new LinearLayout.LayoutParams(MATCH, ViewGroup.LayoutParams.WRAP_CONTENT));
+        FrameLayout box = new FrameLayout(themed);
+        int side = Math.round(24 * density);
+        box.setPadding(side, Math.round(8 * density), side, 0);
+        box.addView(layout, new FrameLayout.LayoutParams(MATCH, ViewGroup.LayoutParams.WRAP_CONTENT));
+        String message = firstTime
+                ? "This name appears on the online leaderboard next to your scores.\n\nFair rounds are posted automatically when you're online, "
+                + "along with an anonymous ID. You can turn that off in Settings > System, or remove your entry in Settings > About."
+                : "Shown on the online leaderboard next to your scores.";
+        MaterialAlertDialogBuilder builder = new MaterialAlertDialogBuilder(themed)
+                .setTitle(firstTime ? "Choose your name" : "Leaderboard name")
+                .setMessage(message)
+                .setView(box)
+                .setPositiveButton(firstTime ? "Let's go" : "Save", null);
+        if (!firstTime) builder.setNegativeButton("Cancel", null);
+        final AlertDialog dialog = builder.create();
+        dialog.setCancelable(!firstTime);
+        dialog.setCanceledOnTouchOutside(!firstTime);
+        final boolean[] busy = new boolean[1];
+        final Runnable submit = () -> {
+            if (busy[0]) return;
+            String name = Leaderboard.cleanName(field.getText() == null ? "" : field.getText().toString());
+            if (name.isEmpty()) {
+                layout.setError("Use at least one letter or number");
+                return;
+            }
+            busy[0] = true;
+            layout.setError(null);
+            layout.setHelperText("Checking...");
+            Button positive = dialog.getButton(AlertDialog.BUTTON_POSITIVE);
+            if (positive != null) positive.setEnabled(false);
+            saver.save(name, error -> {
+                busy[0] = false;
+                layout.setHelperText("Letters, numbers, spaces and _");
+                if (error == null) {
+                    dialog.dismiss();
+                    return;
+                }
+                layout.setError(error);
+                Button again = dialog.getButton(AlertDialog.BUTTON_POSITIVE);
+                if (again != null) again.setEnabled(true);
+            });
+        };
+        field.addTextChangedListener(new TextWatcher() {
+            @Override
+            public void beforeTextChanged(CharSequence text, int start, int count, int after) {
+            }
+
+            @Override
+            public void onTextChanged(CharSequence text, int start, int before, int count) {
+            }
+
+            @Override
+            public void afterTextChanged(Editable text) {
+                if (busy[0]) return;
+                boolean valid = !Leaderboard.cleanName(text.toString()).isEmpty();
+                layout.setError(valid || text.length() == 0 ? null : "Use at least one letter or number");
+                Button positive = dialog.getButton(AlertDialog.BUTTON_POSITIVE);
+                if (positive != null) positive.setEnabled(valid);
+            }
+        });
+        field.setOnEditorActionListener((view, action, event) -> {
+            if (action != EditorInfo.IME_ACTION_DONE) return false;
+            submit.run();
+            return true;
+        });
+        dialog.setOnShowListener(shown -> {
+            Button positive = dialog.getButton(AlertDialog.BUTTON_POSITIVE);
+            if (positive != null) {
+                positive.setOnClickListener(view -> submit.run());
+                positive.setEnabled(!Leaderboard.cleanName(field.getText() == null ? "" : field.getText().toString()).isEmpty());
+            }
+            field.requestFocus();
+        });
+        if (dialog.getWindow() != null) dialog.getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_STATE_VISIBLE);
+        dialog.show();
+        return dialog;
+    }
+
+    private void refreshBoardName() {
+        TextView summary = summaries.get("button_board_name");
+        if (summary == null) return;
+        String name = Leaderboard.name(prefs);
+        summary.setText(name.isEmpty() ? "Not set" : Leaderboard.nameTaken(prefs) ? name + "  \u00B7  taken, choose another" : name);
+        TextView rules = summaries.get("button_board_rules");
+        if (rules != null) rules.setText(leaderboardStatus());
+    }
+
+    private void showScoreRules() {
+        String message = "A round counts for the online leaderboard when:\n"
+                + "\u2022 every gameplay setting is at its default, or matches Classic feel exactly (shown with a CLASSIC label)\n"
+                + "\u2022 you're online when the round starts and when it ends\n"
+                + "\u2022 nothing in the game is changed or sped up while you play\n\n"
+                + "These never matter: colors, backgrounds, bird and pipe looks, sound, vibration, rain and snow, day and night, "
+                + "screen shake, motion blur, dimming, the crash flash, bird tilt, controls and the FPS counter.\n\n"
+                + "These stop scores from counting: God mode, autopilot, extra lives, golden pipes, thunderstorm, hitbox outlines, "
+                + "and any change to physics, speed, pipes, bird size or hitbox, the difficulty ramp or the Advanced tab, unless it "
+                + "matches Classic feel.\n\n"
+                + "Pausing is fine. Rounds played offline stay on this phone and are not posted later.\n\n"
+                + "Verified scores: when you post a new best, a recording of your taps is sent too. A checker replays it with the "
+                + "real game rules, and if it plays out to the same score, the score gets a purple check mark. The leaderboard "
+                + "shows verified scores first; tap SHOW UNVERIFIED to see every posted score. Checking usually takes a few "
+                + "minutes. Turning or resizing the screen during a round, or changing settings mid-round, means that round "
+                + "can't be checked.\n\n"
+                + "Right now: " + leaderboardStatus() + ".";
+        showDialog(new MaterialAlertDialogBuilder(this)
+                .setTitle("What counts as a real score")
+                .setMessage(message)
+                .setPositiveButton("Got it", null));
     }
 
     private void pair(String key, int defaultValue, String rowName) {
@@ -2238,6 +3565,7 @@ public class SettingsActivity extends AppCompatActivity {
         SharedPreferences.Editor editor = prefs.edit();
         for (Setting setting : unsaved) setting.write(editor);
         editor.apply();
+        refreshBoardName();
         String source = changeSource != null ? changeSource : "changed in settings";
         List<String> changes = new ArrayList<>();
         for (Setting setting : settings) {
