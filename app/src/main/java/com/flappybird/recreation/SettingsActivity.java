@@ -34,6 +34,9 @@ import android.graphics.drawable.GradientDrawable;
 import android.graphics.drawable.RippleDrawable;
 import android.net.Uri;
 import android.os.Build;
+import android.app.ActivityManager;
+import android.content.res.Configuration;
+import android.os.PowerManager;
 import android.os.Bundle;
 import android.text.Editable;
 import android.text.InputFilter;
@@ -43,6 +46,7 @@ import android.text.TextWatcher;
 import android.transition.AutoTransition;
 import android.transition.TransitionManager;
 import android.util.DisplayMetrics;
+import android.util.Log;
 import android.view.Choreographer;
 import android.view.Gravity;
 import android.view.HapticFeedbackConstants;
@@ -84,6 +88,9 @@ import org.json.JSONException;
 import org.json.JSONObject;
 
 import java.io.ByteArrayOutputStream;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
@@ -100,6 +107,11 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Random;
+import java.util.TimeZone;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.RejectedExecutionException;
+import java.security.SecureRandom;
 import java.util.Set;
 import java.util.TreeSet;
 import java.util.regex.Matcher;
@@ -129,6 +141,9 @@ public class SettingsActivity extends AppCompatActivity {
     public static final String PREF_PIPE_MOVE_TIER_1_SCORE = "pref_pipe_move_tier_1";
     public static final String PREF_PIPE_MOVE_TIER_2_SCORE = "pref_pipe_move_tier_2";
     public static final String PREF_NO_CLIP_ENABLED = "pref_no_clip_enabled";
+    public static final String PREF_GOD_FALL_ENABLED = "pref_god_fall_enabled";
+    public static final String PREF_GOD_FALL_SECONDS = "pref_god_fall_seconds";
+    public static final String PREF_ACTIVITY_LOG_ENABLED = "pref_activity_log_enabled";
     public static final String PREF_UPSIDE_DOWN_ENABLED = "pref_upside_down_enabled";
     public static final String PREF_REVERSE_PIPES_ENABLED = "pref_reverse_pipes_enabled";
     public static final String PREF_SETTINGS_DISCLAIMER_SHOWN = "pref_settings_disclaimer_shown";
@@ -228,6 +243,9 @@ public class SettingsActivity extends AppCompatActivity {
     public static final int DEFAULT_PIPE_MOVE_TIER_1_SCORE = 2000;
     public static final int DEFAULT_PIPE_MOVE_TIER_2_SCORE = 3000;
     public static final boolean DEFAULT_NO_CLIP_ENABLED = false;
+    public static final boolean DEFAULT_GOD_FALL_ENABLED = true;
+    public static final float DEFAULT_GOD_FALL_SECONDS = 2f;
+    public static final boolean DEFAULT_ACTIVITY_LOG_ENABLED = true;
     public static final boolean DEFAULT_UPSIDE_DOWN_ENABLED = false;
     public static final boolean DEFAULT_REVERSE_PIPES_ENABLED = false;
     public static final boolean DEFAULT_HAPTIC_FEEDBACK_ENABLED = true;
@@ -305,6 +323,297 @@ public class SettingsActivity extends AppCompatActivity {
     public static final boolean DEFAULT_RIGHT_CLICK_PAUSES = true;
     public static final boolean DEFAULT_HIDE_CURSOR = true;
 
+    public static long installSalt(SharedPreferences store) {
+        return installSalt(store, store.getAll());
+    }
+
+    private static long installSalt(SharedPreferences store, Map<String, ?> all) {
+        Object stored = all.get(KEY_INSTALL_SALT);
+        if (stored instanceof Long) return (Long) stored;
+        long salt = new SecureRandom().nextLong() | 1L;
+        store.edit().putLong(KEY_INSTALL_SALT, salt).apply();
+        return salt;
+    }
+
+    public static String scoreSeal(int score, String assists, long salt) {
+        long hash = salt ^ 0x5DEECE66DL;
+        hash = hash * 0x100000001B3L + score;
+        String text = assists == null ? "" : assists;
+        for (int i = 0; i < text.length(); i++) hash = (hash ^ text.charAt(i)) * 0x100000001B3L;
+        hash ^= hash >>> 29;
+        hash *= 0xBF58476D1CE4E5B9L;
+        hash ^= hash >>> 32;
+        return Long.toHexString(hash);
+    }
+
+    private static int earnedIn(Map<String, ?> all) {
+        Object stored = all.get(KEY_EARNED_HIGH_SCORE);
+        return stored instanceof Integer ? Math.max(0, (Integer) stored) : 0;
+    }
+
+    private static String assistsIn(Map<String, ?> all) {
+        Object stored = all.get(KEY_HIGH_SCORE_ASSISTS);
+        return stored instanceof String ? (String) stored : "";
+    }
+
+    private static boolean sealIntact(SharedPreferences store, Map<String, ?> all) {
+        if (!all.containsKey(KEY_EARNED_HIGH_SCORE)) return true;
+        Object seal = all.get(KEY_HIGH_SCORE_SEAL);
+        return seal instanceof String && seal.equals(scoreSeal(earnedIn(all), assistsIn(all), installSalt(store, all)));
+    }
+
+    public static int earnedHighScore(SharedPreferences store) {
+        return earnedIn(store.getAll());
+    }
+
+    public static String highScoreAssists(SharedPreferences store) {
+        return assistsIn(store.getAll());
+    }
+
+    public static boolean highScoreSealIntact(SharedPreferences store) {
+        return sealIntact(store, store.getAll());
+    }
+
+    public static void recordEarnedScore(SharedPreferences store, int score, String assists) {
+        String clean = assists == null ? "" : assists;
+        int safe = Math.max(0, score);
+        store.edit()
+                .putInt(KEY_EARNED_HIGH_SCORE, safe)
+                .putString(KEY_HIGH_SCORE_ASSISTS, clean)
+                .putString(KEY_HIGH_SCORE_SEAL, scoreSeal(safe, clean, installSalt(store)))
+                .apply();
+    }
+
+    public static void adoptOldHighScore(SharedPreferences store) {
+        Map<String, ?> all = store.getAll();
+        if (all.containsKey(KEY_EARNED_HIGH_SCORE)) return;
+        Object old = all.get(KEY_HIGH_SCORE);
+        recordEarnedScore(store, old instanceof Integer ? (Integer) old : 0, "");
+    }
+
+    public static int submitRound(SharedPreferences store, int score, String assists) {
+        Map<String, ?> all = store.getAll();
+        int earned = earnedIn(all);
+        boolean intact = sealIntact(store, all);
+        boolean cleanTie = score == earned && score > 0 && (assists == null || assists.isEmpty()) && !assistsIn(all).isEmpty();
+        if (!intact || score > earned || cleanTie) recordEarnedScore(store, score, assists);
+        if (!intact) return -1;
+        return score > earned || cleanTie ? earned : Integer.MIN_VALUE;
+    }
+
+    public static String appVersion(Context context) {
+        try {
+            android.content.pm.PackageInfo info = context.getPackageManager().getPackageInfo(context.getPackageName(), 0);
+            long code = Build.VERSION.SDK_INT >= 28 ? info.getLongVersionCode() : info.versionCode;
+            return info.versionName + " (" + code + ")";
+        } catch (Exception e) {
+            return "unknown";
+        }
+    }
+
+    public static String deviceSummary(Context context) {
+        return "v" + appVersion(context) + ", Android " + Build.VERSION.RELEASE + " (API " + Build.VERSION.SDK_INT + "), "
+                + Build.MANUFACTURER + " " + Build.MODEL;
+    }
+
+    public static final class ActivityLog {
+        private static final String FILE_NAME = "activity_log.txt";
+        private static final long MAX_BYTES = 512 * 1024;
+        private static final int KEEP_BYTES = 384 * 1024;
+        private static final int MAX_PENDING_CHARS = 256 * 1024;
+        private static final String INDENT = "\n                                ";
+        private static final SimpleDateFormat STAMP = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US);
+        private static final Object PENDING_LOCK = new Object();
+        private static final Object FILE_LOCK = new Object();
+        private static final StringBuilder pending = new StringBuilder();
+        private static File pendingFile;
+        private static boolean drainScheduled;
+        private static int droppedChars;
+        private static ExecutorService writer;
+        private static volatile Boolean enabled;
+
+        private ActivityLog() {
+        }
+
+        public static void setEnabled(boolean on) {
+            enabled = on;
+        }
+
+        public static boolean isEnabled(Context context) {
+            Boolean on = enabled;
+            if (on == null) {
+                on = true;
+                try {
+                    Object stored = context.getSharedPreferences(PREFS_NAME, MODE_PRIVATE).getAll().get(PREF_ACTIVITY_LOG_ENABLED);
+                    if (stored instanceof Boolean) on = (Boolean) stored;
+                } catch (RuntimeException ignored) {
+                }
+                enabled = on;
+            }
+            return on;
+        }
+
+        private static File file(Context context) {
+            return new File(context.getFilesDir(), FILE_NAME);
+        }
+
+        public static void add(Context context, String kind, String message) {
+            if (message == null) return;
+            add(context, kind, Collections.singletonList(message));
+        }
+
+        public static void add(Context context, String kind, List<String> messages) {
+            if (context == null || messages == null || messages.isEmpty() || !isEnabled(context)) return;
+            try {
+                String text = format(kind, messages);
+                if (text.isEmpty()) return;
+                queue(file(context), text);
+                scheduleDrain();
+            } catch (RuntimeException e) {
+                Log.w("ActivityLog", "Could not queue a log entry", e);
+            }
+        }
+
+        public static void addNow(Context context, String kind, String message) {
+            if (context == null || message == null || !isEnabled(context)) return;
+            try {
+                queue(file(context), format(kind, Collections.singletonList(message)));
+                drain();
+            } catch (RuntimeException e) {
+                Log.w("ActivityLog", "Could not write a log entry", e);
+            }
+        }
+
+        public static String read(Context context) {
+            if (context == null) return "";
+            drain();
+            File log;
+            try {
+                log = file(context);
+            } catch (RuntimeException e) {
+                return "";
+            }
+            synchronized (FILE_LOCK) {
+                if (!log.exists()) return "";
+                try {
+                    return new String(readAll(log), "UTF-8");
+                } catch (IOException | RuntimeException e) {
+                    return "";
+                }
+            }
+        }
+
+        public static long size(Context context) {
+            drain();
+            try {
+                return file(context).length();
+            } catch (RuntimeException e) {
+                return 0;
+            }
+        }
+
+        private static String format(String kind, List<String> messages) {
+            String tag = kind.length() >= 8 ? kind : (kind + "        ").substring(0, 8);
+            String stamp;
+            synchronized (STAMP) {
+                stamp = STAMP.format(new Date());
+            }
+            StringBuilder lines = new StringBuilder();
+            for (String message : messages) {
+                if (message == null) continue;
+                String body = message.replace("\r", "").trim().replace("\n", INDENT);
+                lines.append(stamp).append("  ").append(tag).append("  ").append(body).append('\n');
+            }
+            return lines.toString();
+        }
+
+        private static void queue(File log, String text) {
+            boolean otherFile;
+            synchronized (PENDING_LOCK) {
+                otherFile = pendingFile != null && !pendingFile.equals(log) && (pending.length() > 0 || droppedChars > 0);
+            }
+            if (otherFile) drain();
+            synchronized (PENDING_LOCK) {
+                pendingFile = log;
+                if (pending.length() + text.length() > MAX_PENDING_CHARS) droppedChars += text.length();
+                else pending.append(text);
+            }
+        }
+
+        private static void scheduleDrain() {
+            synchronized (PENDING_LOCK) {
+                if (drainScheduled) return;
+                drainScheduled = true;
+            }
+            try {
+                writer().execute(ActivityLog::drain);
+            } catch (RejectedExecutionException e) {
+                drain();
+            }
+        }
+
+        private static synchronized ExecutorService writer() {
+            if (writer == null) {
+                writer = Executors.newSingleThreadExecutor(task -> {
+                    Thread thread = new Thread(task, "ActivityLog");
+                    thread.setDaemon(true);
+                    thread.setPriority(Thread.MIN_PRIORITY);
+                    return thread;
+                });
+            }
+            return writer;
+        }
+
+        private static void drain() {
+            synchronized (FILE_LOCK) {
+                String text;
+                File log;
+                synchronized (PENDING_LOCK) {
+                    drainScheduled = false;
+                    if (pendingFile == null || (pending.length() == 0 && droppedChars == 0)) return;
+                    text = pending.toString();
+                    pending.setLength(0);
+                    if (droppedChars > 0) {
+                        text = text + format("LOG", Collections.singletonList(droppedChars
+                                + " characters of log entries were skipped because too many came in at once"));
+                        droppedChars = 0;
+                    }
+                    log = pendingFile;
+                }
+                try {
+                    try (FileOutputStream out = new FileOutputStream(log, true)) {
+                        out.write(text.getBytes("UTF-8"));
+                    }
+                    if (log.length() > MAX_BYTES) trim(log);
+                } catch (IOException | RuntimeException e) {
+                    Log.w("ActivityLog", "Could not write the activity log", e);
+                }
+            }
+        }
+
+        private static byte[] readAll(File log) throws IOException {
+            try (FileInputStream in = new FileInputStream(log)) {
+                ByteArrayOutputStream bytes = new ByteArrayOutputStream((int) Math.min(log.length() + 16, MAX_BYTES * 2));
+                byte[] buffer = new byte[8192];
+                int count;
+                while ((count = in.read(buffer)) != -1) bytes.write(buffer, 0, count);
+                return bytes.toByteArray();
+            }
+        }
+
+        private static void trim(File log) throws IOException {
+            byte[] all = readAll(log);
+            int start = Math.max(0, all.length - KEEP_BYTES);
+            while (start < all.length && all[start] != '\n') start++;
+            start = Math.min(all.length, start + 1);
+            String note = format("LOG", Collections.singletonList("Older entries were removed to keep the log small"));
+            try (FileOutputStream out = new FileOutputStream(log, false)) {
+                out.write(note.getBytes("UTF-8"));
+                out.write(all, start, all.length - start);
+            }
+        }
+    }
+
     public static boolean isUsableKey(int code) {
         if (code == KeyEvent.KEYCODE_UNKNOWN) return true;
         if (code < 0 || code > KeyEvent.getMaxKeyCode()) return false;
@@ -345,6 +654,13 @@ public class SettingsActivity extends AppCompatActivity {
     private static final String PROFILE_SAVED_AT = "profile_saved_at";
     private static final String STATE_PAGE = "settings_page";
     private static final String KEY_HIGH_SCORE = "highScore";
+    public static final String KEY_EARNED_HIGH_SCORE = "earnedHighScore";
+    public static final String KEY_HIGH_SCORE_ASSISTS = "highScoreAssists";
+    public static final String KEY_HIGH_SCORE_SEAL = "highScoreSeal";
+    public static final String KEY_INSTALL_SALT = "installSalt";
+    private static final int REQUEST_EXPORT_LOG = 4103;
+    private static final int LOG_VIEW_LINES = 500;
+    private static final int LOG_SHARE_CHARS = 100000;
     private static final String EXPORT_FORMAT = "flappy-bird-settings";
     private static final int EXPORT_VERSION = 1;
     private static final int REQUEST_EXPORT = 4101;
@@ -378,7 +694,10 @@ public class SettingsActivity extends AppCompatActivity {
             + "# Type default as a value to go back to the default.\n"
             + "# Settings you delete keep their current value.\n";
     private static final String CLASSIC_SUMMARY = "Matches the flight, pipes and scoring of the 2013 Android game";
-    private static final int TAB_COUNT = 10;
+    private static final int TAB_COUNT = 11;
+    private static final int ABOUT_PAGE = 10;
+    public static final String PROJECT_URL = "https://github.com/FlappyRecreator/FlappyB64bitAndroid";
+    private static final String MADE_BY = "Breathe";
     private static final int ADVANCED_PAGE = 7;
     private static final int PRESETS_PAGE = 8;
     private static final int ALL_PAGE = 9;
@@ -491,6 +810,9 @@ public class SettingsActivity extends AppCompatActivity {
     private String searchQuery = "";
     private Map<String, Setting> textNames;
     private List<HiddenValue> hiddenValues;
+    private ToggleSetting activityLog;
+    private final Map<String, String> loggedValues = new HashMap<>();
+    private String changeSource;
 
     private final Runnable saveRunnable = () -> flushSave();
     private final Runnable hideCaptionRunnable = () -> caption.animate().alpha(0f).setDuration(250L).start();
@@ -500,6 +822,9 @@ public class SettingsActivity extends AppCompatActivity {
         setTheme(R.style.Theme_Material3Expressive_Dark_NoActionBar);
         super.onCreate(savedInstanceState);
         prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
+        adoptOldHighScore(prefs);
+        Object logSetting = prefs.getAll().get(PREF_ACTIVITY_LOG_ENABLED);
+        ActivityLog.setEnabled(!(logSetting instanceof Boolean) || (Boolean) logSetting);
         DisplayMetrics metrics = getResources().getDisplayMetrics();
         density = metrics.density;
 
@@ -515,6 +840,8 @@ public class SettingsActivity extends AppCompatActivity {
 
         readAll(prefs.getAll());
         resolveAllKeyConflicts(null);
+        for (Setting setting : settings) loggedValues.put(setting.key, setting.textValue());
+        ActivityLog.add(this, "SETTINGS", "Settings opened");
         syncAllViews();
         refreshDependencies(false, true);
         refreshSlots();
@@ -530,12 +857,14 @@ public class SettingsActivity extends AppCompatActivity {
         super.onResume();
         hideSystemBars();
         if (previewView != null) previewView.setHostResumed(true);
+        if (currentPage == ABOUT_PAGE) refreshAbout();
     }
 
     @Override
     protected void onPause() {
         super.onPause();
         flushSave();
+        if (isFinishing()) ActivityLog.add(this, "SETTINGS", "Settings closed");
         if (previewView != null) previewView.setHostResumed(false);
     }
 
@@ -659,6 +988,7 @@ public class SettingsActivity extends AppCompatActivity {
             final int index = i;
             if (i == ADVANCED_PAGE) tabs[i] = createTab("Advanced", presetsTab, presetsTab);
             else if (i == ALL_PAGE) tabs[i] = createTab("All", presetsTab, tabs[0]);
+            else if (i == ABOUT_PAGE) tabs[i] = createTab("About", presetsTab, null);
             else tabs[i] = findViewById(TAB_IDS[i < ADVANCED_PAGE ? i : i - 1]);
             tabStyles[i] = new ChipStyle(tabs[i], COLOR_ROW, COLOR_PRIMARY, COLOR_ON_VARIANT, COLOR_ON_PRIMARY,
                     dp(12), dp(20), 0, 0);
@@ -836,7 +1166,8 @@ public class SettingsActivity extends AppCompatActivity {
                 int shown = 0;
                 for (int i = 0; i < group.getChildCount(); i++) {
                     View row = group.getChildAt(i);
-                    boolean visible = !dependencyHidden.contains(row) && matches(row, context, words);
+                    boolean visible = !dependencyHidden.contains(row)
+                            && (page == ABOUT_PAGE ? titleMatches(row, context, words) : matches(row, context, words));
                     row.setVisibility(visible ? View.VISIBLE : View.GONE);
                     if (visible) shown++;
                 }
@@ -853,6 +1184,15 @@ public class SettingsActivity extends AppCompatActivity {
         noResults.setVisibility(found == 0 ? View.VISIBLE : View.GONE);
         styleAllGroups();
         if (backToTop) scrollView.scrollTo(0, 0);
+    }
+
+    private boolean titleMatches(View row, String context, String[] words) {
+        String title = firstText(row);
+        String haystack = searchable(context + " " + (title == null ? "" : title));
+        for (String word : words) {
+            if (!word.isEmpty() && !haystack.contains(word)) return false;
+        }
+        return true;
     }
 
     private boolean matches(View row, String context, String[] words) {
@@ -933,7 +1273,7 @@ public class SettingsActivity extends AppCompatActivity {
         boolean all = page == ALL_PAGE;
         for (int i = 0; i < pages.length; i++) {
             tabStyles[i].set(i == page, animate);
-            if (!searching) pages[i].setVisibility(all || i == page ? View.VISIBLE : View.GONE);
+            if (!searching) pages[i].setVisibility((all && i != ABOUT_PAGE) || i == page ? View.VISIBLE : View.GONE);
             if (i != ALL_PAGE) {
                 ViewGroup.MarginLayoutParams params = (ViewGroup.MarginLayoutParams) pages[i].getLayoutParams();
                 params.topMargin = all ? dp(14) : 0;
@@ -947,6 +1287,7 @@ public class SettingsActivity extends AppCompatActivity {
             groupLabels.get(group).setText(text.toUpperCase(Locale.US));
         }
         currentPage = page;
+        if (page == ABOUT_PAGE) refreshAbout();
         scrollView.scrollTo(0, 0);
 
         final View tab = tabs[page];
@@ -1423,6 +1764,8 @@ public class SettingsActivity extends AppCompatActivity {
         page = addPage(5);
         group = addGroup(page, "Cheats");
         toggleRow(group, "row_no_clip", "God mode", "Nothing can kill the bird");
+        toggleRow(group, "row_god_fall", "Fall out to end the run", "Leaving the screen for too long ends the round, so the score still counts");
+        sliderRow(group, "row_god_fall_seconds", "Time off screen", "How long the bird can stay off screen in God mode", "2 s");
         sliderRow(group, "row_extra_lives", "Extra lives", "Hits you can survive in each round", "0");
         toggleRow(group, "row_autopilot", "Autopilot", "The bird flies itself after you tap to start");
         group = addGroup(page, "Twists");
@@ -1475,6 +1818,8 @@ public class SettingsActivity extends AppCompatActivity {
         sliderRow(group, "row_tilt_speed", "Tilt speed", null, "1x");
         group = addGroup(page, "Scoring");
         choiceRow(group, "row_score_point", "Point is scored at the pipe's", "Start", "Middle", "End", "Classic");
+        group = addGroup(page, "Bug reports");
+        toggleRow(group, "row_activity_log_enabled", "Activity log", "Records rounds, changes and crashes for bug reports. Turning it off is not recommended");
 
         page = addPage(PRESETS_PAGE);
         group = addGroup(page, "Saved setups");
@@ -1490,8 +1835,163 @@ public class SettingsActivity extends AppCompatActivity {
         actionRow(group, "button_share_settings", "Share settings", "Sends your setup to a friend as text", COLOR_ON);
         actionRow(group, "button_paste_settings", "Paste settings", "Imports a setup someone sent you as text", COLOR_ON);
         actionRow(group, "button_edit_text", "Edit as text", "See and change every setting at once, past the slider limits", COLOR_ON);
+        group = addGroup(page, "Help and bug reports");
+        actionRow(group, "button_activity_log", "Activity log", "Every round, setting change and error, ready to send with a bug report", COLOR_ON);
+
+        buildAboutPage();
         content.removeView(noResults);
         pageStack.addView(noResults, linear(MATCH, WRAP));
+    }
+
+    private void buildAboutPage() {
+        LinearLayout page = addPage(ABOUT_PAGE);
+        LinearLayout group = addGroup(page, "About");
+        LinearLayout header = addRow(group, "about_header", true, 20, 20);
+        try {
+            android.graphics.drawable.Drawable icon = getPackageManager().getApplicationIcon(getPackageName());
+            ImageView image = new ImageView(this);
+            image.setImageDrawable(icon);
+            image.setScaleType(ImageView.ScaleType.FIT_CENTER);
+            LinearLayout.LayoutParams iconParams = linear(dp(56), dp(56));
+            iconParams.setMarginEnd(dp(16));
+            header.addView(image, iconParams);
+        } catch (Exception ignored) {
+        }
+        LinearLayout titles = newLinear(false);
+        titles.addView(newText("Flappy Bird Recreation", 20, COLOR_ON, pixelBold), linear(MATCH, WRAP));
+        TextView madeBy = newText("Made by " + MADE_BY, 15, COLOR_PRIMARY, mediumFont);
+        LinearLayout.LayoutParams madeParams = linear(MATCH, WRAP);
+        madeParams.topMargin = dp(4);
+        titles.addView(madeBy, madeParams);
+        TextView version = newText("Version " + appVersion(this), 13, COLOR_ON_VARIANT, pixelFont);
+        LinearLayout.LayoutParams versionParams = linear(MATCH, WRAP);
+        versionParams.topMargin = dp(2);
+        titles.addView(version, versionParams);
+        summaries.put("about_header", version);
+        header.addView(titles, weighted(WRAP));
+
+        group = addGroup(page, "With respect to the original");
+        LinearLayout respect = addRow(group, "about_respect", false, 16, 16);
+        addTexts(respect, "about_respect", "Flappy Bird",
+                "Flappy Bird was created by Dong Nguyen and released by .GEARS Studios in 2013. All credit for the original idea, "
+                        + "design, characters, artwork and sounds belongs to its creator, and the Flappy Bird name belongs to its rightful owner.\n\n"
+                        + "This recreation was made out of deep respect and admiration for the original game. It is a free, non-commercial fan project "
+                        + "and is not affiliated with, endorsed by or connected to the original creator or the owner of the Flappy Bird name.\n\n"
+                        + "If the creator or the owner of the name or assets has any concern, the project will be taken down, "
+                        + "or handed over in full if they ask.", false, COLOR_ON);
+
+        group = addGroup(page, "This app");
+        actionRow(group, "about_version", "Version", appVersion(this), COLOR_ON);
+        infoRow(group, "about_build", "Build", "");
+        infoRow(group, "about_installed", "Installed and updated", "");
+        infoRow(group, "about_device", "Your device", "");
+        infoRow(group, "about_install_id", "Install ID", "");
+        infoRow(group, "about_high_score", "High score", "");
+        infoRow(group, "about_setup", "Your setup", "");
+        actionRow(group, "about_copy", "Copy app info", "Version, device and setup details to paste into a bug report", COLOR_ON);
+
+        group = addGroup(page, "Links");
+        actionRow(group, "about_github", "GitHub page", "Source code, updates and the license", COLOR_ON);
+        actionRow(group, "about_report", "Report a bug", "Opens the issues page. Attaching your activity log helps a lot", COLOR_ON);
+
+        rowView("about_version").setOnClickListener(v -> copyAppInfo());
+        rowView("about_copy").setOnClickListener(v -> copyAppInfo());
+        rowView("about_github").setOnClickListener(v -> openLink(PROJECT_URL));
+        rowView("about_report").setOnClickListener(v -> {
+            openLink(PROJECT_URL + "/issues");
+            announce("Tip: attach your activity log to the report", "Open log", view -> showActivityLog());
+        });
+    }
+
+    private void infoRow(LinearLayout group, String name, String title, String summary) {
+        LinearLayout row = addRow(group, name, false, 12, 12);
+        addTexts(row, name, title, summary, false, COLOR_ON);
+    }
+
+    private String buildType() {
+        boolean debuggable = (getApplicationInfo().flags & android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) != 0;
+        return (debuggable ? "Debug" : "Release") + " build, target API " + getApplicationInfo().targetSdkVersion;
+    }
+
+    private String installDates() {
+        try {
+            android.content.pm.PackageInfo info = getPackageManager().getPackageInfo(getPackageName(), 0);
+            SimpleDateFormat day = new SimpleDateFormat("MMM d, yyyy", Locale.US);
+            return "Installed " + day.format(new Date(info.firstInstallTime)) + ", updated " + day.format(new Date(info.lastUpdateTime));
+        } catch (Exception e) {
+            return "Unknown";
+        }
+    }
+
+    private String installId() {
+        long salt = installSalt(prefs);
+        return String.format(Locale.US, "%08x", (int) (salt ^ (salt >>> 32)));
+    }
+
+    private int changedSettings() {
+        int changed = 0;
+        for (Setting setting : settings) {
+            Object now = setting.capture();
+            if (now != null && !now.equals(setting.defaultObject())) changed++;
+        }
+        return changed;
+    }
+
+    private void refreshAbout() {
+        if (summaries.get("about_setup") == null) return;
+        String version = appVersion(this);
+        summaries.get("about_header").setText("Version " + version);
+        summaries.get("about_version").setText(version + "  \u00B7  tap to copy app info");
+        String build;
+        try {
+            build = buildType();
+        } catch (RuntimeException e) {
+            build = "Unknown";
+        }
+        summaries.get("about_build").setText(build);
+        summaries.get("about_installed").setText(installDates());
+        summaries.get("about_device").setText(Build.MANUFACTURER + " " + Build.MODEL + ", Android " + Build.VERSION.RELEASE
+                + " (API " + Build.VERSION.SDK_INT + ")");
+        summaries.get("about_install_id").setText(installId() + "  \u00B7  also shown in exported activity logs");
+        summaries.get("about_high_score").setText(highScoreStatus().replace("Current high score: ", "").replace("\n", ". "));
+        int changed = changedSettings();
+        summaries.get("about_setup").setText(changed == 0 ? "All " + settings.size() + " settings at their defaults"
+                : changed + " of " + settings.size() + " settings changed from the defaults");
+    }
+
+    private String appInfoText() {
+        refreshAbout();
+        StringBuilder out = new StringBuilder("Flappy Bird Recreation by ").append(MADE_BY).append('\n');
+        out.append("Version: ").append(appVersion(this)).append('\n');
+        out.append("Build: ").append(summaries.get("about_build").getText()).append('\n');
+        out.append(summaries.get("about_installed").getText()).append('\n');
+        out.append("Device: ").append(summaries.get("about_device").getText()).append('\n');
+        DisplayMetrics metrics = getResources().getDisplayMetrics();
+        out.append("Screen: ").append(metrics.widthPixels).append(" x ").append(metrics.heightPixels).append(" px, ")
+                .append(metrics.densityDpi).append(" dpi\n");
+        out.append("Install ID: ").append(installId()).append('\n');
+        out.append("High score: ").append(summaries.get("about_high_score").getText()).append('\n');
+        out.append("Setup: ").append(summaries.get("about_setup").getText()).append('\n');
+        out.append("Activity log: ").append(activityLog == null || activityLog.value ? "on" : "off").append('\n');
+        return out.toString();
+    }
+
+    private void copyAppInfo() {
+        ClipboardManager clipboard = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
+        if (clipboard == null) {
+            announce("Could not reach the clipboard", null, null);
+            return;
+        }
+        clipboard.setPrimaryClip(ClipData.newPlainText("Flappy Bird app info", appInfoText()));
+        announce("App info copied", null, null);
+    }
+
+    private void openLink(String url) {
+        try {
+            startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(url)));
+        } catch (ActivityNotFoundException e) {
+            announce("No browser found to open " + url, null, null);
+        }
     }
 
     private void createSettings() {
@@ -1603,6 +2103,12 @@ public class SettingsActivity extends AppCompatActivity {
                 new int[]{COLOR_SKY, 0xFF9C8CFF, COLOR_PRIMARY, 0xFF9BE15D}, null);
 
         toggle(PREF_NO_CLIP_ENABLED, DEFAULT_NO_CLIP_ENABLED, rowView("row_no_clip")).note = "applies in the game";
+        toggle(PREF_GOD_FALL_ENABLED, DEFAULT_GOD_FALL_ENABLED, rowView("row_god_fall")).note = "applies in the game";
+        new NumberSetting(PREF_GOD_FALL_SECONDS, DEFAULT_GOD_FALL_SECONDS, false, 0.5f, 10f, 0.5f, 0.1f, 60f, UNIT_SECONDS,
+                rowView("row_god_fall_seconds")).note = "applies in the game";
+        activityLog = toggle(PREF_ACTIVITY_LOG_ENABLED, DEFAULT_ACTIVITY_LOG_ENABLED, rowView("row_activity_log_enabled"));
+        activityLog.randomizable = false;
+        activityLog.note = "not recommended to turn off";
         whole(PREF_EXTRA_LIVES, DEFAULT_EXTRA_LIVES, 0, 5, 1, 0, 9, UNIT_SCORE,
                 rowView("row_extra_lives"));
         toggle(PREF_AUTOPILOT_ENABLED, DEFAULT_AUTOPILOT_ENABLED, rowView("row_autopilot")).note = "the preview bird already flies itself";
@@ -1732,6 +2238,23 @@ public class SettingsActivity extends AppCompatActivity {
         SharedPreferences.Editor editor = prefs.edit();
         for (Setting setting : unsaved) setting.write(editor);
         editor.apply();
+        String source = changeSource != null ? changeSource : "changed in settings";
+        List<String> changes = new ArrayList<>();
+        for (Setting setting : settings) {
+            if (!unsaved.contains(setting)) continue;
+            String now = setting.textValue();
+            String before = loggedValues.get(setting.key);
+            if (now.equals(before)) continue;
+            loggedValues.put(setting.key, now);
+            changes.add(textName(setting) + ": " + before + " -> " + now + "  (" + source + ")");
+        }
+        boolean logOn = activityLog == null || activityLog.value;
+        if (logOn || ActivityLog.isEnabled(this)) {
+            ActivityLog.setEnabled(true);
+            ActivityLog.add(this, "SETTING", changes);
+        }
+        ActivityLog.setEnabled(logOn);
+        changeSource = null;
         unsaved.clear();
     }
 
@@ -1747,6 +2270,15 @@ public class SettingsActivity extends AppCompatActivity {
             drunkStrength.value = 1f;
             drunkStrength.syncView();
             scheduleSave(drunkStrength);
+        }
+        if (setting == activityLog && !activityLog.value) {
+            extra = "not recommended";
+            announce("Activity log off. Bug reports won't show what happened", "Turn on", v -> {
+                activityLog.value = true;
+                activityLog.syncView();
+                scheduleSave(activityLog);
+                showCaption("Activity log: on");
+            });
         }
         if (setting == vibration && vibration.value) {
             root.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY);
@@ -1802,7 +2334,8 @@ public class SettingsActivity extends AppCompatActivity {
                 rowOf(PREF_RAMP_TOP_SPEED), rowOf(PREF_RAMP_MIN_GAP),
                 rowOf(PREF_SOUND_VOLUME), rowOf(PREF_WEATHER_VOLUME),
                 rowOf(PREF_KEY_FLAP), rowOf(PREF_KEY_FLAP_ALT), rowOf(PREF_KEY_PAUSE),
-                rowOf(PREF_KEY_PLAY), rowOf(PREF_KEY_SETTINGS)};
+                rowOf(PREF_KEY_PLAY), rowOf(PREF_KEY_SETTINGS),
+                rowOf(PREF_GOD_FALL_ENABLED), rowOf(PREF_GOD_FALL_SECONDS)};
         boolean[] shown = {
                 wingAnimation.value,
                 storm, storm,
@@ -1816,7 +2349,8 @@ public class SettingsActivity extends AppCompatActivity {
                 number(PREF_SPEED_RAMP) > 0f, number(PREF_GAP_SHRINK) > 0f,
                 sound.value, sound.value,
                 keyboard.value, keyboard.value, keyboard.value,
-                keyboard.value, keyboard.value};
+                keyboard.value, keyboard.value,
+                flag(PREF_NO_CLIP_ENABLED), flag(PREF_NO_CLIP_ENABLED) && flag(PREF_GOD_FALL_ENABLED)};
 
         boolean changed = false;
         for (int i = 0; i < rows.length; i++) {
@@ -1934,12 +2468,16 @@ public class SettingsActivity extends AppCompatActivity {
         pushPreview();
     }
 
-    private void applyBulkChange(Runnable change, String message) {
+    private void applyBulkChange(Runnable change, final String message) {
+        flushSave();
         final Map<String, Object> before = snapshot();
+        changeSource = message;
         change.run();
         afterBulkChange();
         showCaption(message);
         announce(message, "Undo", v -> {
+            flushSave();
+            changeSource = "undo of: " + message;
             restore(before);
             afterBulkChange();
             showCaption("Change undone");
@@ -1971,7 +2509,9 @@ public class SettingsActivity extends AppCompatActivity {
         resetScore.setOnClickListener(v -> confirm("Reset high score",
                 "Your best score of " + storedHighScore() + " will be erased.", "Reset",
                 () -> {
+                    ActivityLog.add(this, "SCORE", "High score reset from " + storedHighScore() + " (best earned by playing was " + earnedHighScore(prefs) + ")");
                     prefs.edit().remove(KEY_HIGH_SCORE).apply();
+                    recordEarnedScore(prefs, 0, "");
                     refreshHighScore();
                     announce("High score reset", null, null);
                 }));
@@ -1982,6 +2522,7 @@ public class SettingsActivity extends AppCompatActivity {
         rowView("button_share_settings").setOnClickListener(v -> shareSettings());
         rowView("button_paste_settings").setOnClickListener(v -> pasteSettings());
         rowView("button_edit_text").setOnClickListener(v -> openTextEditor());
+        rowView("button_activity_log").setOnClickListener(v -> showActivityLog());
 
         View deleteAll = rowView("button_reset_profiles");
         deleteAll.setOnClickListener(v -> confirm("Delete saved setups",
@@ -1989,6 +2530,7 @@ public class SettingsActivity extends AppCompatActivity {
                 () -> {
                     for (int slot = 1; slot <= PROFILE_COUNT; slot++) profile(slot).edit().clear().apply();
                     refreshSlots();
+                    ActivityLog.add(this, "FILE", "All saved setups deleted");
                     announce("All saved setups deleted", null, null);
                 }));
     }
@@ -2007,7 +2549,24 @@ public class SettingsActivity extends AppCompatActivity {
     }
 
     private void refreshHighScore() {
-        highScoreSummary.setText("Current high score: " + storedHighScore());
+        highScoreSummary.setText(highScoreStatus());
+    }
+
+    private String highScoreStatus() {
+        int shown = storedHighScore();
+        int earned = earnedHighScore(prefs);
+        String assists = highScoreAssists(prefs);
+        StringBuilder text = new StringBuilder("Current high score: ").append(shown);
+        if (!highScoreSealIntact(prefs)) {
+            text.append("\nThe saved record was changed outside the game, so this score can't be trusted");
+        } else if (shown != earned) {
+            text.append("\nChanged by hand. Best earned by playing: ").append(earned);
+        } else if (!assists.isEmpty()) {
+            text.append("\nSet with ").append(assists);
+        } else if (shown > 0) {
+            text.append(" \u00B7 earned by playing");
+        }
+        return text.toString();
     }
 
     private boolean isPersonal(Setting setting) {
@@ -2112,9 +2671,11 @@ public class SettingsActivity extends AppCompatActivity {
                 applySettingsText(text, false);
                 return;
             }
+            ActivityLog.add(this, "FILE", "Import refused: not a settings file");
             announce("That is not a Flappy Bird settings file", null, null);
             return;
         }
+        ActivityLog.add(this, "FILE", "Imported a .json settings file with " + imported.size() + " settings");
         applyBulkChange(() -> {
             Map<String, Object> merged = snapshot();
             merged.putAll(imported);
@@ -2150,9 +2711,10 @@ public class SettingsActivity extends AppCompatActivity {
     @Override
     protected void onActivityResult(int requestCode, int resultCode, @Nullable Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
-        if (requestCode != REQUEST_EXPORT && requestCode != REQUEST_IMPORT) return;
+        if (requestCode != REQUEST_EXPORT && requestCode != REQUEST_IMPORT && requestCode != REQUEST_EXPORT_LOG) return;
         if (resultCode != RESULT_OK || data == null || data.getData() == null) return;
-        if (requestCode == REQUEST_EXPORT) writeExport(data.getData());
+        if (requestCode == REQUEST_EXPORT_LOG) writeLogExport(data.getData());
+        else if (requestCode == REQUEST_EXPORT) writeExport(data.getData());
         else readImport(data.getData());
     }
 
@@ -2175,6 +2737,7 @@ public class SettingsActivity extends AppCompatActivity {
         }
         try (OutputStream out = openForWriting(uri)) {
             out.write(json.getBytes("UTF-8"));
+            ActivityLog.add(this, "FILE", "Settings exported to a file");
             announce("Settings exported", null, null);
         } catch (IOException | SecurityException e) {
             announce("Could not save the file", null, null);
@@ -2200,9 +2763,184 @@ public class SettingsActivity extends AppCompatActivity {
         }
     }
 
+    private interface Fact {
+        String get() throws Exception;
+    }
+
+    private static void fact(StringBuilder out, String label, Fact fact) {
+        String value;
+        try {
+            value = fact.get();
+        } catch (Throwable e) {
+            value = "unavailable";
+        }
+        if (value != null) out.append(label).append(": ").append(value).append('\n');
+    }
+
+    private String logReport() {
+        flushSave();
+        final String log = ActivityLog.read(this);
+        int entries = 0;
+        for (int i = 0; i < log.length(); i++) {
+            if (log.charAt(i) == '\n' && i + 1 < log.length() && log.charAt(i + 1) != ' ') entries++;
+        }
+        if (!log.isEmpty()) entries++;
+        final int entryCount = entries;
+        StringBuilder out = new StringBuilder("Flappy Bird activity log\n");
+        out.append("Exported: ").append(new SimpleDateFormat("yyyy-MM-dd HH:mm:ss Z", Locale.US).format(new Date())).append('\n');
+        out.append("\n----- App -----\n");
+        fact(out, "Version", () -> appVersion(this));
+        fact(out, "Package", this::getPackageName);
+        fact(out, "Installed / updated", () -> {
+            android.content.pm.PackageInfo info = getPackageManager().getPackageInfo(getPackageName(), 0);
+            SimpleDateFormat day = new SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.US);
+            return day.format(new Date(info.firstInstallTime)) + " / " + day.format(new Date(info.lastUpdateTime));
+        });
+        fact(out, "Install ID", () -> {
+            long salt = installSalt(prefs);
+            return String.format(Locale.US, "%08x", (int) (salt ^ (salt >>> 32)));
+        });
+        fact(out, "High score", () -> highScoreStatus().replace("\n", ". "));
+        fact(out, "Activity log", () -> (activityLog == null || activityLog.value ? "on" : "OFF")
+                + ", " + entryCount + " entries, " + (ActivityLog.size(this) / 1024) + " KB");
+        out.append("\n----- Device -----\n");
+        fact(out, "Android", () -> Build.VERSION.RELEASE + " (API " + Build.VERSION.SDK_INT + ")"
+                + (Build.VERSION.SDK_INT >= 23 ? ", security patch " + Build.VERSION.SECURITY_PATCH : ""));
+        fact(out, "Model", () -> Build.MANUFACTURER + " " + Build.MODEL);
+        fact(out, "Brand / device / product", () -> Build.BRAND + " / " + Build.DEVICE + " / " + Build.PRODUCT);
+        fact(out, "Hardware", () -> Build.HARDWARE + ", " + Runtime.getRuntime().availableProcessors() + " cores");
+        fact(out, "CPU types", () -> java.util.Arrays.toString(Build.SUPPORTED_ABIS));
+        fact(out, "Build", () -> Build.FINGERPRINT);
+        fact(out, "Memory", () -> {
+            ActivityManager manager = (ActivityManager) getSystemService(ACTIVITY_SERVICE);
+            if (manager == null) return "unavailable";
+            ActivityManager.MemoryInfo memory = new ActivityManager.MemoryInfo();
+            manager.getMemoryInfo(memory);
+            return (memory.availMem >> 20) + " MB free of " + (memory.totalMem >> 20) + " MB"
+                    + (memory.lowMemory ? " (low now)" : "") + ", app limit " + manager.getMemoryClass() + " MB"
+                    + (manager.isLowRamDevice() ? ", low-RAM device" : "");
+        });
+        fact(out, "App memory in use", () -> {
+            Runtime runtime = Runtime.getRuntime();
+            return ((runtime.totalMemory() - runtime.freeMemory()) >> 20) + " MB of " + (runtime.maxMemory() >> 20) + " MB";
+        });
+        fact(out, "Free storage", () -> (getFilesDir().getUsableSpace() >> 20) + " MB");
+        fact(out, "Battery saver", () -> {
+            PowerManager power = (PowerManager) getSystemService(POWER_SERVICE);
+            return power == null ? "unknown" : power.isPowerSaveMode() ? "on" : "off";
+        });
+        out.append("\n----- Screen and input -----\n");
+        fact(out, "Screen", () -> {
+            DisplayMetrics metrics = getResources().getDisplayMetrics();
+            String text = metrics.widthPixels + " x " + metrics.heightPixels + " px, " + metrics.densityDpi + " dpi ("
+                    + metrics.density + "x)";
+            android.view.Display display = getWindow().getDecorView().getDisplay();
+            if (display != null) text += ", " + Math.round(display.getRefreshRate()) + " Hz";
+            return text;
+        });
+        fact(out, "Layout", () -> {
+            Configuration config = getResources().getConfiguration();
+            return (config.orientation == Configuration.ORIENTATION_LANDSCAPE ? "landscape" : "portrait")
+                    + ", " + config.screenWidthDp + " x " + config.screenHeightDp + " dp, font scale " + config.fontScale
+                    + ((config.uiMode & Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES ? ", dark theme" : ", light theme");
+        });
+        fact(out, "Input", () -> {
+            Configuration config = getResources().getConfiguration();
+            return (config.touchscreen == Configuration.TOUCHSCREEN_NOTOUCH ? "no touch screen" : "touch screen")
+                    + (config.keyboard == Configuration.KEYBOARD_QWERTY ? ", hardware keyboard" : "")
+                    + (config.hardKeyboardHidden == Configuration.HARDKEYBOARDHIDDEN_NO ? " (open)" : "");
+        });
+        fact(out, "Language / time zone", () -> Locale.getDefault() + " / " + TimeZone.getDefault().getID());
+        out.append('\n');
+        out.append("===== Current settings =====\n");
+        out.append(withoutNotes(buildSettingsText())).append('\n');
+        out.append("===== Log =====\n");
+        out.append(log.isEmpty() ? "(empty)\n" : log);
+        return out.toString();
+    }
+
+    private void showActivityLog() {
+        flushSave();
+        String log = ActivityLog.read(this);
+        String[] lines = log.isEmpty() ? new String[0] : log.split("\n");
+        int from = Math.max(0, lines.length - LOG_VIEW_LINES);
+        StringBuilder shown = new StringBuilder();
+        if (from > 0) shown.append("Showing the latest ").append(LOG_VIEW_LINES).append(" lines. Export to get everything.\n\n");
+        for (int i = from; i < lines.length; i++) shown.append(lines[i]).append('\n');
+        if (lines.length == 0) shown.append("Nothing has been logged yet.");
+        if (activityLog != null && !activityLog.value) {
+            shown.insert(0, "The activity log is turned off in Advanced, so nothing new is being recorded.\n\n");
+        }
+
+        TextView text = newText(shown.toString(), 11, COLOR_ON, Typeface.MONOSPACE);
+        text.setTextIsSelectable(true);
+        text.setPadding(dp(14), dp(12), dp(14), dp(12));
+        final NestedScrollView scroller = new NestedScrollView(this);
+        scroller.setBackground(rounded(COLOR_ROW, dp(16)));
+        scroller.addView(text, new FrameLayout.LayoutParams(MATCH, WRAP));
+        LinearLayout body = newLinear(false);
+        body.setPadding(dp(24), dp(4), dp(24), 0);
+        TextView about = newText("Rounds, new bests, setting changes, imports, hand edits and crashes, newest at the bottom. Export it and attach it to a bug report.",
+                12, COLOR_ON_VARIANT, null);
+        body.addView(about, linear(MATCH, WRAP));
+        LinearLayout.LayoutParams scrollParams = weightedHeight();
+        scrollParams.topMargin = dp(12);
+        body.addView(scroller, scrollParams);
+        scroller.setMinimumHeight(dp(160));
+        scroller.post(() -> scroller.fullScroll(View.FOCUS_DOWN));
+
+        showDialog(new MaterialAlertDialogBuilder(this)
+                .setTitle("Activity log")
+                .setView(body)
+                .setPositiveButton("Export", (dialog, which) -> startLogExport())
+                .setNeutralButton("Share", (dialog, which) -> shareLog())
+                .setNegativeButton("Close", null));
+    }
+
+    private void startLogExport() {
+        Intent intent = new Intent(Intent.ACTION_CREATE_DOCUMENT);
+        intent.addCategory(Intent.CATEGORY_OPENABLE);
+        intent.setType("text/plain");
+        String day = new SimpleDateFormat("yyyy-MM-dd", Locale.US).format(new Date());
+        intent.putExtra(Intent.EXTRA_TITLE, "flappy-bird-log-" + day + ".txt");
+        launchPicker(intent, REQUEST_EXPORT_LOG);
+    }
+
+    private void writeLogExport(Uri uri) {
+        String report = logReport();
+        try (OutputStream out = openForWriting(uri)) {
+            out.write(report.getBytes("UTF-8"));
+            ActivityLog.add(this, "FILE", "Activity log exported");
+            announce("Activity log exported", null, null);
+        } catch (IOException | SecurityException e) {
+            announce("Could not save the file", null, null);
+        }
+    }
+
+    private void shareLog() {
+        String report = logReport();
+        if (report.length() > LOG_SHARE_CHARS) {
+            int cut = report.indexOf("===== Log =====");
+            String head = cut > 0 ? report.substring(0, cut) : "";
+            String tail = report.substring(report.length() - Math.max(0, LOG_SHARE_CHARS - head.length()));
+            report = head + "===== Log (latest part only, export the file for everything) =====\n" + tail.substring(Math.max(0, tail.indexOf('\n') + 1));
+        }
+        Intent send = new Intent(Intent.ACTION_SEND);
+        send.setType("text/plain");
+        send.putExtra(Intent.EXTRA_SUBJECT, "Flappy Bird activity log");
+        send.putExtra(Intent.EXTRA_TEXT, report);
+        try {
+            startActivity(Intent.createChooser(send, "Share activity log"));
+            ActivityLog.add(this, "FILE", "Activity log shared");
+        } catch (ActivityNotFoundException e) {
+            announce("No app can share text on this device", null, null);
+        }
+    }
+
     private void shareSettings() {
         String json = exportJson();
         if (json == null) return;
+        ActivityLog.add(this, "FILE", "Settings shared as text");
         Intent send = new Intent(Intent.ACTION_SEND);
         send.setType("text/plain");
         send.putExtra(Intent.EXTRA_SUBJECT, "Flappy Bird settings");
@@ -2221,6 +2959,7 @@ public class SettingsActivity extends AppCompatActivity {
             announce("Copy a shared settings text first", null, null);
             return;
         }
+        ActivityLog.add(this, "FILE", "Settings pasted from the clipboard");
         applyImport(clip.getItemAt(0).coerceToText(this));
     }
 
@@ -2263,6 +3002,7 @@ public class SettingsActivity extends AppCompatActivity {
         for (Setting setting : settings) setting.write(editor);
         editor.putLong(PROFILE_SAVED_AT, System.currentTimeMillis());
         editor.apply();
+        ActivityLog.add(this, "FILE", "Current setup saved to slot " + slot);
         refreshSlots();
         announce("Saved to slot " + slot, null, null);
     }
@@ -2279,6 +3019,7 @@ public class SettingsActivity extends AppCompatActivity {
     private void onClearSlot(final int slot) {
         confirm("Clear slot " + slot, "The setup saved in this slot will be deleted.", "Clear", () -> {
             profile(slot).edit().clear().apply();
+            ActivityLog.add(this, "FILE", "Slot " + slot + " cleared");
             refreshSlots();
             announce("Slot " + slot + " cleared", null, null);
         });
@@ -2375,7 +3116,7 @@ public class SettingsActivity extends AppCompatActivity {
     private List<HiddenValue> hiddenValues() {
         if (hiddenValues != null) return hiddenValues;
         List<HiddenValue> list = new ArrayList<>();
-        list.add(new HiddenValue(KEY_HIGH_SCORE, "high_score", "High score", false, MAX_SCORE_VALUE, 0));
+        list.add(new HiddenValue(KEY_HIGH_SCORE, "high_score", "High score (changing it here is recorded and shown next to it in Presets)", false, MAX_SCORE_VALUE, 0));
         list.add(new HiddenValue(PREF_SETTINGS_DISCLAIMER_SHOWN, "settings_disclaimer_shown", "Settings disclaimer already seen", true, 0, Boolean.FALSE));
         list.add(new HiddenValue(PREF_TEXT_EDITOR_WARNED, "text_editor_warned", "Text editor warning already seen", true, 0, Boolean.FALSE));
         list.add(new HiddenValue(PREF_TEXT_EDITOR_NOTES, "text_editor_notes", "Show notes in this editor", true, 0, Boolean.TRUE));
@@ -2575,6 +3316,8 @@ public class SettingsActivity extends AppCompatActivity {
             showProblems("Nothing was changed", parsed.problems, fromEditor ? text : null);
             return;
         }
+        flushSave();
+        final String message;
         final Map<String, Object> before = snapshot();
         final Map<HiddenValue, Object> hiddenBefore = new HashMap<>();
         final Map<HiddenValue, Object> hiddenShown = new HashMap<>();
@@ -2583,17 +3326,20 @@ public class SettingsActivity extends AppCompatActivity {
             hiddenBefore.put(value, stored.get(value.key));
             hiddenShown.put(value, value.current());
         }
+        changeSource = fromEditor ? "Edit as text" : "imported text";
         try {
             Map<String, Object> merged = snapshot();
             merged.putAll(parsed.values);
             readAll(merged);
             parsed.problems.addAll(resolveAllKeyConflicts(before));
             afterBulkChange();
-            writeHidden(parsed.hidden);
+            writeHidden(parsed.hidden, fromEditor ? "Edit as text" : "import");
         } catch (RuntimeException e) {
+            ActivityLog.add(this, "ERROR", "Applying settings text failed, everything was put back: " + Log.getStackTraceString(e));
+            changeSource = "automatic undo after an error";
             restore(before);
             afterBulkChange();
-            writeHidden(hiddenBefore);
+            writeHidden(hiddenBefore, "automatic undo after an error");
             showProblems("Nothing was changed", Collections.singletonList("The settings could not be applied, so everything was left as it was"), fromEditor ? text : null);
             return;
         }
@@ -2605,13 +3351,17 @@ public class SettingsActivity extends AppCompatActivity {
         for (Map.Entry<HiddenValue, Object> entry : hiddenShown.entrySet()) {
             if (!entry.getValue().equals(entry.getKey().current())) changed++;
         }
-        String message = changed == 0 ? "No settings changed" : changed == 1 ? "1 setting changed" : changed + " settings changed";
+        message = changed == 0 ? "No settings changed" : changed == 1 ? "1 setting changed" : changed + " settings changed";
+        ActivityLog.add(this, "FILE", (fromEditor ? "Edit as text applied: " : "Settings text imported: ") + message.toLowerCase(Locale.US)
+                + (parsed.problems.isEmpty() ? "" : ", " + parsed.problems.size() + " line(s) skipped or limited"));
         showCaption(message);
         if (changed > 0) {
             announce(message, "Undo", v -> {
+                flushSave();
+                changeSource = "undo of: Edit as text";
                 restore(before);
                 afterBulkChange();
-                writeHidden(hiddenBefore);
+                writeHidden(hiddenBefore, "undo");
                 showCaption("Change undone");
             });
         } else {
@@ -2620,11 +3370,24 @@ public class SettingsActivity extends AppCompatActivity {
         if (!parsed.problems.isEmpty()) showProblems(changed == 0 ? "Nothing was changed" : "Applied, with notes", parsed.problems, fromEditor ? text : null);
     }
 
-    private void writeHidden(Map<HiddenValue, Object> values) {
+    private void writeHidden(Map<HiddenValue, Object> values, String source) {
         if (values.isEmpty()) return;
+        Map<HiddenValue, String> before = new HashMap<>();
+        for (HiddenValue value : values.keySet()) before.put(value, value.textValue());
         SharedPreferences.Editor editor = prefs.edit();
         for (Map.Entry<HiddenValue, Object> entry : values.entrySet()) entry.getKey().write(editor, entry.getValue());
         editor.apply();
+        for (HiddenValue value : values.keySet()) {
+            String was = before.get(value);
+            String now = value.textValue();
+            if (was.equals(now)) continue;
+            if (value.key.equals(KEY_HIGH_SCORE)) {
+                ActivityLog.add(this, "SCORE", "High score changed by hand: " + was + " -> " + now + "  (" + source
+                        + "). Best earned by playing stays " + earnedHighScore(prefs));
+            } else {
+                ActivityLog.add(this, "SETTING", value.name + ": " + was + " -> " + now + "  (" + source + ")");
+            }
+        }
         refreshHighScore();
     }
 

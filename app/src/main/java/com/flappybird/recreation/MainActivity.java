@@ -56,7 +56,9 @@ import androidx.core.view.WindowInsetsControllerCompat;
 
 import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Random;
 import java.util.Set;
@@ -66,10 +68,13 @@ import static com.flappybird.recreation.SettingsActivity.*;
 
 public class MainActivity extends AppCompatActivity {
 
+    private static boolean crashLoggerInstalled;
+
     private GameView gameView;
 
     @Override
     protected void onCreate(@Nullable Bundle savedInstanceState) {
+        installCrashLogger();
         EdgeToEdge.enable(this);
         super.onCreate(savedInstanceState);
         hideSystemBars();
@@ -84,6 +89,21 @@ public class MainActivity extends AppCompatActivity {
     public void onAttachedToWindow() {
         super.onAttachedToWindow();
         requestHighestRefreshRate();
+    }
+
+    private void installCrashLogger() {
+        if (crashLoggerInstalled) return;
+        crashLoggerInstalled = true;
+        final Context app = getApplicationContext();
+        final Thread.UncaughtExceptionHandler previous = Thread.getDefaultUncaughtExceptionHandler();
+        Thread.setDefaultUncaughtExceptionHandler((thread, error) -> {
+            try {
+                SettingsActivity.ActivityLog.addNow(app, "CRASH", "The app crashed on thread \"" + thread.getName() + "\" ("
+                        + SettingsActivity.deviceSummary(app) + "): " + Log.getStackTraceString(error));
+            } catch (Throwable ignored) {
+            }
+            if (previous != null) previous.uncaughtException(thread, error);
+        });
     }
 
     @Override
@@ -472,6 +492,16 @@ class GameView extends View implements Choreographer.FrameCallback {
     private boolean isBirdBurnt = false;
 
     private int livesLeft = 0;
+    private double roundStartClock;
+    private boolean settingGodFallEnabled;
+    private float settingGodFallSeconds;
+    private float offScreenSeconds;
+    private String roundEndCause = "";
+    private int roundFrames, roundSlowFrames;
+    private float roundFrameSeconds, roundWorstFrame, roundSlowFrameLimit;
+    private int roundFlaps, roundGoldenPoints, roundLivesUsed;
+    private final Set<String> roundAssists = new LinkedHashSet<>();
+    private int loggedWidth, loggedHeight;
     private float invulnerableTimer = 0f;
     private boolean isPaused = false;
     private int difficultyScore = -1;
@@ -531,10 +561,13 @@ class GameView extends View implements Choreographer.FrameCallback {
         super(context);
         prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
         highScore = intPref(prefs.getAll(), PREF_HIGH_SCORE, 0);
+        adoptOldHighScore(prefs);
         vibrator = ContextCompat.getSystemService(context, Vibrator.class);
         weatherSystem = new WeatherSystem(random);
 
         loadSettings();
+        SettingsActivity.ActivityLog.add(context, "GAME", "Game opened on " + SettingsActivity.deviceSummary(context)
+                + " (high score " + highScore + ", best earned by playing " + earnedHighScore(prefs) + ")");
         createPaints();
         createParticlePools();
         extractBitmapsFromAtlas();
@@ -701,6 +734,9 @@ class GameView extends View implements Choreographer.FrameCallback {
         settingPipeMoveTier1 = intPref(stored, PREF_PIPE_MOVE_TIER_1_SCORE, DEFAULT_PIPE_MOVE_TIER_1_SCORE);
         settingPipeMoveTier2 = intPref(stored, PREF_PIPE_MOVE_TIER_2_SCORE, DEFAULT_PIPE_MOVE_TIER_2_SCORE);
         settingNoClipEnabled = flagPref(stored, PREF_NO_CLIP_ENABLED, DEFAULT_NO_CLIP_ENABLED);
+        settingGodFallEnabled = flagPref(stored, PREF_GOD_FALL_ENABLED, DEFAULT_GOD_FALL_ENABLED);
+        settingGodFallSeconds = Math.max(0.1f, Math.min(60f, floatPref(stored, PREF_GOD_FALL_SECONDS, DEFAULT_GOD_FALL_SECONDS)));
+        SettingsActivity.ActivityLog.setEnabled(flagPref(stored, PREF_ACTIVITY_LOG_ENABLED, DEFAULT_ACTIVITY_LOG_ENABLED));
         settingRainbowBirdEnabled = flagPref(stored, PREF_RAINBOW_BIRD_ENABLED, DEFAULT_RAINBOW_BIRD_ENABLED);
         settingUpsideDownEnabled = flagPref(stored, PREF_UPSIDE_DOWN_ENABLED, DEFAULT_UPSIDE_DOWN_ENABLED);
         settingReversePipesEnabled = flagPref(stored, PREF_REVERSE_PIPES_ENABLED, DEFAULT_REVERSE_PIPES_ENABLED);
@@ -771,6 +807,33 @@ class GameView extends View implements Choreographer.FrameCallback {
         settingRampMinGap = intPref(stored, PREF_RAMP_MIN_GAP, DEFAULT_RAMP_MIN_GAP);
 
         parseLightningScores(textPref(stored, PREF_LIGHTNING_SCORES, DEFAULT_LIGHTNING_SCORES));
+        if (gameState == GameState.PLAYING) noteAssists();
+    }
+
+    private void noteAssists() {
+        if (settingAutopilotEnabled) roundAssists.add("autopilot");
+        if (settingNoClipEnabled) roundAssists.add("God mode");
+        if (settingScoreMultiplier > 1) roundAssists.add(settingScoreMultiplier + " points per pipe");
+        if (settingPipeGap > 1.001f) roundAssists.add("wider gaps (" + Math.round(settingPipeGap * 100) + "%)");
+        if (settingBirdHitbox < 0.999f) roundAssists.add("smaller hitbox (" + Math.round(settingBirdHitbox * 100) + "%)");
+        if (settingGameSpeed < 0.999f) roundAssists.add("slower game (" + Math.round(settingGameSpeed * 100) + "%)");
+    }
+
+    private String roundAssistText() {
+        List<String> parts = new ArrayList<>(roundAssists);
+        int livesUsed = roundLivesUsed;
+        if (livesUsed > 0) parts.add(livesUsed == 1 ? "1 extra life used" : livesUsed + " extra lives used");
+        if (roundGoldenPoints > 0) parts.add("golden pipes (+" + roundGoldenPoints + ")");
+        StringBuilder text = new StringBuilder();
+        for (int i = 0; i < parts.size(); i++) {
+            if (i > 0) text.append(", ");
+            text.append(parts.get(i));
+        }
+        return text.toString();
+    }
+
+    private void logProblem(String message) {
+        SettingsActivity.ActivityLog.add(getContext(), "WARNING", message);
     }
 
     private static int intPref(Map<String, ?> stored, String key, int fallback) {
@@ -823,6 +886,7 @@ class GameView extends View implements Choreographer.FrameCallback {
             return Bitmap.createBitmap(source, x, y, w, h);
         } catch (IllegalArgumentException e) {
             Log.w(TAG, "Atlas sprite missing at " + x + "," + y);
+            logProblem("Atlas sprite missing at " + x + "," + y);
             return null;
         }
     }
@@ -877,13 +941,17 @@ class GameView extends View implements Choreographer.FrameCallback {
         String packageName = getContext().getPackageName();
         int settingsResId = getResources().getIdentifier("settingsbutton", "drawable", packageName);
         if (settingsResId != 0) unscaledButtonSettings = BitmapFactory.decodeResource(getResources(), settingsResId, options);
-        if (unscaledButtonSettings == null) Log.w(TAG, "Could not load 'settingsbutton.png'.");
+        if (unscaledButtonSettings == null) {
+            Log.w(TAG, "Could not load 'settingsbutton.png'.");
+            logProblem("Could not load settingsbutton.png");
+        }
 
         for (int i = 0; i < 10; i++) {
             int resId = getResources().getIdentifier("number_" + i, "drawable", packageName);
             if (resId != 0) unscaledNumberBitmaps[i] = BitmapFactory.decodeResource(getResources(), resId, options);
             if (unscaledNumberBitmaps[i] == null) {
                 Log.e(TAG, "Missing number resource: number_" + i);
+                logProblem("Missing number resource: number_" + i);
                 unscaledNumberBitmaps[i] = Bitmap.createBitmap(1, 1, Bitmap.Config.ARGB_8888);
             }
         }
@@ -963,6 +1031,12 @@ class GameView extends View implements Choreographer.FrameCallback {
         screenWidth = w;
         screenHeight = h;
         applyLayout();
+        if (w > 0 && h > 0 && (w != loggedWidth || h != loggedHeight)) {
+            loggedWidth = w;
+            loggedHeight = h;
+            SettingsActivity.ActivityLog.add(getContext(), "SCREEN", "Game size " + w + " x " + h
+                    + (w > h ? " (landscape)" : " (portrait)"));
+        }
     }
 
     private int getPlayableHeight() {
@@ -1332,6 +1406,7 @@ class GameView extends View implements Choreographer.FrameCallback {
         if (gameState == GameState.PLAYING) {
             updatePipes(gameDeltaTime);
             checkCollisions();
+            if (settingNoClipEnabled) checkOffScreen(gameDeltaTime);
         }
 
         updateMotionBlur(realDeltaTime, stateBefore, birdXBefore, birdYBefore, birdRotationBefore);
@@ -1912,7 +1987,10 @@ class GameView extends View implements Choreographer.FrameCallback {
             if (!pipe.isScored && passedBird) {
                 pipe.isScored = true;
                 score += settingScoreMultiplier;
-                if (pipe.isGolden) score += settingGoldenPipeBonus;
+                if (pipe.isGolden) {
+                    score += settingGoldenPipeBonus;
+                    roundGoldenPoints += settingGoldenPipeBonus;
+                }
                 playSound(soundPoint);
             }
 
@@ -1986,6 +2064,20 @@ class GameView extends View implements Choreographer.FrameCallback {
                 (int) (birdX + halfWidth), (int) (birdY + halfHeight));
     }
 
+    private void checkOffScreen(float deltaTime) {
+        if (!settingGodFallEnabled) {
+            offScreenSeconds = 0f;
+            return;
+        }
+        float halfHeight = birdHalfHeight(birdFrame);
+        boolean gone = birdY - halfHeight > screenHeight || birdY + halfHeight < 0f;
+        offScreenSeconds = gone ? offScreenSeconds + deltaTime : 0f;
+        if (offScreenSeconds >= settingGodFallSeconds) {
+            roundEndCause = "off screen too long in God mode";
+            gameOver();
+        }
+    }
+
     private void checkCollisions() {
         if (settingNoClipEnabled) return;
         float halfHeight = birdHalfHeight(birdFrame);
@@ -1995,6 +2087,7 @@ class GameView extends View implements Choreographer.FrameCallback {
         boolean hitRoof = settingUpsideDownEnabled && birdY - halfHeight <= systemBarTop;
         if (hitFloor || hitRoof) {
             if (!surviveHit()) {
+                roundEndCause = hitFloor ? "hit the ground" : "hit the ceiling";
                 gameOver();
                 return;
             }
@@ -2017,7 +2110,10 @@ class GameView extends View implements Choreographer.FrameCallback {
                     || Rect.intersects(birdRect, pipe.getTopBodyRect(settingPipeWidth))
                     || Rect.intersects(birdRect, pipe.getBottomHeadRect(pipeGap, settingPipeWidth))
                     || Rect.intersects(birdRect, pipe.getBottomBodyRect(pipeGap, settingPipeWidth))) {
-                if (!surviveHit()) gameOver();
+                if (!surviveHit()) {
+                    roundEndCause = "hit a pipe";
+                    gameOver();
+                }
                 return;
             }
         }
@@ -2027,6 +2123,7 @@ class GameView extends View implements Choreographer.FrameCallback {
         if (invulnerableTimer > 0) return true;
         if (livesLeft <= 0) return false;
         livesLeft--;
+        roundLivesUsed++;
         invulnerableTimer = INVULNERABLE_SEC;
         startCrashFlash(150f / 255f);
         playSound(soundHit);
@@ -2184,6 +2281,7 @@ class GameView extends View implements Choreographer.FrameCallback {
             highScore = score;
             prefs.edit().putInt(PREF_HIGH_SCORE, highScore).apply();
         }
+        recordRound();
 
         if (score >= settingMedalPlatinum) currentMedal = MEDAL_PLATINUM;
         else if (score >= settingMedalGold) currentMedal = MEDAL_GOLD;
@@ -2193,6 +2291,36 @@ class GameView extends View implements Choreographer.FrameCallback {
 
         displayedScore = 0;
         lastScoreTickTime = -1;
+    }
+
+    private void recordRound() {
+        String assists = roundAssistText();
+        int earned = submitRound(prefs, Math.max(score, 0), assists);
+        boolean earnedBest = earned != Integer.MIN_VALUE;
+        if (earned == -1) {
+            SettingsActivity.ActivityLog.add(getContext(), "SCORE", "The saved earned record did not match its seal and was rebuilt from this round");
+        }
+        String seconds = String.format(Locale.US, "%.1f", Math.max(0.0, clock - roundStartClock));
+        StringBuilder round = new StringBuilder("Score ").append(score).append(", best ").append(highScore).append(", ")
+                .append(seconds).append("s, ").append(roundFlaps).append(" flaps");
+        if (!roundEndCause.isEmpty()) round.append(", ").append(roundEndCause);
+        if (!assists.isEmpty()) round.append(", with ").append(assists);
+        if (roundFrames > 0 && roundFrameSeconds > 0f) {
+            round.append(", ").append(Math.round(roundFrames / roundFrameSeconds)).append(" fps");
+            if (roundSlowFrames > 0) {
+                round.append(" (").append(roundSlowFrames).append(roundSlowFrames == 1 ? " slow frame" : " slow frames")
+                        .append(", worst ").append(Math.round(roundWorstFrame * 1000f)).append(" ms)");
+            }
+        }
+        roundEndCause = "";
+        SettingsActivity.ActivityLog.add(getContext(), "ROUND", round.toString());
+        if (isNewBest) {
+            SettingsActivity.ActivityLog.add(getContext(), "BEST", "New high score " + score + " (was " + previousBest + ")"
+                    + (assists.isEmpty() ? ", no assists" : ", with " + assists));
+        }
+        if (earnedBest && earned >= 0) {
+            SettingsActivity.ActivityLog.add(getContext(), "BEST", "Best earned by playing is now " + score + " (was " + earned + ")");
+        }
     }
 
     private void startCinematicStrikeSequence(boolean mega) {
@@ -3234,6 +3362,19 @@ class GameView extends View implements Choreographer.FrameCallback {
         boolean playerFlaps = !settingJetpackModeEnabled && !settingAutopilotEnabled;
         if (gameState == GameState.WAITING) {
             gameState = GameState.PLAYING;
+            roundStartClock = clock;
+            roundFlaps = 0;
+            roundGoldenPoints = 0;
+            roundLivesUsed = 0;
+            roundAssists.clear();
+            offScreenSeconds = 0f;
+            roundEndCause = "";
+            roundFrames = 0;
+            roundSlowFrames = 0;
+            roundFrameSeconds = 0f;
+            roundWorstFrame = 0f;
+            roundSlowFrameLimit = 1.5f / displayRefreshRate();
+            noteAssists();
             updateWeatherSounds();
             if (playerFlaps) flap();
         } else if (gameState == GameState.PLAYING) {
@@ -3313,6 +3454,7 @@ class GameView extends View implements Choreographer.FrameCallback {
     private void flap() {
         if (!canFlapAt(birdY)) return;
         birdVelocityY = flapVelocityPerSec;
+        roundFlaps++;
         kickTilt();
         playSound(soundWing);
         if (settingHapticFeedbackEnabled && !settingAutopilotEnabled) {
@@ -3380,6 +3522,7 @@ class GameView extends View implements Choreographer.FrameCallback {
             setLoopPlaying(stormSoundPlayer, storm);
         } catch (IllegalStateException e) {
             Log.e(TAG, "MediaPlayer state error in updateWeatherSounds", e);
+            logProblem("Weather sound error: " + e);
         }
     }
 
@@ -3389,6 +3532,7 @@ class GameView extends View implements Choreographer.FrameCallback {
             setLoopPlaying(stormSoundPlayer, false);
         } catch (IllegalStateException e) {
             Log.e(TAG, "MediaPlayer state error in stopWeatherSounds", e);
+            logProblem("Weather sound error while stopping: " + e);
         }
     }
 
@@ -3462,6 +3606,12 @@ class GameView extends View implements Choreographer.FrameCallback {
         if (deltaTime <= 0) return;
         fpsFrames++;
         fpsTimer += deltaTime;
+        if (gameState == GameState.PLAYING && !isPaused) {
+            roundFrames++;
+            roundFrameSeconds += deltaTime;
+            if (deltaTime > roundWorstFrame) roundWorstFrame = deltaTime;
+            if (deltaTime > roundSlowFrameLimit) roundSlowFrames++;
+        }
         if (fpsTimer >= FPS_REFRESH_SEC) {
             shownFps = Math.min(999, Math.round(fpsFrames / fpsTimer));
             fpsFrames = 0;
