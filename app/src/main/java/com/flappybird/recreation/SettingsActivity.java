@@ -1454,6 +1454,10 @@ public class SettingsActivity extends AppCompatActivity {
                     return false;
                 }
             }
+            try {
+                request("PUT", base() + "/ping.json?print=silent&" + auth, serverTime().toString(), JSON_TYPE);
+            } catch (IOException ignored) {
+            }
             SharedPreferences.Editor editor = store.edit().putInt(KEY_REPLAY_WEEK, thisWeek)
                     .putInt(KEY_REPLAY_WEEK_BEST, Math.max(score, replayWeekBest(store)));
             if (allTime) editor.putInt(KEY_REPLAY_BEST, score);

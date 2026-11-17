@@ -51,7 +51,7 @@ import android.view.PointerIcon;
 import android.view.View;
 import android.view.WindowManager;
 import android.view.animation.AccelerateInterpolator;
-import android.view.animation.OvershootInterpolator;
+import android.view.animation.DecelerateInterpolator;
 import android.view.inputmethod.EditorInfo;
 import android.view.inputmethod.InputMethodManager;
 import android.widget.EditText;
@@ -146,7 +146,8 @@ public class MainActivity extends AppCompatActivity implements GameView.BoardHos
     @Override
     public void askName(String current, boolean firstTime, final GameView.NameCallback callback) {
         if (isFinishing() || namePanel == null) return;
-        namePanel.open(firstTime, current, new NamePanel.Listener() {
+        if (gameView != null) gameView.setNameOverlay(true);
+        namePanel.open(firstTime, current, gameView != null && gameView.nameBeside(), new NamePanel.Listener() {
             @Override
             public void submit(final String name) {
                 SettingsActivity.Leaderboard.setName(MainActivity.this, name, MainActivity.this::runOnUiThread, (status, error) -> {
@@ -169,11 +170,10 @@ public class MainActivity extends AppCompatActivity implements GameView.BoardHos
             }
         });
         if (nameBack != null) nameBack.setEnabled(true);
-        if (gameView != null) gameView.setNameOverlay(true);
     }
 
     private void closeNamePanel() {
-        if (namePanel != null) namePanel.close();
+        if (namePanel != null) namePanel.close(gameView != null && gameView.nameBeside());
         if (nameBack != null) nameBack.setEnabled(false);
         if (gameView != null) gameView.setNameOverlay(false);
     }
@@ -184,8 +184,13 @@ public class MainActivity extends AppCompatActivity implements GameView.BoardHos
     }
 
     @Override
-    public void placeNamePanel(int top, float unit) {
-        if (namePanel != null) namePanel.place(top, unit);
+    public void placeNamePanel(int left, int top, float unit) {
+        if (namePanel != null) namePanel.place(left, top, unit);
+    }
+
+    @Override
+    public boolean namePanelShowing() {
+        return namePanel != null && namePanel.getVisibility() == View.VISIBLE;
     }
 
     @Override
@@ -281,11 +286,19 @@ class GameView extends View implements Choreographer.FrameCallback {
 
         int namePanelHeight(float unit);
 
-        void placeNamePanel(int top, float unit);
+        void placeNamePanel(int left, int top, float unit);
+
+        boolean namePanelShowing();
     }
 
     private static final int BOARD_ROWS = 10;
     private static final float BOARD_ROW_HEIGHT = 19f;
+    private static final float BOARD_WIDTH_UNITS = 236f;
+    private static final float BOARD_HEIGHT_UNITS = 150f + (BOARD_ROWS + 1) * BOARD_ROW_HEIGHT;
+    private static final float BOARD_SIDE_GAP = 10f;
+    private static final float BOARD_PAIR_UNITS = BOARD_WIDTH_UNITS + BOARD_SIDE_GAP + NamePanel.WIDTH_UNITS * 0.95f + 16f;
+    private static final float BOARD_SIDE_MIN_FIT = 0.8f;
+    private static final float BOARD_CACHE_PIXELS = 4500000f;
     private static final float BOARD_OPEN_SEC = 0.32f;
     private static final float BOARD_CLOSE_SEC = 0.18f;
     private static final int BOARD_TAB_IDLE = 0xFFC9C27E;
@@ -654,8 +667,22 @@ class GameView extends View implements Choreographer.FrameCallback {
     private Paint boardStatusPaint;
     private boolean nameOverlayOpen, boardSqueezed;
     private int imeInset;
-    private float boardReserve, boardReserveShown;
-    private float keyboardCut, keyboardShown;
+    private float boardReserve;
+    private float keyboardCut;
+    private final float[] nameSpring = new float[2];
+    private final float[] keyboardSpring = new float[2];
+    private final float[] hideSpring = new float[2];
+    private final float[] dimSpring = new float[2];
+    private boolean nameSide, boardCached, boardRefreshPending;
+    private float sideFit = 1f, sidePanelWidth, boardUnit, boardLeft, boardTop;
+    private Bitmap boardCache;
+    private Canvas boardCacheCanvas;
+    private Paint boardCachePaint;
+    private long boardCacheKey;
+    private int boardCacheMargin;
+    private float boardCacheUnit;
+    private final RectF boardCacheDest = new RectF();
+    private final int[] boardRectScratch = new int[28];
     private float settingsScale = 1f, settingsScaleVelocity, settingsSpin, settingsSpinTarget;
     private boolean settingsOpening;
     private Paint spinPaint;
@@ -2934,9 +2961,7 @@ class GameView extends View implements Choreographer.FrameCallback {
         if (boardHost == null || !Leaderboard.configured() || nameOverlayOpen) return;
         boolean taken = Leaderboard.nameTaken(prefs);
         if (!taken && (Leaderboard.asked(prefs) || !Leaderboard.name(prefs).isEmpty())) return;
-        boardHost.askName(taken ? Leaderboard.name(prefs) : "", true, name -> {
-            if (boardOpen) refreshBoard();
-        });
+        boardHost.askName(taken ? Leaderboard.name(prefs) : "", true, name -> boardRefreshPending = true);
     }
 
     private void openBoardAfterBest() {
@@ -2945,13 +2970,117 @@ class GameView extends View implements Choreographer.FrameCallback {
 
     void setNameOverlay(boolean open) {
         nameOverlayOpen = open;
-        if (!open) postDelayed(this::releaseBoardReserve, 110);
+        if (open) chooseNameSide();
+        else postDelayed(this::syncSizeAfterKeyboard, 450);
         boardPressed = null;
+        boardDragArmed = false;
+        boardDragging = false;
         invalidate();
     }
 
-    private void releaseBoardReserve() {
-        if (!nameOverlayOpen) boardReserve = 0f;
+    boolean nameBeside() {
+        return nameSide && boardOpen;
+    }
+
+    private void chooseNameSide() {
+        float usableWidth = screenWidth - safeInsetLeft - safeInsetRight;
+        sideFit = usableWidth / (BOARD_PAIR_UNITS * baseBoardUnit());
+        nameSide = boardOpen && usableWidth > getPlayableHeight() && sideFit >= BOARD_SIDE_MIN_FIT;
+    }
+
+    private void syncSizeAfterKeyboard() {
+        if (nameOverlayOpen || !isReady || getWidth() <= 0 || getHeight() <= 0) return;
+        if (getWidth() == screenWidth && getHeight() == screenHeight) return;
+        keyboardCut = 0f;
+        screenWidth = getWidth();
+        screenHeight = getHeight();
+        applyLayout();
+    }
+
+    private static void settle(float[] spring, float target, float dt, float omega, float snap) {
+        float offset = spring[0] - target;
+        float carry = spring[1] + omega * offset;
+        float decay = (float) Math.exp(-omega * dt);
+        spring[0] = target + (offset + carry * dt) * decay;
+        spring[1] = (carry - omega * (offset + carry * dt)) * decay;
+        if (Math.abs(spring[0] - target) < snap && Math.abs(spring[1]) < snap * omega) {
+            spring[0] = target;
+            spring[1] = 0f;
+        }
+    }
+
+    private void releaseBoardCache() {
+        if (boardCache != null) {
+            boardCache.recycle();
+            boardCache = null;
+            boardCacheCanvas = null;
+        }
+        boardCacheKey = 0L;
+        boardCached = false;
+    }
+
+    private void layoutBoard() {
+        float usableWidth = screenWidth - safeInsetLeft - safeInsetRight;
+        float playable = getPlayableHeight();
+        float base = baseBoardUnit();
+        float shown = nameSpring[0];
+        float hide = hideSpring[0];
+        float keyboardTarget = Math.max(imeInset, keyboardCut);
+        float floor = systemBarTop + playable;
+        float bottomNow = Math.min(floor, screenHeight - keyboardSpring[0]);
+        float bottomTarget = Math.min(floor, screenHeight - keyboardTarget);
+        boolean showing = boardHost != null && (nameOverlayOpen || boardHost.namePanelShowing());
+        if (nameOverlayOpen) chooseNameSide();
+        float pairScale = nameSide ? Math.min(1f, sideFit) : 1f;
+        float panelUnit = base * 0.95f * pairScale;
+        float panelHeight = 0f;
+        if (showing) {
+            panelHeight = boardHost.namePanelHeight(panelUnit);
+            float room = bottomTarget - systemBarTop - 8f * panelUnit;
+            if (panelHeight > room && room > 0f && panelHeight > 0f) {
+                panelUnit *= room / panelHeight;
+                panelHeight = boardHost.namePanelHeight(panelUnit);
+            }
+            if (nameOverlayOpen) {
+                sidePanelWidth = NamePanel.WIDTH_UNITS * panelUnit;
+                if (boardOpen && !nameSide) boardReserve = panelHeight + 10f * panelUnit;
+            }
+        }
+        float unit, left, top;
+        if (nameSide) {
+            unit = base * (1f + (pairScale - 1f) * shown);
+            float width = BOARD_WIDTH_UNITS * unit;
+            float centered = safeInsetLeft + (usableWidth - width) / 2f;
+            float paired = safeInsetLeft + (usableWidth - (width + BOARD_SIDE_GAP * unit + sidePanelWidth)) / 2f;
+            left = centered + (paired - centered) * shown;
+            top = systemBarTop + (playable - BOARD_HEIGHT_UNITS * unit) / 2f;
+            boardSqueezed = false;
+        } else {
+            float limit = Math.min(scale, usableWidth / 252f);
+            float area = Math.max(0f, playable - shown * (boardReserve + floor - bottomNow));
+            unit = Math.max(0.01f, Math.min(limit, area / 360f));
+            float targetArea = Math.max(0f, playable - boardReserve - (floor - bottomTarget));
+            boardSqueezed = nameOverlayOpen && boardOpen && Math.min(limit, targetArea / 360f) < base * 0.45f;
+            left = safeInsetLeft + (usableWidth - BOARD_WIDTH_UNITS * unit) / 2f;
+            top = systemBarTop + (area - BOARD_HEIGHT_UNITS * unit) / 2f;
+        }
+        boardUnit = unit;
+        boardLeft = left;
+        boardTop = top;
+        boardPanel.set(left, top, left + BOARD_WIDTH_UNITS * unit, top + BOARD_HEIGHT_UNITS * unit);
+        if (!showing) return;
+        float panelWidth = NamePanel.WIDTH_UNITS * panelUnit;
+        float middle = systemBarTop + (bottomNow - systemBarTop - panelHeight) / 2f;
+        float panelLeft = safeInsetLeft + (usableWidth - panelWidth) / 2f;
+        float panelTop = middle;
+        if (boardOpen && nameSide) {
+            panelLeft = boardPanel.right + BOARD_SIDE_GAP * unit;
+        } else if (boardOpen) {
+            float under = boardPanel.bottom + 6f * panelUnit;
+            panelTop = under + (middle - under) * hide;
+        }
+        panelTop = Math.max(systemBarTop, Math.min(panelTop, bottomNow - panelHeight - 4f * panelUnit));
+        boardHost.placeNamePanel(Math.round(panelLeft), Math.round(panelTop), panelUnit);
     }
 
     private float baseBoardUnit() {
@@ -2959,31 +3088,12 @@ class GameView extends View implements Choreographer.FrameCallback {
         return Math.max(0.01f, Math.min(scale, Math.min(usableWidth / 252f, getPlayableHeight() / 360f)));
     }
 
-    private float overlayBottom() {
-        return Math.min(systemBarTop + getPlayableHeight(), screenHeight - keyboardShown);
-    }
-
-    private void placeNamePanel() {
-        if (boardHost == null) return;
-        float unit = baseBoardUnit() * 0.95f;
-        float bottom = overlayBottom();
-        float panelHeight = boardHost.namePanelHeight(unit);
-        float room = bottom - systemBarTop - 8f * unit;
-        if (panelHeight > room && room > 0f && panelHeight > 0f) {
-            unit *= room / panelHeight;
-            panelHeight = boardHost.namePanelHeight(unit);
-        }
-        boardReserve = boardOpen ? panelHeight + 10f * unit : 0f;
-        float top = boardOpen && !boardSqueezed ? boardPanel.bottom + 6f * unit : systemBarTop + (bottom - systemBarTop - panelHeight) / 2f;
-        top = Math.max(systemBarTop, Math.min(top, bottom - panelHeight - 4f * unit));
-        boardHost.placeNamePanel(Math.round(top), unit);
-    }
-
     private void drawNameBackdrop(Canvas canvas) {
         if (boardPaint == null) boardPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
-        boardPaint.setColor(BOARD_DIM);
+        int alpha = Math.round(Color.alpha(BOARD_DIM) * Math.max(0f, Math.min(1f, dimSpring[0])));
+        boardPaint.setColor((BOARD_DIM & 0x00FFFFFF) | (alpha << 24));
         canvas.drawRect(0, 0, screenWidth, screenHeight, boardPaint);
-        placeNamePanel();
+        layoutBoard();
     }
 
     private void drawBoardStatus(Canvas canvas) {
@@ -3049,17 +3159,23 @@ class GameView extends View implements Choreographer.FrameCallback {
         boardOpen = false;
         boardClosing = false;
         boardAnim = 0f;
+        releaseBoardCache();
         if (boardHost != null) boardHost.boardVisible(false);
     }
 
     private void animateBoard(float deltaTime) {
         float step = Math.min(0.1f, Math.max(0f, deltaTime));
-        float glide = 1f - (float) Math.exp(-step * 13f);
-        float keyboard = Math.max(imeInset, keyboardCut);
-        keyboardShown += (keyboard - keyboardShown) * glide;
-        if (Math.abs(keyboard - keyboardShown) < 0.5f) keyboardShown = keyboard;
-        boardReserveShown += (boardReserve - boardReserveShown) * glide;
-        if (Math.abs(boardReserve - boardReserveShown) < 0.5f) boardReserveShown = boardReserve;
+        float glide = Math.min(step, 1f / 30f);
+        settle(keyboardSpring, Math.max(imeInset, keyboardCut), glide, 18f, 0.5f);
+        settle(nameSpring, nameOverlayOpen && boardOpen ? 1f : 0f, glide, 17f, 0.002f);
+        settle(hideSpring, boardSqueezed ? 1f : 0f, glide, 20f, 0.004f);
+        settle(dimSpring, nameOverlayOpen ? 1f : 0f, glide, 20f, 0.004f);
+        if (nameSpring[0] == 0f && boardCache != null) releaseBoardCache();
+        if (boardRefreshPending && !nameOverlayOpen && nameSpring[0] < 0.02f) {
+            boardRefreshPending = false;
+            if (boardOpen) refreshBoard();
+        }
+        if (boardOpen || nameOverlayOpen || dimSpring[0] > 0f) layoutBoard();
         if (!boardOpen) return;
         if (!boardDragging) {
             if (!Float.isNaN(boardScrollTarget)) {
@@ -3140,13 +3256,11 @@ class GameView extends View implements Choreographer.FrameCallback {
 
     private void askBoardName() {
         if (boardHost == null || !Leaderboard.configured()) return;
-        boardHost.askName(Leaderboard.name(prefs), false, name -> {
-            if (boardOpen) refreshBoard();
-        });
+        boardHost.askName(Leaderboard.name(prefs), false, name -> boardRefreshPending = true);
     }
 
     private boolean onBoardTouch(int action, int x, int y) {
-        boolean ready = !boardClosing && boardAnim >= 1f && !nameOverlayOpen;
+        boolean ready = !boardClosing && boardAnim >= 1f && !nameOverlayOpen && nameSpring[0] < 0.02f;
         if (action == MotionEvent.ACTION_DOWN) {
             boardPressed = !ready ? null : boardCloseRect.contains(x, y) ? boardCloseRect : boardJoinRect.contains(x, y) ? boardJoinRect
                     : boardTabAllRect.contains(x, y) ? boardTabAllRect : boardTabWeekRect.contains(x, y) ? boardTabWeekRect
@@ -3366,30 +3480,111 @@ class GameView extends View implements Choreographer.FrameCallback {
         }
         float panelScale = 0.82f + 0.18f * eased;
 
-        float usableWidth = screenWidth - safeInsetLeft - safeInsetRight;
-        float area = getPlayableHeight();
-        if (nameOverlayOpen || boardReserveShown > 0f) area = Math.max(0f, overlayBottom() - systemBarTop - boardReserveShown);
-        float unit = Math.max(0.01f, Math.min(scale, Math.min(usableWidth / 252f, area / 360f)));
-        boardSqueezed = nameOverlayOpen && unit < baseBoardUnit() * 0.45f;
-        float rowHeight = BOARD_ROW_HEIGHT * unit;
-        float width = 236f * unit;
-        float height = 150f * unit + (BOARD_ROWS + 1) * rowHeight;
-        float left = safeInsetLeft + (usableWidth - width) / 2f;
-        float top = systemBarTop + (area - height) / 2f;
-
+        layoutBoard();
         boardPaint.setColor(faded(BOARD_DIM));
         canvas.drawRect(0, 0, screenWidth, screenHeight, boardPaint);
-
-        boardPanel.set(left, top, left + width, top + height);
-        if (nameOverlayOpen) placeNamePanel();
-        if (boardSqueezed) return;
+        float fade = 1f - Math.max(0f, Math.min(1f, hideSpring[0]));
+        if (fade <= 0f) {
+            boardCached = false;
+            return;
+        }
+        boolean still = boardAnim >= 1f && !boardClosing;
+        boolean reshaped = nameSpring[0] > 0f && (!nameSide || sideFit < 1f);
+        if (still && reshaped && drawBoardCached(canvas, fade)) return;
+        boardCached = false;
         canvas.save();
         canvas.scale(panelScale, panelScale, boardPanel.centerX(), boardPanel.centerY());
-        canvas.translate(0f, (1f - eased) * 24f * unit);
+        canvas.translate(0f, (1f - eased) * 24f * boardUnit);
+        drawBoardContent(canvas, boardLeft, boardTop, boardUnit);
+        canvas.restore();
+    }
 
+    private Rect boardRect(int index) {
+        switch (index) {
+            case 0: return boardCloseRect;
+            case 1: return boardJoinRect;
+            case 2: return boardTabAllRect;
+            case 3: return boardTabWeekRect;
+            case 4: return boardToggleRect;
+            case 5: return boardRowsRect;
+            default: return boardYouRect;
+        }
+    }
+
+    private boolean drawBoardCached(Canvas canvas, float fade) {
+        float base = baseBoardUnit();
+        float pixels = BOARD_WIDTH_UNITS * base * BOARD_HEIGHT_UNITS * base;
+        float unit = base * Math.min(1f, (float) Math.sqrt(BOARD_CACHE_PIXELS / Math.max(1f, pixels)));
+        int margin = (int) Math.ceil(2f * unit);
+        int width = (int) Math.ceil(BOARD_WIDTH_UNITS * unit) + margin * 2;
+        int height = (int) Math.ceil(BOARD_HEIGHT_UNITS * unit) + margin * 2;
+        if (boardCache == null || boardCache.getWidth() != width || boardCache.getHeight() != height) {
+            releaseBoardCache();
+            try {
+                boardCache = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
+                boardCacheCanvas = new Canvas(boardCache);
+            } catch (OutOfMemoryError | RuntimeException e) {
+                boardCache = null;
+                boardCacheCanvas = null;
+                return false;
+            }
+        }
+        long key = 17L;
+        key = key * 31L + System.identityHashCode(boardData);
+        key = key * 31L + (boardNote == null ? 0 : boardNote.hashCode());
+        key = key * 31L + (boardLoading ? 1 : 2);
+        key = key * 31L + boardTab;
+        key = key * 31L + (boardShowAll ? 1 : 2);
+        key = key * 31L + Float.floatToIntBits(boardScroll);
+        key = key * 31L + Float.floatToIntBits(unit);
+        key = key * 31L + Leaderboard.uid(prefs).hashCode();
+        key = key * 31L + (boardPressed == null ? 0 : System.identityHashCode(boardPressed));
+        if (key == 0L) key = 1L;
+        if (key != boardCacheKey) {
+            for (int i = 0; i < 7; i++) {
+                Rect rect = boardRect(i);
+                boardRectScratch[i * 4] = rect.left;
+                boardRectScratch[i * 4 + 1] = rect.top;
+                boardRectScratch[i * 4 + 2] = rect.right;
+                boardRectScratch[i * 4 + 3] = rect.bottom;
+            }
+            float scroll = boardScroll, scrollMax = boardScrollMax, rowStep = boardRowStep, alpha = boardAlpha;
+            boardScroll = scroll * unit / base;
+            boardAlpha = 1f;
+            boardCache.eraseColor(Color.TRANSPARENT);
+            drawBoardContent(boardCacheCanvas, margin, margin, unit);
+            boardScroll = scroll;
+            boardScrollMax = scrollMax;
+            boardRowStep = rowStep;
+            boardAlpha = alpha;
+            for (int i = 0; i < 7; i++) {
+                boardRect(i).set(boardRectScratch[i * 4], boardRectScratch[i * 4 + 1], boardRectScratch[i * 4 + 2], boardRectScratch[i * 4 + 3]);
+            }
+            boardCacheKey = key;
+            boardCacheUnit = unit;
+            boardCacheMargin = margin;
+        }
+        if (boardCachePaint == null) {
+            boardCachePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+            boardCachePaint.setFilterBitmap(true);
+        }
+        float ratio = boardUnit / boardCacheUnit;
+        boardCacheDest.set(boardLeft - boardCacheMargin * ratio, boardTop - boardCacheMargin * ratio,
+                boardLeft + (width - boardCacheMargin) * ratio, boardTop + (height - boardCacheMargin) * ratio);
+        boardCachePaint.setAlpha(Math.round(255f * fade * Math.max(0f, Math.min(1f, boardAlpha))));
+        canvas.drawBitmap(boardCache, null, boardCacheDest, boardCachePaint);
+        boardCached = true;
+        return true;
+    }
+
+    private void drawBoardContent(Canvas canvas, float left, float top, float unit) {
+        float rowHeight = BOARD_ROW_HEIGHT * unit;
+        float width = BOARD_WIDTH_UNITS * unit;
+        float height = BOARD_HEIGHT_UNITS * unit;
+
+        boardShape.set(left, top, left + width, top + height);
         boardPaint.setColor(faded(BOARD_DARK));
-        canvas.drawRoundRect(boardPanel, unit * 5f, unit * 5f, boardPaint);
-        boardShape.set(boardPanel);
+        canvas.drawRoundRect(boardShape, unit * 5f, unit * 5f, boardPaint);
         boardShape.inset(unit * 2f, unit * 2f);
         boardPaint.setColor(faded(BOARD_PANEL_EDGE));
         canvas.drawRoundRect(boardShape, unit * 4f, unit * 4f, boardPaint);
@@ -3501,7 +3696,6 @@ class GameView extends View implements Choreographer.FrameCallback {
             boardToggleRect.set((int) toggleLeft, (int) toggleTop, (int) (toggleLeft + toggleWidth), (int) (toggleTop + 22f * unit));
             boardToggle(canvas, boardToggleRect, unit);
         }
-        canvas.restore();
         if (!canName) {
             boardTabAllRect.setEmpty();
             boardTabWeekRect.setEmpty();
@@ -3640,7 +3834,7 @@ class GameView extends View implements Choreographer.FrameCallback {
             drawBoardStatus(canvas);
         }
         if (boardOpen) drawBoard(canvas);
-        if (nameOverlayOpen && !boardOpen) drawNameBackdrop(canvas);
+        if (!boardOpen && (nameOverlayOpen || dimSpring[0] > 0f)) drawNameBackdrop(canvas);
 
         if (transitionAlpha > 0) {
             transitionPaint.setAlpha((int) transitionAlpha);
@@ -4388,6 +4582,7 @@ class GameView extends View implements Choreographer.FrameCallback {
 
     private boolean overButton(int x, int y) {
         if (x < 0 || y < 0) return false;
+        if (boardOpen && (nameOverlayOpen || nameSpring[0] >= 0.02f)) return false;
         if (boardOpen) return boardCloseRect.contains(x, y) || boardJoinRect.contains(x, y)
                 || boardTabAllRect.contains(x, y) || boardTabWeekRect.contains(x, y) || boardToggleRect.contains(x, y)
                 || boardYouRect.contains(x, y);
@@ -4777,6 +4972,7 @@ class GameView extends View implements Choreographer.FrameCallback {
 
     public void resume() {
         hostResumed = true;
+        settingsOpening = false;
         if (isRunning || !isReady) return;
 
         loadSettings();
@@ -5625,7 +5821,7 @@ final class NamePanel extends FrameLayout {
         card.addView(buttons);
         holder = new FrameLayout(context);
         holder.addView(card, new FrameLayout.LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT));
-        addView(holder, new FrameLayout.LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT, Gravity.CENTER_HORIZONTAL | Gravity.TOP));
+        addView(holder, new FrameLayout.LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT, Gravity.LEFT | Gravity.TOP));
         setVisibility(GONE);
         setClickable(false);
 
@@ -5655,7 +5851,7 @@ final class NamePanel extends FrameLayout {
         });
     }
 
-    void open(boolean firstTime, String current, Listener listener) {
+    void open(boolean firstTime, String current, boolean beside, Listener listener) {
         this.firstTime = firstTime;
         this.listener = listener;
         busy = false;
@@ -5670,13 +5866,15 @@ final class NamePanel extends FrameLayout {
         closing = false;
         measureDirty = true;
         setVisibility(VISIBLE);
+        float travel = Math.max(1f, unit) * 16f;
         card.animate().cancel();
         card.setAlpha(0f);
-        card.setScaleX(0.9f);
-        card.setScaleY(0.9f);
-        card.setTranslationY(Math.max(1f, unit) * 10f);
-        card.animate().alpha(1f).scaleX(1f).scaleY(1f).translationY(0f).setDuration(260)
-                .setInterpolator(new OvershootInterpolator(1.1f)).start();
+        card.setScaleX(0.96f);
+        card.setScaleY(0.96f);
+        card.setTranslationX(beside ? travel : 0f);
+        card.setTranslationY(beside ? 0f : travel);
+        card.animate().alpha(1f).scaleX(1f).scaleY(1f).translationX(0f).translationY(0f).setStartDelay(40).setDuration(280)
+                .setInterpolator(new DecelerateInterpolator(1.8f)).withLayer().start();
         field.requestFocus();
         post(() -> {
             InputMethodManager keyboard = (InputMethodManager) getContext().getSystemService(Context.INPUT_METHOD_SERVICE);
@@ -5684,7 +5882,7 @@ final class NamePanel extends FrameLayout {
         });
     }
 
-    void close() {
+    void close(boolean beside) {
         if (getVisibility() != VISIBLE || closing) return;
         InputMethodManager keyboard = (InputMethodManager) getContext().getSystemService(Context.INPUT_METHOD_SERVICE);
         if (keyboard != null) keyboard.hideSoftInputFromWindow(field.getWindowToken(), 0);
@@ -5692,9 +5890,10 @@ final class NamePanel extends FrameLayout {
         busy = false;
         listener = null;
         closing = true;
+        float travel = Math.max(1f, unit) * 12f;
         card.animate().cancel();
-        card.animate().alpha(0f).scaleX(0.94f).scaleY(0.94f).translationY(Math.max(1f, unit) * 8f).setDuration(170)
-                .setInterpolator(new AccelerateInterpolator()).withEndAction(() -> {
+        card.animate().alpha(0f).scaleX(0.97f).scaleY(0.97f).translationX(beside ? travel : 0f).translationY(beside ? 0f : travel)
+                .setStartDelay(0).setDuration(160).setInterpolator(new AccelerateInterpolator(1.4f)).withLayer().withEndAction(() -> {
                     if (!closing) return;
                     closing = false;
                     setVisibility(GONE);
@@ -5764,7 +5963,7 @@ final class NamePanel extends FrameLayout {
         return measuredHeight;
     }
 
-    void place(int top, float unit) {
+    void place(int left, int top, float unit) {
         applyUnit(unit);
         FrameLayout.LayoutParams params = (FrameLayout.LayoutParams) card.getLayoutParams();
         int width = Math.round(WIDTH_UNITS * this.unit);
@@ -5772,6 +5971,7 @@ final class NamePanel extends FrameLayout {
             params.width = width;
             card.setLayoutParams(params);
         }
+        if (holder.getTranslationX() != left) holder.setTranslationX(left);
         if (holder.getTranslationY() != top) holder.setTranslationY(top);
     }
 
