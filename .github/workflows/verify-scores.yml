@@ -2,7 +2,7 @@ name: Verify leaderboard runs
 
 on:
   schedule:
-    - cron: "3-58/5 * * * *"
+    - cron: "17,47 * * * *"
   workflow_dispatch:
 
 permissions:
@@ -33,7 +33,6 @@ jobs:
         run: java -cp verifier/build/classes com.flappybird.recreation.Verifier
 
       - name: Keep the schedule running
-        if: github.event_name == 'schedule'
         run: |
           last=$(git log -1 --format=%ct)
           now=$(date +%s)
