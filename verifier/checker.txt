@@ -1755,6 +1755,8 @@ import android.view.ViewGroup;
 import androidx.core.view.ViewCompat;
 
 import java.io.ByteArrayInputStream;
+import java.io.File;
+import java.io.FileInputStream;
 import java.io.DataInputStream;
 import java.io.FilterInputStream;
 import java.io.IOException;
@@ -1981,8 +1983,61 @@ final class Replayer {
             else if (name.endsWith("flap")) size = new int[] {34, 24};
             else if (name.equals("settingsbutton")) size = new int[] {26, 28};
             else if (name.startsWith("number_")) size = new int[] {24, 36};
+            int[] real = imageSizes().get(name);
+            if (real != null) size = real;
             if (size != null) Resources.SIZES.put(id, size);
             Resources.NAMES.put("drawable/" + name, id);
+        }
+    }
+
+    private static Map<String, int[]> imageSizes;
+
+    static synchronized Map<String, int[]> imageSizes() {
+        if (imageSizes != null) return imageSizes;
+        imageSizes = new TreeMap<>();
+        List<File> folders = new ArrayList<>();
+        findDrawables(new File(System.getProperty("checker.root", ".")), 0, folders);
+        folders.sort((a, b) -> {
+            boolean mainA = a.getPath().replace('\\', '/').contains("src/main/res"), mainB = b.getPath().replace('\\', '/').contains("src/main/res");
+            return mainA != mainB ? (mainA ? -1 : 1) : a.getPath().compareTo(b.getPath());
+        });
+        for (int i = folders.size() - 1; i >= 0; i--) {
+            File[] files = folders.get(i).listFiles();
+            if (files == null) continue;
+            for (File file : files) {
+                String fileName = file.getName();
+                if (!fileName.toLowerCase(java.util.Locale.US).endsWith(".png")) continue;
+                int[] size = pngSize(file);
+                if (size == null) continue;
+                String key = fileName.substring(0, fileName.length() - 4).toLowerCase(java.util.Locale.US).replace('-', '_');
+                imageSizes.put(key, size);
+            }
+        }
+        return imageSizes;
+    }
+
+    private static void findDrawables(File folder, int depth, List<File> out) {
+        if (depth > 9) return;
+        File[] children = folder.listFiles();
+        if (children == null) return;
+        for (File child : children) {
+            if (!child.isDirectory()) continue;
+            String name = child.getName();
+            if (name.startsWith(".") || name.equals("build") || name.equals("out") || name.equals("node_modules")) continue;
+            if (name.equals("drawable") && child.getParentFile() != null && child.getParentFile().getName().equals("res")) out.add(child);
+            else findDrawables(child, depth + 1, out);
+        }
+    }
+
+    private static int[] pngSize(File file) {
+        try (DataInputStream in = new DataInputStream(new FileInputStream(file))) {
+            byte[] head = new byte[16];
+            in.readFully(head);
+            if ((head[0] & 0xFF) != 0x89 || head[1] != 'P' || head[2] != 'N' || head[3] != 'G') return null;
+            int width = in.readInt(), height = in.readInt();
+            return width > 0 && height > 0 && width < 100000 && height < 100000 ? new int[] {width, height} : null;
+        } catch (IOException e) {
+            return null;
         }
     }
 
