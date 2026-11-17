@@ -277,6 +277,7 @@ public final class Bitmap {
     }
     public static Bitmap simDecoded(int w, int h) { return new Bitmap(w, h, false); }
     public static Bitmap createBitmap(int w, int h, Config c) { return new Bitmap(w, h, true); }
+    public static int simErases; public void eraseColor(int c) { if (isRecycled()) throw new IllegalStateException("recycled"); simErases++; }
     public static Bitmap createBitmap(Bitmap src, int x, int y, int w, int h) { return createBitmap(src, x, y, w, h, null, false); }
     public static Bitmap createBitmap(Bitmap src, int x, int y, int w, int h, Matrix m, boolean filter) {
         if (src.recycled) throw new IllegalStateException("createBitmap from recycled bitmap");
@@ -750,7 +751,7 @@ public final class Display {
 }
 === FILE: android/view/Gravity.java
 package android.view;
-public class Gravity { public static final int CENTER = 17, CENTER_VERTICAL = 16, CENTER_HORIZONTAL = 1, START = 0x00800003, END = 0x00800005, TOP = 48, BOTTOM = 80; }
+public class Gravity { public static final int CENTER = 17, CENTER_VERTICAL = 16, CENTER_HORIZONTAL = 1, START = 0x00800003, END = 0x00800005, TOP = 48, BOTTOM = 80, LEFT = 3, RIGHT = 5; }
 === FILE: android/view/HapticFeedbackConstants.java
 package android.view;
 public class HapticFeedbackConstants { public static final int LONG_PRESS = 0, VIRTUAL_KEY = 1, KEYBOARD_TAP = 3, CLOCK_TICK = 4; }
@@ -911,7 +912,7 @@ public class View {
     public int simMeasure(int width) { ViewGroup.LayoutParams p = getLayoutParams(); return p != null && p.height > 0 ? p.height : padT + padB; }
     public void setAlpha(float a) { if (Float.isNaN(a)) throw new IllegalArgumentException("alpha NaN"); alpha = a; } public float getAlpha() { return alpha; }
     public void setScaleX(float s) { scaleX = s; } public void setScaleY(float s) { scaleY = s; } public float getScaleX() { return scaleX; } public float getScaleY() { return scaleY; }
-    public void setTranslationY(float t) { translationY = t; } public float getTranslationY() { return translationY; }
+    public void setTranslationY(float t) { translationY = t; } public float getTranslationY() { return translationY; } private float translationX; public void setTranslationX(float t) { translationX = t; } public float getTranslationX() { return translationX; }
     public void setElevation(float e) {}
     public void setEnabled(boolean e) { enabled = e; } public boolean isEnabled() { return enabled; }
     public void setSelected(boolean s) { selected = s; } public boolean isSelected() { return selected; }
@@ -989,6 +990,8 @@ public class ViewPropertyAnimator {
     public ViewPropertyAnimator scaleX(float s) { view.setScaleX(s); return this; }
     public ViewPropertyAnimator scaleY(float s) { view.setScaleY(s); return this; }
     public ViewPropertyAnimator translationY(float t) { view.setTranslationY(t); return this; }
+    public ViewPropertyAnimator translationX(float t) { view.setTranslationX(t); return this; }
+    public ViewPropertyAnimator withLayer() { return this; }
     public ViewPropertyAnimator setDuration(long d) { if (d < 0) throw new IllegalArgumentException(); return this; }
     public ViewPropertyAnimator setStartDelay(long d) { return this; }
     public ViewPropertyAnimator setInterpolator(TimeInterpolator i) { return this; }
@@ -1023,7 +1026,7 @@ package android.view.animation;
 public class AccelerateInterpolator implements android.animation.TimeInterpolator { public AccelerateInterpolator() {} public AccelerateInterpolator(float f) {} public float getInterpolation(float i) { return i * i; } }
 === FILE: android/view/animation/DecelerateInterpolator.java
 package android.view.animation;
-public class DecelerateInterpolator implements android.animation.TimeInterpolator { public float getInterpolation(float i) { return i; } }
+public class DecelerateInterpolator implements android.animation.TimeInterpolator { public DecelerateInterpolator() {} public DecelerateInterpolator(float f) {} public float getInterpolation(float i) { return i; } }
 === FILE: android/view/animation/OvershootInterpolator.java
 package android.view.animation;
 public class OvershootInterpolator implements android.animation.TimeInterpolator { public OvershootInterpolator() {} public OvershootInterpolator(float t) {} public float getInterpolation(float i) { return i; } }
