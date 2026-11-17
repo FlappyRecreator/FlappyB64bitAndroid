@@ -907,7 +907,7 @@ public class View {
     public void clearFocus() { simFocused = false; }
     public static class MeasureSpec { public static final int UNSPECIFIED = 0, EXACTLY = 0x40000000, AT_MOST = 0x80000000;
         public static int makeMeasureSpec(int size, int mode) { return (size & 0x3FFFFFFF) | mode; } public static int getSize(int spec) { return spec & 0x3FFFFFFF; } public static int getMode(int spec) { return spec & 0xC0000000; } }
-    private int simMeasuredHeight; public final void measure(int w, int h) { simMeasuredHeight = simMeasure(MeasureSpec.getSize(w)); } public final int getMeasuredHeight() { return simMeasuredHeight; }
+    private int simMeasuredHeight; public static int simMeasures; public final void measure(int w, int h) { simMeasures++; simMeasuredHeight = simMeasure(MeasureSpec.getSize(w)); } public final int getMeasuredHeight() { return simMeasuredHeight; }
     public int simMeasure(int width) { ViewGroup.LayoutParams p = getLayoutParams(); return p != null && p.height > 0 ? p.height : padT + padB; }
     public void setAlpha(float a) { if (Float.isNaN(a)) throw new IllegalArgumentException("alpha NaN"); alpha = a; } public float getAlpha() { return alpha; }
     public void setScaleX(float s) { scaleX = s; } public void setScaleY(float s) { scaleY = s; } public float getScaleX() { return scaleX; } public float getScaleY() { return scaleY; }
@@ -1018,6 +1018,9 @@ public interface WindowManager {
         public LayoutParams() { super(MATCH_PARENT, MATCH_PARENT); }
     }
 }
+=== FILE: android/view/animation/AccelerateInterpolator.java
+package android.view.animation;
+public class AccelerateInterpolator implements android.animation.TimeInterpolator { public AccelerateInterpolator() {} public AccelerateInterpolator(float f) {} public float getInterpolation(float i) { return i * i; } }
 === FILE: android/view/animation/DecelerateInterpolator.java
 package android.view.animation;
 public class DecelerateInterpolator implements android.animation.TimeInterpolator { public float getInterpolation(float i) { return i; } }
