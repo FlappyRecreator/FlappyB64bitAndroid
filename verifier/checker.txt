@@ -341,6 +341,7 @@ public class Canvas {
     public void drawRect(RectF r, Paint p) { nan(r.left, r.top); use(p); }
     public void drawRect(Rect r, Paint p) { use(p); }
     public void drawCircle(float x, float y, float r, Paint p) { nan(x, y); nan(r, 0); use(p); }
+    public void drawArc(RectF r, float start, float sweep, boolean center, Paint p) { nan(r.left, r.top); nan(start, sweep); use(p); }
     public void drawLine(float x0, float y0, float x1, float y1, Paint p) { nan(x0, y0); nan(x1, y1); use(p); }
     public void drawLines(float[] pts, Paint p) { drawLines(pts, 0, pts.length, p); }
     public void drawLines(float[] pts, int off, int count, Paint p) {
@@ -447,11 +448,15 @@ public class Paint {
     public Xfermode setXfermode(Xfermode x) { xfermode = x; return x; }
     public Xfermode simXfermode() { return xfermode; }
     public Shader setShader(Shader s) { shader = s; return s; }
+    public Shader getShader() { return shader; }
+    public float shadowRadius; public int shadowColor;
+    public void setShadowLayer(float radius, float dx, float dy, int color) { if (Float.isNaN(radius) || Float.isNaN(dx) || Float.isNaN(dy)) throw new IllegalArgumentException("shadow"); shadowRadius = radius; shadowColor = color; }
+    public void clearShadowLayer() { shadowRadius = 0f; shadowColor = 0; }
     public ColorFilter setColorFilter(ColorFilter f) { colorFilter = f; return f; } public ColorFilter getColorFilter() { return colorFilter; }
 }
 === FILE: android/graphics/Path.java
 package android.graphics;
-public class Path { public static long allocCount; public Path() { allocCount++; } public void reset() {} public void rewind() {} public void moveTo(float x, float y) {} public void lineTo(float x, float y) {} public void close() {} }
+public class Path { public static long allocCount; public Path() { allocCount++; } public void reset() {} public void rewind() {} public void moveTo(float x, float y) {} public void lineTo(float x, float y) {} public void quadTo(float x1, float y1, float x2, float y2) {} public void close() {} }
 === FILE: android/graphics/PixelFormat.java
 package android.graphics;
 public class PixelFormat { public static final int TRANSLUCENT = -3, OPAQUE = -1, TRANSPARENT = -2; }
@@ -1444,6 +1449,19 @@ public class TextInputLayout extends android.widget.LinearLayout {
     public void setCounterEnabled(boolean b) { simCounter = b; } public void setCounterMaxLength(int m) { simCounterMax = m; }
     public void setEndIconMode(int m) { simEndIcon = m; } public void setError(CharSequence e) { simError = e; } public CharSequence getError() { return simError; }
 }
+=== FILE: org/json/JSONArray.java
+package org.json;
+public class JSONArray {
+    final java.util.List<Object> list = new java.util.ArrayList<>();
+    public int length() { return list.size(); }
+    public Object opt(int i) { return i >= 0 && i < list.size() ? list.get(i) : null; }
+    public JSONObject optJSONObject(int i) { Object v = opt(i); return v instanceof JSONObject ? (JSONObject) v : null; }
+    @Override public String toString() {
+        StringBuilder b = new StringBuilder("[");
+        for (int i = 0; i < list.size(); i++) { if (i > 0) b.append(','); Object v = list.get(i); b.append(v instanceof String ? JSONObject.quote((String) v) : String.valueOf(v)); }
+        return b.append(']').toString();
+    }
+}
 === FILE: org/json/JSONException.java
 package org.json;
 public class JSONException extends Exception { public JSONException(String m) { super(m); } }
@@ -1485,6 +1503,7 @@ public class JSONObject {
             quote(b, e.getKey()); b.append(indent > 0 ? ": " : ":");
             Object v = e.getValue();
             if (v instanceof JSONObject) ((JSONObject) v).write(b, indent, depth + 1);
+            else if (v instanceof JSONArray) b.append(v.toString());
             else if (v instanceof String) quote(b, (String) v);
             else if (v instanceof Double) { double d = (Double) v; b.append(d == Math.rint(d) && Math.abs(d) < 1e15 ? String.valueOf((long) d) : String.valueOf(d)); }
             else b.append(v);
@@ -1507,8 +1526,8 @@ public class JSONObject {
             if (c == '{') { i++; JSONObject o = new JSONObject(); skip(); if (peek('}')) { i++; return o; }
                 while (true) { skip(); if (!peek('"')) throw new JSONException("expected key at " + i); String k = string(); skip(); if (!peek(':')) throw new JSONException("expected : at " + i); i++;
                     o.map.put(k, value()); skip(); if (peek(',')) { i++; continue; } if (peek('}')) { i++; return o; } throw new JSONException("expected , or } at " + i); } }
-            if (c == '[') { i++; java.util.List<Object> list = new java.util.ArrayList<>(); skip(); if (peek(']')) { i++; return list; }
-                while (true) { list.add(value()); skip(); if (peek(',')) { i++; continue; } if (peek(']')) { i++; return list; } throw new JSONException("bad array"); } }
+            if (c == '[') { i++; JSONArray list = new JSONArray(); skip(); if (peek(']')) { i++; return list; }
+                while (true) { list.list.add(value()); skip(); if (peek(',')) { i++; continue; } if (peek(']')) { i++; return list; } throw new JSONException("bad array"); } }
             if (c == '"') return string();
             if (s.startsWith("true", i)) { i += 4; return Boolean.TRUE; }
             if (s.startsWith("false", i)) { i += 5; return Boolean.FALSE; }
@@ -1742,6 +1761,9 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
@@ -1761,6 +1783,7 @@ final class Replayer {
         double seconds;
         int flaps;
         int steps;
+        final List<Mark> marks = new ArrayList<>();
 
         Result fail(int verdict, String why) {
             this.verdict = verdict;
@@ -1769,7 +1792,28 @@ final class Replayer {
         }
     }
 
+    static final class Mark {
+        final int kind;
+        final double seconds;
+        final String code;
+
+        Mark(int kind, double seconds, String code) {
+            this.kind = kind;
+            this.seconds = seconds;
+            this.code = code;
+        }
+    }
+
+    static final double FAST_SLACK_SEC = 4.0;
+    static final double SLOW_SHARE = 1.10;
+    static final double SLOW_SLACK_SEC = 6.0;
+    static final long MAX_GAP_MS = 20000L;
+    static final int MAX_PAUSES = 200;
+    static final double QUICK_PAUSE_SEC = 2.0;
+    static final int MAX_QUICK_PAUSES = 5;
+
     static final class Recording {
+        byte[] header;
         int format, rules, mode;
         long seed;
         int width, height, insetTop, insetBottom, insetLeft, insetRight;
@@ -1829,6 +1873,7 @@ final class Replayer {
         int count = in.readInt();
         if (count <= 0 || count > GameView.REPLAY_MAX_EVENTS) throw new IOException("bad event count");
         Recording r = new Recording();
+        r.header = header;
         r.events = new int[count];
         for (int i = 0; i < count; i++) r.events[i] = in.readInt();
         if (in.read() != -1) throw new IOException("extra data after the events");
@@ -2020,7 +2065,8 @@ final class Replayer {
             return result.fail(SKIPPED, "the checker could not rebuild the screen layout");
         }
         if ((Integer) get(view, "currentFairMode") != r.mode) return result.fail(REJECTED, "the settings were not fair");
-        set(view, "speedVariation", r.speedVariation);
+        if (!same(r.speedVariation, 1f)) return result.fail(REJECTED, "the pipe speed did not match the fair settings");
+        set(view, "speedVariation", 1f);
         call(view, "applyTuning", new Class<?>[0]);
         if (!same((Float) get(view, "scale"), r.scale) || (Integer) get(view, "pipeGap") != r.pipeGap
                 || (Integer) get(view, "pipeSpacing") != r.pipeSpacing || !same((Float) get(view, "pipeSpeedPerSec"), r.pipeSpeed)
@@ -2028,29 +2074,40 @@ final class Replayer {
             return result.fail(REJECTED, "the game physics did not match the fair settings");
         }
         set(view, "gameState", state("WAITING"));
+        if (Double.isNaN(r.clock) || r.clock < 0.0 || r.clock > 1.0e7 || Double.isNaN(r.lastFlapTime) || r.lastFlapTime > r.clock) {
+            return result.fail(REJECTED, "the round's clock was not possible");
+        }
         set(view, "clock", r.clock);
+        float restX = (Float) get(view, "baseBirdX");
+        float restY = (Float) call(view, "waitingBirdY", new Class<?>[0]);
+        if (Math.abs(r.baseBirdX - restX) > 0.01f || Math.abs(r.birdX - restX) > 0.01f || Math.abs(r.birdY - restY) > 0.05f
+                || r.birdVelocityY != 0f || r.birdRotation != 0f) {
+            return result.fail(REJECTED, "the bird did not start where the game puts it");
+        }
         set(view, "lastFlapTime", r.lastFlapTime);
         set(view, "birdX", r.birdX);
         set(view, "baseBirdX", r.baseBirdX);
         set(view, "birdY", r.birdY);
-        set(view, "birdVelocityY", r.birdVelocityY);
-        set(view, "birdRotation", r.birdRotation);
+        set(view, "birdVelocityY", 0f);
+        set(view, "birdRotation", 0f);
         set(view, "birdTiltVelocity", r.birdTiltVelocity);
         set(view, "backgroundX", r.backgroundX);
         set(view, "groundX", r.groundX);
-        set(view, "birdFrame", r.birdFrame);
+        set(view, "birdFrame", Math.max(0, Math.min(2, r.birdFrame)));
+        Method spawn = GameView.class.getDeclaredMethod("spawnPipes", long.class);
+        spawn.setAccessible(true);
+        spawn.invoke(view, r.seed);
         @SuppressWarnings("unchecked")
         List<Pipe> pipes = (List<Pipe>) get(view, "pipes");
-        pipes.clear();
-        for (int i = 0; i < r.pipeX.length; i++) {
-            Pipe pipe = new Pipe(r.pipeX[i], r.pipeWidth[i], r.pipeHeight[i]);
-            pipe.topPipeY = r.pipeTop[i];
-            pipe.isScored = r.pipeScored[i];
-            pipe.isGolden = r.pipeGolden[i];
-            pipes.add(pipe);
+        boolean pipesMatch = pipes.size() == r.pipeX.length;
+        for (int i = 0; pipesMatch && i < r.pipeX.length; i++) {
+            Pipe pipe = pipes.get(i);
+            pipesMatch = same(pipe.x, r.pipeX[i]) && pipe.topPipeY == r.pipeTop[i] && pipe.width == r.pipeWidth[i]
+                    && pipe.height == r.pipeHeight[i] && !r.pipeScored[i] && !r.pipeGolden[i];
         }
+        if (!pipesMatch) return result.fail(REJECTED, "the pipes at the start did not match the round's seed");
         boolean fixed = (Boolean) get(view, "settingFixedStepEnabled");
-        float fixedStep = (Float) field(GameView.class, "FIXED_STEP_SEC").get(null);
+        float fixedStep = (Float) get(view, "fixedStepSec");
         float maxStep = (Float) field(GameView.class, "MAX_FRAME_DELTA_SEC").get(null);
         Method tap = GameView.class.getDeclaredMethod("handleGameplayTap");
         tap.setAccessible(true);
@@ -2066,14 +2123,54 @@ final class Replayer {
         int flaps = 0;
         int frames = 0;
         int[] events = r.events;
+        MessageDigest digest;
+        try {
+            digest = MessageDigest.getInstance("SHA-256");
+        } catch (NoSuchAlgorithmException e) {
+            return result.fail(SKIPPED, "the checker could not check timing marks");
+        }
+        byte[] chain = new byte[32];
+        GameView.chainStart(digest, r.header, chain);
+        int hashed = 0;
+        boolean paused = false;
+        boolean ended = false;
+        int pauses = 0;
+        int quickPauses = 0;
+        double resumedAt = 0.0;
         for (int i = 0; i < events.length; i++) {
             Object now = gameState.get(view);
             int value = events[i];
+            if (ended) return result.fail(REJECTED, "the replay kept going after its end mark");
+            if (value != GameView.REPLAY_FLAP && (value & GameView.REPLAY_MARK) != 0) {
+                int kind = value & ~GameView.REPLAY_MARK;
+                if (!started) return result.fail(REJECTED, "a timing mark came before the round started");
+                if (kind == GameView.MARK_PAUSE) {
+                    if (paused) return result.fail(REJECTED, "the replay's pauses were out of order");
+                    paused = true;
+                    if (++pauses > MAX_PAUSES) return result.fail(REJECTED, "the round was paused too many times");
+                    if (seconds - resumedAt < QUICK_PAUSE_SEC && ++quickPauses > MAX_QUICK_PAUSES) {
+                        return result.fail(REJECTED, "the round was paused again and again within moments");
+                    }
+                } else if (kind == GameView.MARK_RESUME) {
+                    if (!paused) return result.fail(REJECTED, "the replay's pauses were out of order");
+                    paused = false;
+                    resumedAt = seconds;
+                } else if (kind == GameView.MARK_PLAY || kind == GameView.MARK_END) {
+                    if (paused) return result.fail(REJECTED, "the replay's pauses were out of order");
+                    ended = kind == GameView.MARK_END;
+                } else {
+                    return result.fail(REJECTED, "the replay had an unknown mark");
+                }
+                String code = GameView.chainNext(digest, chain, events, hashed, i + 1);
+                hashed = i + 1;
+                result.marks.add(new Mark(kind, seconds, code));
+                continue;
+            }
+            if (paused) return result.fail(REJECTED, "the run kept playing during a pause");
             if (value == GameView.REPLAY_FLAP) {
                 if (!started) {
                     if (now != waiting) return result.fail(REJECTED, "the round did not start normally");
                     tap.invoke(view);
-                    Pipe.reseed(r.seed);
                     if (gameState.get(view) != playing) return result.fail(REJECTED, "the round did not start normally");
                     started = true;
                 } else {
@@ -2095,6 +2192,7 @@ final class Replayer {
             update.invoke(view, dt);
         }
         if (!fixed && frames > 600 && frames > seconds * MAX_FRAME_RATE) return result.fail(REJECTED, "the frame rate was higher than any screen can show");
+        if (!ended) return result.fail(REJECTED, "the replay has no end mark");
         result.seconds = seconds;
         result.flaps = flaps;
         result.steps = events.length;
@@ -2106,6 +2204,70 @@ final class Replayer {
         result.verdict = OK;
         result.why = "";
         return result;
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Map<String, Object> stamp(Object stamps, int index) {
+        Object one = null;
+        if (stamps instanceof Map) one = ((Map<String, Object>) stamps).get(String.valueOf(index));
+        else if (stamps instanceof List && index < ((List<Object>) stamps).size()) one = ((List<Object>) stamps).get(index);
+        return one instanceof Map ? (Map<String, Object>) one : null;
+    }
+
+    @SuppressWarnings("unchecked")
+    private static int stampCount(Object stamps) {
+        if (stamps instanceof Map) return ((Map<String, Object>) stamps).size();
+        if (stamps instanceof List) {
+            int count = 0;
+            for (Object one : (List<Object>) stamps) if (one != null) count++;
+            return count;
+        }
+        return -1;
+    }
+
+    private static long whole(Object value) {
+        if (!(value instanceof Number)) return Long.MIN_VALUE;
+        double d = ((Number) value).doubleValue();
+        return Double.isNaN(d) || Double.isInfinite(d) || d != Math.rint(d) ? Long.MIN_VALUE : (long) d;
+    }
+
+    static String checkTiming(Result result, Object stamps, long started, long uploaded) {
+        List<Mark> marks = result.marks;
+        if (marks.isEmpty() || stampCount(stamps) != marks.size()) return "the run's timing marks didn't match the replay";
+        long previous = started;
+        long pausedMs = 0L;
+        long pausedAt = -1L;
+        boolean playing = true;
+        double slowest = 0.0;
+        for (int i = 0; i < marks.size(); i++) {
+            Mark mark = marks.get(i);
+            Map<String, Object> one = stamp(stamps, i);
+            if (one == null) return "the run's timing marks didn't match the replay";
+            long time = whole(one.get("t"));
+            if (whole(one.get("m")) != mark.kind || !mark.code.equals(one.get("c")) || time == Long.MIN_VALUE) {
+                return "the run's timing marks didn't match the replay";
+            }
+            if (time < previous && i > 0) return "the run's timing marks were out of order";
+            if (playing && time - previous > MAX_GAP_MS) {
+                return "the run's timing could not be confirmed (no mark for " + (time - previous) / 1000 + " s)";
+            }
+            if (mark.kind == GameView.MARK_PAUSE) {
+                pausedAt = time;
+                playing = false;
+            } else if (mark.kind == GameView.MARK_RESUME) {
+                pausedMs += time - pausedAt;
+                playing = true;
+            }
+            double real = (time - started - pausedMs) / 1000.0;
+            if (mark.seconds > real + FAST_SLACK_SEC) return "the run was played faster than real time";
+            double lag = real - mark.seconds * SLOW_SHARE;
+            if (lag > slowest + SLOW_SLACK_SEC) return "the run was played in slow motion";
+            slowest = Math.min(slowest, lag);
+            previous = time;
+        }
+        if (marks.get(marks.size() - 1).kind != GameView.MARK_END) return "the replay has no end mark";
+        if (uploaded < previous) return "the run's timing marks were out of order";
+        return null;
     }
 }
 === FILE: com/flappybird/recreation/Verifier.java
@@ -2133,7 +2295,6 @@ import java.util.Map;
 
 public final class Verifier {
     static final String SCOPES = "https://www.googleapis.com/auth/firebase.database https://www.googleapis.com/auth/userinfo.email";
-    static final long REAL_TIME_SLACK_MS = 3000L;
     static final long TIME_BUDGET_MS = 240000L;
     static final int TIMEOUT_MS = 30000;
 
@@ -2271,9 +2432,12 @@ public final class Verifier {
                 result = Replayer.run(bytes, score, classic);
                 outcome = result.verdict;
                 why = result.why;
-                if (outcome == Replayer.OK && sent - started < result.seconds * 1000.0 - REAL_TIME_SLACK_MS) {
-                    outcome = Replayer.REJECTED;
-                    why = "the run was played faster than real time";
+                if (outcome == Replayer.OK) {
+                    String timing = Replayer.checkTiming(result, entry.get("h"), started, sent);
+                    if (timing != null) {
+                        outcome = Replayer.REJECTED;
+                        why = timing;
+                    }
                 }
                 if (outcome == Replayer.OK && result.seed != Long.parseLong(seed)) {
                     outcome = Replayer.REJECTED;
@@ -2301,6 +2465,12 @@ public final class Verifier {
             if (name.isEmpty() || !user.equals(holder)) {
                 outcome = Replayer.SKIPPED;
                 why = "the leaderboard name could not be confirmed. Set your name again and play another round";
+                verdict.put("ok", false);
+                verdict.put("why", why);
+                update.remove("seeds/" + seed);
+            } else if (!SettingsActivity.Leaderboard.nameAllowed(name)) {
+                outcome = Replayer.SKIPPED;
+                why = "the leaderboard name isn't allowed. Choose another name and play another round";
                 verdict.put("ok", false);
                 verdict.put("why", why);
                 update.remove("seeds/" + seed);
