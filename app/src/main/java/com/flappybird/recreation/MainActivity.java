@@ -83,6 +83,8 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Random;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.concurrent.ExecutorService;
@@ -316,6 +318,15 @@ class GameView extends View implements Choreographer.FrameCallback {
     private static final int BOARD_ORANGE = 0xFFFC7858;
     private static final int BOARD_OWN_ROW = 0x40FC7858;
     private static final int BOARD_VERIFIED = 0xFF8E5CF7;
+    private static final int[][] MEDAL_COLORS = {
+            {0xFFFFE07A, 0xFFF2B01E, 0xFFB97A00, 0xFF7A4E00, 0xFFE0453A},
+            {0xFFF6F8FB, 0xFFC4CBD4, 0xFF8E98A5, 0xFF505A66, 0xFF3F7BD9},
+            {0xFFF6C28F, 0xFFD08443, 0xFF9C5A22, 0xFF5E3210, 0xFF2E9E62}};
+    private static final int CHAMPION_TEXT = 0xFF8A5A00;
+    private static final int CHAMPION_SHINE = 0xFFFFD45C;
+    private static final int CHAMPION_GLOW = 0xFFFFC21A;
+    private static final float CHAMPION_SHINE_SEC = 3f;
+    private static final float CHAMPION_PULSE_SEC = 2f;
     private static final String BOARD_SHOW_ALL_KEY = "boardShowUnverified";
     private static final int BOARD_DIM = 0x99000000;
 
@@ -402,7 +413,7 @@ class GameView extends View implements Choreographer.FrameCallback {
     private static final float TRANSITION_FADE_SPEED_PER_SEC = 800.0f;
     private static final float FLASH_DECAY_PER_SEC = 1500f;
     private static final int[] CRASH_FLASH_COLORS = {Color.WHITE, 0xFFFF3B30, 0xFFFFD23F, Color.BLACK};
-    private static final float FIXED_STEP_SEC = 1.0f / 60.0f;
+    private static final long FRAME_LIMIT_RESET_NANOS = 250_000_000L;
     private static final int MAX_FIXED_STEPS = 8;
     private static final float STEP_SNAP = 0.03f;
     private static final float STEP_EPSILON = 0.00002f;
@@ -656,8 +667,14 @@ class GameView extends View implements Choreographer.FrameCallback {
     private final int sealKey = (int) (System.nanoTime() * 0x9E3779B1L) | 1;
     private int settingsSeal, tuningSeal, roundPipes, pipesCheck;
     static final int REPLAY_FORMAT = 1;
-    static final int REPLAY_RULES = 2;
-    static final int REPLAY_RULES_OLDEST = 1;
+    static final int REPLAY_RULES = 3;
+    static final int REPLAY_RULES_OLDEST = 3;
+    static final int REPLAY_MARK = 0x80000000;
+    static final int MARK_PLAY = 1;
+    static final int MARK_PAUSE = 2;
+    static final int MARK_RESUME = 3;
+    static final int MARK_END = 4;
+    static final float HEARTBEAT_SEC = 3f;
     static final int REPLAY_FLAP = 0xFFFFFFFF;
     static final int REPLAY_MAX_EVENTS = 4000000;
     private final Random seedSource = new Random();
@@ -667,6 +684,15 @@ class GameView extends View implements Choreographer.FrameCallback {
     private int[] replayEvents;
     private int replayCount, replayLastBits;
     private Map<String, Object> replayPrefs;
+    private MessageDigest replayDigest;
+    private final byte[] replayChain = new byte[32];
+    private int replayHashed, replayMarks;
+    private float heartbeatTimer;
+    private float boardShine;
+    private final Shader[] medalFaces = new Shader[3];
+    private final Path medalPath = new Path();
+    private final Matrix championMatrix = new Matrix();
+    private LinearGradient championShine;
     private double roundActiveSeconds;
     private long roundRealStart, roundUptimeStart, roundPausedMs, pausedSince = -1L;
     private boolean settingBoardAutoPost = true;
@@ -781,6 +807,10 @@ class GameView extends View implements Choreographer.FrameCallback {
     private boolean settingDynamicDayNightEnabled, settingScreenShakeEnabled, settingGoldenPipeEnabled;
     private boolean settingMotionBlurEnabled;
     private boolean settingCrashFlashEnabled, settingFixedStepEnabled, settingCeilingEnabled, settingBirdTiltEnabled;
+    private boolean settingStepOriginal;
+    private int settingStepRate = DEFAULT_FIXED_STEP_RATE, settingFrameLimit;
+    private float fixedStepSec = 1f / DEFAULT_FIXED_STEP_RATE;
+    private long lastVsyncNanos, frameCreditNanos;
     private int settingCrashFlashColor, settingCrashFlashStrength, settingCrashFlashLengthMs;
     private int settingMaxTiltUp, settingMaxTiltDown, settingScorePoint;
     private float settingMaxFallSpeed, settingTiltSpeed;
@@ -1023,6 +1053,10 @@ class GameView extends View implements Choreographer.FrameCallback {
         settingCrashFlashStrength = intPref(stored, PREF_CRASH_FLASH_STRENGTH, DEFAULT_CRASH_FLASH_STRENGTH);
         settingCrashFlashLengthMs = intPref(stored, PREF_CRASH_FLASH_LENGTH, DEFAULT_CRASH_FLASH_LENGTH);
         settingFixedStepEnabled = flagPref(stored, PREF_FIXED_STEP_ENABLED, DEFAULT_FIXED_STEP_ENABLED);
+        settingStepRate = SettingsActivity.stepRate(intPref(stored, PREF_FIXED_STEP_RATE, DEFAULT_FIXED_STEP_RATE));
+        fixedStepSec = 1f / settingStepRate;
+        settingStepOriginal = intPref(stored, PREF_FIXED_STEP_TIMING, DEFAULT_FIXED_STEP_TIMING) == STEP_TIMING_ORIGINAL;
+        settingFrameLimit = SettingsActivity.frameLimit(intPref(stored, PREF_FRAME_RATE_LIMIT, DEFAULT_FRAME_RATE_LIMIT));
         settingMaxFallSpeed = floatPref(stored, PREF_MAX_FALL_SPEED, DEFAULT_MAX_FALL_SPEED);
         settingCeilingEnabled = flagPref(stored, PREF_CEILING_ENABLED, DEFAULT_CEILING_ENABLED);
         settingBirdTiltEnabled = flagPref(stored, PREF_BIRD_TILT_ENABLED, DEFAULT_BIRD_TILT_ENABLED);
@@ -1595,6 +1629,12 @@ class GameView extends View implements Choreographer.FrameCallback {
     }
 
     private void spawnPipes() {
+        spawnPipes(seedSource.nextLong() ^ System.nanoTime());
+    }
+
+    private void spawnPipes(long seed) {
+        replaySeed = seed;
+        Pipe.reseed(seed);
         motionValid = false;
         pipes.clear();
         float direction = settingReversePipesEnabled ? -1 : 1;
@@ -2603,6 +2643,7 @@ class GameView extends View implements Choreographer.FrameCallback {
 
     private void gameOver() {
         if (gameState != GameState.PLAYING) return;
+        commitMark(MARK_END);
         gameState = GameState.GAME_OVER;
         gameOverTime = clock;
         isPaused = false;
@@ -2698,6 +2739,8 @@ class GameView extends View implements Choreographer.FrameCallback {
         h = fingerprint(h, settingGoldenPipeEnabled ? 1 : 0);
         h = fingerprint(h, settingExtraLives);
         h = fingerprint(h, settingAutopilotEnabled ? 1 : 0);
+        h = fingerprint(h, settingFixedStepEnabled ? settingStepRate : 0);
+        h = fingerprint(h, settingPixelStepsEnabled ? 1 : 0);
         h = fingerprint(h, settingSpeedRampPercent);
         h = fingerprint(h, settingGapShrinkPercent);
         h = fingerprint(h, settingFixedStepEnabled ? 1 : 0);
@@ -2793,9 +2836,10 @@ class GameView extends View implements Choreographer.FrameCallback {
     }
 
     private void startReplay() {
-        replaySeed = seedSource.nextLong() ^ System.nanoTime();
-        Pipe.reseed(replaySeed);
         replayLive = false;
+        replayMarks = 0;
+        replayHashed = 0;
+        heartbeatTimer = 0f;
         replayHeader = null;
         replayEvents = null;
         replayCount = 0;
@@ -2847,11 +2891,51 @@ class GameView extends View implements Choreographer.FrameCallback {
             writePrefs(out, replayPrefs);
             out.flush();
             replayHeader = bytes.toByteArray();
+            if (replayDigest == null) replayDigest = MessageDigest.getInstance("SHA-256");
+            chainStart(replayDigest, replayHeader, replayChain);
             replayEvents = new int[16384];
             replayLive = true;
-        } catch (IOException | RuntimeException e) {
+        } catch (IOException | NoSuchAlgorithmException | RuntimeException e) {
             replayLive = false;
         }
+    }
+
+    static void chainStart(MessageDigest digest, byte[] header, byte[] chain) {
+        digest.reset();
+        digest.update(header);
+        System.arraycopy(digest.digest(), 0, chain, 0, 32);
+    }
+
+    static String chainNext(MessageDigest digest, byte[] chain, int[] events, int from, int to) {
+        digest.reset();
+        digest.update(chain);
+        byte[] word = new byte[4];
+        for (int i = from; i < to; i++) {
+            int value = events[i];
+            word[0] = (byte) (value >>> 24);
+            word[1] = (byte) (value >>> 16);
+            word[2] = (byte) (value >>> 8);
+            word[3] = (byte) value;
+            digest.update(word);
+        }
+        byte[] next = digest.digest();
+        System.arraycopy(next, 0, chain, 0, 32);
+        StringBuilder code = new StringBuilder(16);
+        for (int i = 0; i < 8; i++) {
+            code.append(Character.forDigit((next[i] >> 4) & 15, 16)).append(Character.forDigit(next[i] & 15, 16));
+        }
+        return code.toString();
+    }
+
+    private void commitMark(int kind) {
+        if (!replayLive || replayDigest == null) return;
+        if (kind == MARK_PLAY && Leaderboard.heartbeatBusy()) return;
+        heartbeatTimer = 0f;
+        recordEvent(REPLAY_MARK | kind);
+        if (!replayLive) return;
+        String code = chainNext(replayDigest, replayChain, replayEvents, replayHashed, replayCount);
+        replayHashed = replayCount;
+        Leaderboard.heartbeat(getContext(), replaySeed, replayMarks++, kind, code);
     }
 
     private void recordEvent(int value) {
@@ -2877,6 +2961,19 @@ class GameView extends View implements Choreographer.FrameCallback {
         update(dt);
     }
 
+    static float snapStep(float advance, float stepSec) {
+        float ratio = advance / stepSec;
+        if (ratio >= 1f) {
+            int whole = Math.round(ratio);
+            if (whole <= MAX_FIXED_STEPS && Math.abs(ratio - whole) < STEP_SNAP * whole) return whole * stepSec;
+            return advance;
+        }
+        float framesPerStep = stepSec / advance;
+        int whole = Math.round(framesPerStep);
+        if (whole >= 1 && whole <= 4 && Math.abs(framesPerStep - whole) < STEP_SNAP * whole) return stepSec / whole;
+        return advance;
+    }
+
     private void holdMotion() {
         pastBirdX = birdX;
         pastBirdY = birdY;
@@ -2899,7 +2996,8 @@ class GameView extends View implements Choreographer.FrameCallback {
 
     private boolean blendMotion() {
         if (!settingFixedStepEnabled || !motionValid || isPaused || settingShowHitboxes || gameState != motionState) return false;
-        float amount = stepAccumulator / FIXED_STEP_SEC;
+        if (settingStepOriginal) return false;
+        float amount = stepAccumulator / fixedStepSec;
         if (!(amount > 0f) || amount >= 1f) return false;
         keptBirdX = birdX;
         keptBirdY = birdY;
@@ -2932,7 +3030,7 @@ class GameView extends View implements Choreographer.FrameCallback {
     private Leaderboard.Replay takeReplay() {
         boolean usable = replayLive && replayHeader != null && replayEvents != null && replayCount > 0
                 && replayPrefs != null && replayPrefs.equals(replayPrefs(prefs.getAll()));
-        Leaderboard.Replay replay = usable ? new Leaderboard.Replay(replayHeader, replayEvents, replayCount, replaySeed, REPLAY_RULES) : null;
+        Leaderboard.Replay replay = usable ? new Leaderboard.Replay(replayHeader, replayEvents, replayCount, replaySeed, REPLAY_RULES, replayMarks) : null;
         replayLive = false;
         replayHeader = null;
         replayEvents = null;
@@ -3044,7 +3142,7 @@ class GameView extends View implements Choreographer.FrameCallback {
         if (boardHost == null || !Leaderboard.configured() || nameOverlayOpen) return;
         boolean taken = Leaderboard.nameTaken(prefs);
         if (!taken && (Leaderboard.asked(prefs) || !Leaderboard.name(prefs).isEmpty())) return;
-        boardHost.askName(taken ? Leaderboard.name(prefs) : "", true, name -> boardRefreshPending = true);
+        boardHost.askName(taken && !Leaderboard.nameRefused(prefs) ? Leaderboard.name(prefs) : "", true, name -> boardRefreshPending = true);
     }
 
     private void openBoardAfterBest() {
@@ -3280,6 +3378,7 @@ class GameView extends View implements Choreographer.FrameCallback {
 
     private void animateBoard(float deltaTime) {
         float step = Math.min(0.1f, Math.max(0f, deltaTime));
+        if (boardOpen) boardShine = (boardShine + step) % 600f;
         float glide = Math.min(step, 1f / 30f);
         animateBoardStatus(glide);
         settle(keyboardSpring, Math.max(imeInset, keyboardCut), glide, 18f, 0.5f);
@@ -3320,6 +3419,7 @@ class GameView extends View implements Choreographer.FrameCallback {
     }
 
     private String boardHint() {
+        if (Leaderboard.nameRefused(prefs)) return "Your name isn't allowed. Tap NAME to choose another";
         if (Leaderboard.nameTaken(prefs)) return "Your name is taken. Tap NAME to choose another";
         if (Leaderboard.name(prefs).isEmpty()) return "Tap NAME to choose a name";
         if (!settingBoardAutoPost) return "Posting is off in Settings > System";
@@ -3516,7 +3616,12 @@ class GameView extends View implements Choreographer.FrameCallback {
             boardShape.set(left + 7f * unit, rowTop + unit, left + width - 7f * unit, rowTop + rowHeight - unit);
             canvas.drawRoundRect(boardShape, unit * 2f, unit * 2f, boardPaint);
         }
-        boardText(canvas, rank, left + 32f * unit, baseline, 10f * unit, BOARD_ORANGE, Paint.Align.RIGHT, 26f * unit);
+        int medal = medalFor(rank);
+        if (medal > 0) {
+            medal(canvas, medal, left + 23f * unit, rowTop + 9f * unit, unit);
+        } else {
+            boardText(canvas, rank, left + 32f * unit, baseline, 10f * unit, BOARD_ORANGE, Paint.Align.RIGHT, 26f * unit);
+        }
         String score = String.valueOf(entry.score);
         boardText(canvas, score, left + width - 13f * unit, baseline, 11f * unit, BOARD_DARK, Paint.Align.RIGHT, 0f);
         float scoreWidth = boardTextPaint.measureText(score);
@@ -3527,7 +3632,11 @@ class GameView extends View implements Choreographer.FrameCallback {
         }
         float nameLeft = left + 37f * unit;
         float nameRoom = width - 37f * unit - 13f * unit - scoreWidth - badgeRoom - 6f * unit - (entry.classic ? 40f * unit : 0f);
-        boardText(canvas, entry.name, nameLeft, baseline, 10f * unit, BOARD_DARK, Paint.Align.LEFT, nameRoom);
+        if (medal == 1) {
+            championName(canvas, entry.name, nameLeft, baseline, unit, nameRoom);
+        } else {
+            boardText(canvas, entry.name, nameLeft, baseline, 10f * unit, BOARD_DARK, Paint.Align.LEFT, nameRoom);
+        }
         if (entry.classic) {
             float nameWidth = Math.min(nameRoom, boardTextPaint.measureText(entry.name));
             float tagLeft = nameLeft + nameWidth + 4f * unit;
@@ -3536,6 +3645,98 @@ class GameView extends View implements Choreographer.FrameCallback {
             canvas.drawRoundRect(boardShape, unit * 2f, unit * 2f, boardPaint);
             boardText(canvas, "CLASSIC", tagLeft + 18f * unit, rowTop + 12f * unit, 6.5f * unit, Color.WHITE, Paint.Align.CENTER, 32f * unit);
         }
+    }
+
+    static int medalFor(String rank) {
+        if (rank == null) return 0;
+        String plain = rank.startsWith("#") ? rank.substring(1) : rank;
+        return plain.equals("1") ? 1 : plain.equals("2") ? 2 : plain.equals("3") ? 3 : 0;
+    }
+
+    private void medal(Canvas canvas, int place, float x, float y, float unit) {
+        int[] colors = MEDAL_COLORS[place - 1];
+        if (medalFaces[place - 1] == null) {
+            medalFaces[place - 1] = new LinearGradient(-4f, -5f, 4f, 5f, colors[0], colors[1], Shader.TileMode.CLAMP);
+        }
+        canvas.save();
+        canvas.translate(x, y);
+        canvas.scale(unit, unit);
+        if (place == 1) {
+            float pulse = 0.5f - 0.5f * (float) Math.cos(boardShine * 2.0 * Math.PI / CHAMPION_PULSE_SEC);
+            boardPaint.setColor(faded((Math.round(40f + 50f * pulse) << 24) | (CHAMPION_GLOW & 0x00FFFFFF)));
+            canvas.drawCircle(0f, 0f, 7.6f + 0.9f * pulse, boardPaint);
+        }
+        medalPath.reset();
+        medalPath.moveTo(-3.6f, 2f);
+        medalPath.lineTo(-5f, 8.4f);
+        medalPath.lineTo(-3.2f, 7.4f);
+        medalPath.lineTo(-1.9f, 9f);
+        medalPath.lineTo(-0.6f, 3f);
+        medalPath.close();
+        medalPath.moveTo(3.6f, 2f);
+        medalPath.lineTo(5f, 8.4f);
+        medalPath.lineTo(3.2f, 7.4f);
+        medalPath.lineTo(1.9f, 9f);
+        medalPath.lineTo(0.6f, 3f);
+        medalPath.close();
+        boardPaint.setColor(faded(colors[4]));
+        canvas.drawPath(medalPath, boardPaint);
+        boardPaint.setColor(faded(BOARD_DARK));
+        canvas.drawCircle(0f, 0.8f, 6f, boardPaint);
+        boardPaint.setColor(faded(colors[2]));
+        canvas.drawCircle(0f, 0f, 6f, boardPaint);
+        boardPaint.setColor(faded(Color.WHITE));
+        boardPaint.setShader(medalFaces[place - 1]);
+        canvas.drawCircle(0f, 0f, 4.7f, boardPaint);
+        boardPaint.setShader(null);
+        boardPaint.setColor(faded(0x8CFFFFFF));
+        boardPaint.setStyle(Paint.Style.STROKE);
+        boardPaint.setStrokeWidth(0.9f);
+        boardPaint.setStrokeCap(Paint.Cap.ROUND);
+        boardShape.set(-3.5f, -3.5f, 3.5f, 3.5f);
+        canvas.drawArc(boardShape, 200f, 70f, false, boardPaint);
+        boardPaint.setStyle(Paint.Style.FILL);
+        boardPaint.setStrokeCap(Paint.Cap.BUTT);
+        boardText(canvas, String.valueOf(place), 0f, 2.6f, 7.2f, colors[3], Paint.Align.CENTER, 0f);
+        canvas.restore();
+    }
+
+    private void championName(Canvas canvas, String name, float x, float baseline, float unit, float room) {
+        float pulse = 0.5f - 0.5f * (float) Math.cos(boardShine * 2.0 * Math.PI / CHAMPION_PULSE_SEC);
+        boardTextPaint.setTextSize(10f * unit);
+        float width = Math.max(unit, Math.min(room, boardTextPaint.measureText(name)));
+        if (championShine == null) {
+            championShine = new LinearGradient(0f, 0f, 1f, 0f, new int[] {CHAMPION_TEXT, CHAMPION_TEXT, CHAMPION_SHINE, CHAMPION_TEXT, CHAMPION_TEXT},
+                    new float[] {0f, 0.38f, 0.5f, 0.62f, 1f}, Shader.TileMode.CLAMP);
+        }
+        float sweep = Math.max(width, 30f * unit) * 1.6f;
+        float travel = (boardShine % CHAMPION_SHINE_SEC) / CHAMPION_SHINE_SEC;
+        championMatrix.setScale(sweep, 1f);
+        championMatrix.postTranslate(x - sweep + (width + sweep * 1.4f) * travel, 0f);
+        championShine.setLocalMatrix(championMatrix);
+        boardTextPaint.setShader(championShine);
+        boardTextPaint.setShadowLayer((2.2f + 1.6f * pulse) * unit, 0f, 0f, faded((Math.round(150f + 90f * pulse) << 24) | (CHAMPION_GLOW & 0x00FFFFFF)));
+        boardText(canvas, name, x, baseline, 10f * unit, Color.WHITE, Paint.Align.LEFT, room);
+        boardTextPaint.clearShadowLayer();
+        boardTextPaint.setShader(null);
+        float glint = (boardShine % CHAMPION_PULSE_SEC) / CHAMPION_PULSE_SEC;
+        sparkle(canvas, x + width + 2.2f * unit, baseline - 8.6f * unit, 2.4f * unit, (float) Math.sin(glint * Math.PI));
+        float later = (glint + 0.5f) % 1f;
+        sparkle(canvas, x - 1.6f * unit, baseline - 0.4f * unit, 1.8f * unit, (float) Math.sin(later * Math.PI));
+    }
+
+    private void sparkle(Canvas canvas, float x, float y, float size, float strength) {
+        if (strength <= 0.02f) return;
+        float arm = size * strength;
+        boardPaint.setColor(faded((Math.round(255f * strength) << 24) | (CHAMPION_SHINE & 0x00FFFFFF)));
+        medalPath.reset();
+        medalPath.moveTo(x, y - arm);
+        medalPath.quadTo(x, y, x + arm, y);
+        medalPath.quadTo(x, y, x, y + arm);
+        medalPath.quadTo(x, y, x - arm, y);
+        medalPath.quadTo(x, y, x, y - arm);
+        medalPath.close();
+        canvas.drawPath(medalPath, boardPaint);
     }
 
     private void verifiedBadge(Canvas canvas, float x, float y, float unit) {
@@ -4056,8 +4257,13 @@ class GameView extends View implements Choreographer.FrameCallback {
         return rate >= 1f && rate <= 1000f ? rate : FALLBACK_REFRESH_RATE;
     }
 
+    private float targetFrameRate() {
+        float refresh = displayRefreshRate();
+        return settingFrameLimit > 0 ? Math.min(refresh, settingFrameLimit) : refresh;
+    }
+
     private void updateFpsColor() {
-        float target = displayRefreshRate();
+        float target = targetFrameRate();
         int color = shownFps >= target * FPS_GOOD_SHARE ? FPS_COLOR_GOOD
                 : shownFps >= target * FPS_OK_SHARE ? FPS_COLOR_OK : FPS_COLOR_BAD;
         if (color == fpsColor) return;
@@ -4853,6 +5059,7 @@ class GameView extends View implements Choreographer.FrameCallback {
 
     private void resumeFromPause() {
         if (!isPaused) return;
+        if (gameState == GameState.PLAYING) commitMark(MARK_RESUME);
         isPaused = false;
         trackPause();
         updateWeatherSounds();
@@ -4919,7 +5126,7 @@ class GameView extends View implements Choreographer.FrameCallback {
             roundSlowFrames = 0;
             roundFrameSeconds = 0f;
             roundWorstFrame = 0f;
-            roundSlowFrameLimit = 1.5f / displayRefreshRate();
+            roundSlowFrameLimit = 1.5f / targetFrameRate();
             noteAssists();
             updateWeatherSounds();
             if (playerFlaps) {
@@ -4936,6 +5143,7 @@ class GameView extends View implements Choreographer.FrameCallback {
 
     private void pauseGame() {
         if (gameState != GameState.PLAYING) return;
+        if (!isPaused) commitMark(MARK_PAUSE);
         isPaused = true;
         trackPause();
         pauseFade = 0f;
@@ -5170,9 +5378,24 @@ class GameView extends View implements Choreographer.FrameCallback {
     public void doFrame(long frameTimeNanos) {
         if (!isRunning) return;
         choreographer.postFrameCallback(this);
+        long vsync = lastVsyncNanos == 0 ? 0 : frameTimeNanos - lastVsyncNanos;
+        lastVsyncNanos = frameTimeNanos;
         if (lastFrameTimeNanos == 0) {
             lastFrameTimeNanos = frameTimeNanos;
+            frameCreditNanos = 0;
             return;
+        }
+        if (settingFrameLimit > 0 && vsync > 0) {
+            long target = 1_000_000_000L / settingFrameLimit;
+            if (vsync > FRAME_LIMIT_RESET_NANOS) {
+                frameCreditNanos = target;
+            } else {
+                frameCreditNanos += vsync;
+            }
+            if (frameCreditNanos + vsync / 2 < target) return;
+            frameCreditNanos = Math.max(-target, Math.min(target, frameCreditNanos - target));
+        } else {
+            frameCreditNanos = 0;
         }
         float deltaTime = (frameTimeNanos - lastFrameTimeNanos) / 1_000_000_000.0f;
         lastFrameTimeNanos = frameTimeNanos;
@@ -5182,6 +5405,10 @@ class GameView extends View implements Choreographer.FrameCallback {
         animateBoard(deltaTime);
         if (gameState == GameState.PLAYING && !isPaused) {
             roundActiveSeconds += deltaTime;
+            if (replayLive) {
+                heartbeatTimer += deltaTime;
+                if (heartbeatTimer >= HEARTBEAT_SEC) commitMark(MARK_PLAY);
+            }
             checkSeals();
             roundFrames++;
             roundFrameSeconds += deltaTime;
@@ -5198,20 +5425,26 @@ class GameView extends View implements Choreographer.FrameCallback {
             cursorIdleSec += deltaTime;
             updateCursor();
         }
-        if (settingFixedStepEnabled) {
-            float advance = Math.min(deltaTime, FIXED_STEP_SEC * MAX_FIXED_STEPS);
-            if (advance > 0f) {
-                float framesPerStep = FIXED_STEP_SEC / advance;
-                int whole = Math.round(framesPerStep);
-                if (whole >= 1 && whole <= 4 && Math.abs(framesPerStep - whole) < STEP_SNAP * whole) advance = FIXED_STEP_SEC / whole;
+        if (settingFixedStepEnabled && settingStepOriginal) {
+            motionValid = false;
+            stepAccumulator += Math.min(deltaTime, fixedStepSec * MAX_FIXED_STEPS);
+            int steps = 0;
+            while (stepAccumulator >= fixedStepSec && steps < MAX_FIXED_STEPS) {
+                step(fixedStepSec);
+                stepAccumulator -= fixedStepSec;
+                steps++;
             }
+            if (steps == 0 && !boardOpen && !nameOverlayOpen && boardStatusAlpha <= 0f) return;
+        } else if (settingFixedStepEnabled) {
+            float advance = Math.min(deltaTime, fixedStepSec * MAX_FIXED_STEPS);
+            if (advance > 0f) advance = snapStep(advance, fixedStepSec);
             stepAccumulator += advance;
             int steps = 0;
-            while (stepAccumulator >= FIXED_STEP_SEC - STEP_EPSILON && steps < MAX_FIXED_STEPS) {
+            while (stepAccumulator >= fixedStepSec - STEP_EPSILON && steps < MAX_FIXED_STEPS) {
                 holdMotion();
-                step(FIXED_STEP_SEC);
+                step(fixedStepSec);
                 if (gameState != motionState) motionValid = false;
-                stepAccumulator = Math.max(0f, stepAccumulator - FIXED_STEP_SEC);
+                stepAccumulator = Math.max(0f, stepAccumulator - fixedStepSec);
                 steps++;
             }
         } else {

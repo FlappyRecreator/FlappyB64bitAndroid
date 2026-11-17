@@ -89,6 +89,7 @@ import com.google.android.material.snackbar.Snackbar;
 import com.google.android.material.textfield.TextInputEditText;
 import com.google.android.material.textfield.TextInputLayout;
 
+import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
@@ -110,7 +111,9 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Date;
 import java.util.HashMap;
+import java.util.Arrays;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
@@ -210,6 +213,9 @@ public class SettingsActivity extends AppCompatActivity {
     public static final String PREF_TILT_SPEED = "pref_tilt_speed";
     public static final String PREF_SCORE_POINT = "pref_score_point";
     public static final String PREF_PIXEL_STEPS_ENABLED = "pref_pixel_steps_enabled";
+    public static final String PREF_FIXED_STEP_RATE = "pref_fixed_step_rate";
+    public static final String PREF_FIXED_STEP_TIMING = "pref_fixed_step_timing";
+    public static final String PREF_FRAME_RATE_LIMIT = "pref_frame_rate_limit";
     public static final String PREF_TILT_STYLE = "pref_tilt_style";
     public static final String PREF_FLAP_LIMIT_ENABLED = "pref_flap_limit_enabled";
     public static final String PREF_HITBOX_SHAPE = "pref_hitbox_shape";
@@ -316,6 +322,23 @@ public class SettingsActivity extends AppCompatActivity {
     public static final float DEFAULT_TILT_SPEED = 1.0f;
     public static final int DEFAULT_SCORE_POINT = 0;
     public static final boolean DEFAULT_PIXEL_STEPS_ENABLED = false;
+    public static final int DEFAULT_FIXED_STEP_RATE = 60;
+    public static final int DEFAULT_FIXED_STEP_TIMING = 0;
+    public static final int DEFAULT_FRAME_RATE_LIMIT = 0;
+    public static final int STEP_TIMING_SMOOTH = 0;
+    public static final int STEP_TIMING_ORIGINAL = 1;
+    static final int[] STEP_RATES = {30, 60, 120};
+    static final int[] FRAME_LIMITS = {0, 30, 60, 90, 120};
+
+    static int stepRate(int stored) {
+        for (int rate : STEP_RATES) if (rate == stored) return rate;
+        return DEFAULT_FIXED_STEP_RATE;
+    }
+
+    static int frameLimit(int stored) {
+        for (int limit : FRAME_LIMITS) if (limit == stored) return limit;
+        return DEFAULT_FRAME_RATE_LIMIT;
+    }
     public static final int DEFAULT_TILT_STYLE = 0;
     public static final boolean DEFAULT_FLAP_LIMIT_ENABLED = false;
     public static final int DEFAULT_HITBOX_SHAPE = 0;
@@ -417,7 +440,12 @@ public class SettingsActivity extends AppCompatActivity {
         if (!standard && !classic) return FAIR_MIXED;
         boolean stepped = Boolean.TRUE.equals(stored.containsKey(PREF_FIXED_STEP_ENABLED) ? stored.get(PREF_FIXED_STEP_ENABLED) : DEFAULT_FIXED_STEP_ENABLED)
                 && Boolean.TRUE.equals(stored.containsKey(PREF_PIXEL_STEPS_ENABLED) ? stored.get(PREF_PIXEL_STEPS_ENABLED) : DEFAULT_PIXEL_STEPS_ENABLED);
-        return stepped && standard ? PREF_PIXEL_STEPS_ENABLED : null;
+        if (stepped && standard) return PREF_PIXEL_STEPS_ENABLED;
+        Object rate = stored.get(PREF_FIXED_STEP_RATE);
+        int stepRate = stepRate(rate instanceof Integer ? (Integer) rate : DEFAULT_FIXED_STEP_RATE);
+        if (rate != null && !(rate instanceof Integer && (Integer) rate == stepRate)) return PREF_FIXED_STEP_RATE;
+        if (stepped && stepRate != DEFAULT_FIXED_STEP_RATE) return PREF_FIXED_STEP_RATE;
+        return null;
     }
 
     public static int fairPlayMode(Map<String, ?> stored) {
@@ -435,6 +463,7 @@ public class SettingsActivity extends AppCompatActivity {
         if (PREF_NO_CLIP_ENABLED.equals(key)) return "God mode";
         if (PREF_WEATHER_EFFECT.equals(key)) return "thunderstorm";
         if (PREF_PIXEL_STEPS_ENABLED.equals(key)) return "whole-pixel movement";
+        if (PREF_FIXED_STEP_RATE.equals(key)) return "step rate with whole-pixel movement";
         String name = key.startsWith("pref_") ? key.substring(5) : key;
         if (name.endsWith("_enabled")) name = name.substring(0, name.length() - 8);
         if (name.endsWith("_percent")) name = name.substring(0, name.length() - 8);
@@ -743,7 +772,89 @@ public class SettingsActivity extends AppCompatActivity {
         static long retryDelayMs = 1500;
 
         static final int MAX_SCORE = 9999;
-        static final int NAME_MAX = 12;
+        static final int NAME_MAX = 16;
+        static final String NAME_REFUSED = "That name isn't allowed. Pick another one";
+        private static final String[] BLOCKED_ANYWHERE = {
+                "fuck", "fukk", "fvck", "phuk", "phuck", "shit", "cunt", "bitch", "biatch", "nigg", "niga", "nigr", "faggot", "fagot",
+                "whore", "slut", "asshole", "arsehole", "dumbass", "jackass", "dickhead", "bigdick", "cocksuck", "motherf", "penis",
+                "vagina", "porn", "retard", "hitler", "nazi", "dildo", "jizz", "twat", "wanker", "bastard", "pussy", "boner",
+                "blowjob", "handjob", "rimjob", "orgasm", "erection", "molest", "pedophil", "kike", "tranny", "negro", "beaner",
+                "wetback", "skank", "horny", "titties", "boobies", "testicle", "scrotum", "clitoris", "killyourself", "goddam",
+                "damn", "piss", "douche", "bollock", "bugger", "tosser", "kkk", "suicide", "terrorist", "stripper"};
+        private static final String[] BLOCKED_WORDS = {
+                "ass", "arse", "cum", "cock", "dick", "dik", "fuk", "fag", "tit", "hoe", "thot", "sex", "sexy", "rape", "raped",
+                "rapist", "raping", "coon", "spic", "pedo", "cuck", "hell", "butt", "balls", "homo", "lesbo", "milf", "dilf", "pimp",
+                "cracker", "nig", "wtf", "stfu", "gtfo", "lmfao", "kms", "kys", "crap", "prick", "shag", "wank", "anal", "anus",
+                "semen", "nude", "nudes", "naked", "boob", "heil", "isis", "chink", "gook", "spick", "slag", "hooker", "sht", "fck", "btch"};
+
+        static boolean nameAllowed(String name) {
+            String clean = cleanName(name);
+            if (clean.isEmpty()) return false;
+            StringBuilder spaced = new StringBuilder();
+            for (int i = 0; i < clean.length(); i++) {
+                char c = clean.charAt(i);
+                char before = i > 0 ? clean.charAt(i - 1) : ' ';
+                boolean split = c == '_' || c == ' ' || (Character.isUpperCase(c) && Character.isLowerCase(before));
+                if (split && spaced.length() > 0 && spaced.charAt(spaced.length() - 1) != ' ') spaced.append(' ');
+                if (c != '_' && c != ' ') spaced.append(c);
+            }
+            String[] words = spaced.toString().trim().split(" ");
+            StringBuilder joined = new StringBuilder();
+            StringBuilder plain = new StringBuilder();
+            for (String word : words) {
+                String flat = flatten(word, true);
+                String loose = flatten(word, false);
+                if (blockedWord(flat) || blockedWord(loose)) return false;
+                joined.append(flat);
+                plain.append(loose);
+            }
+            String squashed = squash(joined.toString());
+            if (blockedWord(joined.toString()) || blockedWord(squashed)) return false;
+            for (String bad : BLOCKED_ANYWHERE) {
+                if (joined.indexOf(bad) >= 0 || squashed.contains(bad) || plain.indexOf(bad) >= 0 || squash(plain.toString()).contains(bad)) return false;
+            }
+            return true;
+        }
+
+        private static boolean blockedWord(String word) {
+            if (word.isEmpty()) return false;
+            String squashed = squash(word);
+            for (String bad : BLOCKED_WORDS) {
+                if (word.equals(bad) || squashed.equals(bad) || word.equals(bad + "s") || word.equals(bad + "es")) return true;
+            }
+            return false;
+        }
+
+        private static String flatten(String word, boolean digitsAsLetters) {
+            StringBuilder out = new StringBuilder();
+            for (int i = 0; i < word.length(); i++) {
+                char c = Character.toLowerCase(word.charAt(i));
+                if (digitsAsLetters) {
+                    switch (c) {
+                        case '0': c = 'o'; break;
+                        case '1': c = 'i'; break;
+                        case '3': c = 'e'; break;
+                        case '4': c = 'a'; break;
+                        case '5': c = 's'; break;
+                        case '7': c = 't'; break;
+                        case '8': c = 'b'; break;
+                        case '9': c = 'g'; break;
+                        default: break;
+                    }
+                }
+                if (c >= 'a' && c <= 'z') out.append(c);
+            }
+            return out.toString();
+        }
+
+        private static String squash(String text) {
+            StringBuilder out = new StringBuilder();
+            for (int i = 0; i < text.length(); i++) {
+                char c = text.charAt(i);
+                if (out.length() == 0 || out.charAt(out.length() - 1) != c) out.append(c);
+            }
+            return out.toString();
+        }
         static final int RANK_LIMIT = 1000;
         static final float STANDARD_SECONDS_PER_POINT = 1.43f;
         static final float CLASSIC_SECONDS_PER_POINT = 1.25f;
@@ -831,13 +942,15 @@ public class SettingsActivity extends AppCompatActivity {
             final int count;
             final long seed;
             final int rules;
+            final int marks;
 
-            Replay(byte[] header, int[] events, int count, long seed, int rules) {
+            Replay(byte[] header, int[] events, int count, long seed, int rules, int marks) {
                 this.header = header;
                 this.events = events;
                 this.count = count;
                 this.seed = seed;
                 this.rules = rules;
+                this.marks = marks;
             }
 
             String encode() throws IOException {
@@ -974,8 +1087,14 @@ public class SettingsActivity extends AppCompatActivity {
             return text(store, KEY_UID);
         }
 
+        static boolean nameRefused(SharedPreferences store) {
+            String name = name(store);
+            return !name.isEmpty() && !nameAllowed(name);
+        }
+
         static boolean nameTaken(SharedPreferences store) {
-            return Boolean.TRUE.equals(store.getAll().get(KEY_NAME_TAKEN));
+            String name = name(store);
+            return Boolean.TRUE.equals(store.getAll().get(KEY_NAME_TAKEN)) || (!name.isEmpty() && !nameAllowed(name));
         }
 
         static String nameKey(String name) {
@@ -1271,6 +1390,10 @@ public class SettingsActivity extends AppCompatActivity {
                 finish(poster, callback, null, "Use at least one letter or number");
                 return;
             }
+            if (!nameAllowed(name)) {
+                finish(poster, callback, null, NAME_REFUSED);
+                return;
+            }
             final SharedPreferences store = store(context);
             final Context app = app(context);
             if (!configured()) {
@@ -1307,9 +1430,65 @@ public class SettingsActivity extends AppCompatActivity {
             store(context).edit().putBoolean(KEY_ASKED, true).apply();
         }
 
+        private static final Set<Long> brokenSeeds = new LinkedHashSet<>();
+        private static final java.util.concurrent.atomic.AtomicInteger heartbeatsWaiting = new java.util.concurrent.atomic.AtomicInteger();
+
+        static boolean heartbeatBusy() {
+            return heartbeatsWaiting.get() > 0;
+        }
+
+        private static void breakRound(long seed) {
+            synchronized (brokenSeeds) {
+                brokenSeeds.add(seed);
+                if (brokenSeeds.size() > 16) {
+                    Iterator<Long> oldest = brokenSeeds.iterator();
+                    oldest.next();
+                    oldest.remove();
+                }
+            }
+        }
+
+        static boolean roundBroken(long seed) {
+            synchronized (brokenSeeds) {
+                return brokenSeeds.contains(seed);
+            }
+        }
+
+        static void heartbeat(final Context context, final long seed, final int index, final int kind, final String code) {
+            final SharedPreferences store = store(context);
+            if (!ready(store)) {
+                breakRound(seed);
+                return;
+            }
+            heartbeatsWaiting.incrementAndGet();
+            worker().execute(() -> {
+                try {
+                    if (roundBroken(seed)) return;
+                    JSONObject mark = new JSONObject().put("c", code).put("m", kind).put("t", serverTime());
+                    String body = new JSONObject().put("h/" + index, mark).toString();
+                    String token = token(store, false);
+                    String place = base() + "/sessions/" + URLEncoder.encode(uid(store), "UTF-8") + ".json?print=silent&auth=";
+                    try {
+                        request("PATCH", place + URLEncoder.encode(token, "UTF-8"), body, JSON_TYPE);
+                    } catch (HttpError e) {
+                        if (e.code != 401) throw e;
+                        token = token(store, true);
+                        request("PATCH", place + URLEncoder.encode(token, "UTF-8"), body, JSON_TYPE);
+                    }
+                } catch (IOException | JSONException | RuntimeException e) {
+                    breakRound(seed);
+                } finally {
+                    heartbeatsWaiting.decrementAndGet();
+                }
+            });
+        }
+
         static void startSession(final Context context, final long seed) {
             final SharedPreferences store = store(context);
-            if (!ready(store)) return;
+            if (!ready(store)) {
+                breakRound(seed);
+                return;
+            }
             final Context app = app(context);
             worker().execute(() -> {
                 try {
@@ -1324,8 +1503,10 @@ public class SettingsActivity extends AppCompatActivity {
                         request("PUT", path("sessions", uid(store), token), session, JSON_TYPE);
                     }
                 } catch (NameTaken e) {
+                    breakRound(seed);
                     log(app, "Leaderboard round not started: " + e.getMessage());
                 } catch (IOException | JSONException | RuntimeException e) {
+                    breakRound(seed);
                     if (e instanceof HttpError) log(app, "Starting a leaderboard round failed: " + e);
                 }
             });
@@ -1425,6 +1606,25 @@ public class SettingsActivity extends AppCompatActivity {
                 log(app, "Run of " + score + " was not sent for verification: its round was not registered with the leaderboard");
                 return false;
             }
+            JSONObject stamps = new JSONObject();
+            Object marks = session.opt("h");
+            for (int i = 0; i < replay.marks; i++) {
+                Object one = marks instanceof JSONArray ? ((JSONArray) marks).opt(i)
+                        : marks instanceof JSONObject ? ((JSONObject) marks).opt(String.valueOf(i)) : null;
+                if (!(one instanceof JSONObject) || roundBroken(replay.seed)) {
+                    log(app, "Run of " + score + " was not sent for verification: the connection dropped during the round, so its timing can't be confirmed");
+                    return false;
+                }
+                JSONObject copy = new JSONObject();
+                copy.put("c", ((JSONObject) one).opt("c"));
+                copy.put("m", ((JSONObject) one).opt("m"));
+                copy.put("t", ((JSONObject) one).opt("t"));
+                stamps.put(String.valueOf(i), copy);
+            }
+            if (replay.marks == 0) {
+                log(app, "Run of " + score + " was not sent for verification: it has no timing marks");
+                return false;
+            }
             String data = replay.encode();
             if (data.length() > REPLAY_TEXT_MAX) {
                 log(app, "Run of " + score + " was too long to send for verification");
@@ -1441,6 +1641,7 @@ public class SettingsActivity extends AppCompatActivity {
             entry.put("w", thisWeek);
             entry.put("v", version);
             entry.put("rv", replay.rules);
+            entry.put("h", stamps);
             entry.put("d", data);
             String slot = allTime ? "a" : "w";
             String place = base() + "/replays/" + URLEncoder.encode(user, "UTF-8") + "/" + slot;
@@ -1471,6 +1672,7 @@ public class SettingsActivity extends AppCompatActivity {
             Entry entry = new Entry();
             entry.uid = key;
             entry.name = cleanName(string(raw.opt("n")));
+            if (!entry.name.isEmpty() && !nameAllowed(entry.name)) entry.name = "Player";
             entry.score = (int) Math.max(0L, Math.min(MAX_SCORE, number(raw.opt("s"))));
             entry.classic = Boolean.TRUE.equals(raw.opt("c"));
             entry.time = number(raw.opt("t"));
@@ -1799,7 +2001,8 @@ public class SettingsActivity extends AppCompatActivity {
             + "# Type default as a value to go back to the default.\n"
             + "# Settings you delete keep their current value.\n";
     private static final String CLASSIC_SUMMARY = "Matches the flight, pipes and scoring of the 2013 Android game";
-    private static final int TAB_COUNT = 13;
+    private static final int TAB_COUNT = 14;
+    private static final int CLASSIC_PAGE = 13;
     private static final int ABOUT_PAGE = 10;
     private static final int SCORING_PAGE = 11;
     private static final int LEADERBOARD_PAGE = 12;
@@ -1904,6 +2107,9 @@ public class SettingsActivity extends AppCompatActivity {
     private ToggleSetting keyboard;
     private final List<KeySetting> keySettings = new ArrayList<>();
     private final Map<View, Setting> rowSettings = new HashMap<>();
+    private final List<Setting> twins = new ArrayList<>();
+    private final Set<View> twinRows = new HashSet<>();
+    private boolean buildingTwin;
     private final Map<ViewGroup, TextView> groupLabels = new HashMap<>();
     private final Map<ViewGroup, String> groupTitles = new HashMap<>();
     private final Set<View> dependencyHidden = new HashSet<>();
@@ -1943,6 +2149,7 @@ public class SettingsActivity extends AppCompatActivity {
         createPreview();
         buildPages();
         createSettings();
+        buildClassicTwins();
         bindPresets();
 
         readAll(prefs.getAll());
@@ -2100,6 +2307,7 @@ public class SettingsActivity extends AppCompatActivity {
             else if (i == ABOUT_PAGE) tabs[i] = createTab("About", presetsTab, null);
             else if (i == SCORING_PAGE) tabs[i] = createTab("Scoring", presetsTab, tabs[4]);
             else if (i == LEADERBOARD_PAGE) tabs[i] = createTab("Leaderboard", presetsTab, tabs[ADVANCED_PAGE]);
+            else if (i == CLASSIC_PAGE) tabs[i] = createTab("Classic", presetsTab, tabs[ADVANCED_PAGE]);
             else tabs[i] = findViewById(TAB_IDS[i < ADVANCED_PAGE ? i : i - 1]);
             tabStyles[i] = new ChipStyle(tabs[i], COLOR_ROW, COLOR_PRIMARY, COLOR_ON_VARIANT, COLOR_ON_PRIMARY,
                     dp(12), dp(20), 0, 0);
@@ -2277,7 +2485,7 @@ public class SettingsActivity extends AppCompatActivity {
                 int shown = 0;
                 for (int i = 0; i < group.getChildCount(); i++) {
                     View row = group.getChildAt(i);
-                    boolean visible = !dependencyHidden.contains(row)
+                    boolean visible = !dependencyHidden.contains(row) && !twinRows.contains(row)
                             && (page == ABOUT_PAGE ? titleMatches(row, context, words) : matches(row, context, words));
                     row.setVisibility(visible ? View.VISIBLE : View.GONE);
                     if (visible) shown++;
@@ -2384,7 +2592,7 @@ public class SettingsActivity extends AppCompatActivity {
         boolean all = page == ALL_PAGE;
         for (int i = 0; i < pages.length; i++) {
             tabStyles[i].set(i == page, animate);
-            if (!searching) pages[i].setVisibility((all && i != ABOUT_PAGE) || i == page ? View.VISIBLE : View.GONE);
+            if (!searching) pages[i].setVisibility((all && i != ABOUT_PAGE && i != CLASSIC_PAGE) || i == page ? View.VISIBLE : View.GONE);
             if (i != ALL_PAGE) {
                 ViewGroup.MarginLayoutParams params = (ViewGroup.MarginLayoutParams) pages[i].getLayoutParams();
                 params.topMargin = all ? dp(14) : 0;
@@ -2707,6 +2915,25 @@ public class SettingsActivity extends AppCompatActivity {
         row.addView(line, lineParams);
     }
 
+    private void choiceRowWithNote(LinearLayout group, String name, String title, String summary, String... options) {
+        LinearLayout row = addRow(group, name, false, 14, 14);
+        addTexts(row, name, title, summary, false, COLOR_ON);
+        LinearLayout line = newLinear(true);
+        line.setBaselineAligned(false);
+        for (int i = 0; i < options.length; i++) {
+            TextView chip = newText(options[i], 14, COLOR_ON_VARIANT, mediumFont);
+            chip.setTag(TAG_OPTION);
+            chip.setGravity(Gravity.CENTER);
+            chip.setMaxLines(1);
+            LinearLayout.LayoutParams params = weighted(dp(44));
+            if (i < options.length - 1) params.setMarginEnd(dp(6));
+            line.addView(chip, params);
+        }
+        LinearLayout.LayoutParams lineParams = linear(MATCH, WRAP);
+        lineParams.topMargin = dp(12);
+        row.addView(line, lineParams);
+    }
+
     private void swatchRow(LinearLayout group, String name, String title, int[] colors, String[] labels) {
         int perLine = 5;
         LinearLayout row = addRow(group, name, false, 14, 14);
@@ -2921,6 +3148,9 @@ public class SettingsActivity extends AppCompatActivity {
         group = addGroup(page, "Interface");
         toggleRow(group, "row_hide_settings_icon", "Hide settings button", "The top right corner still opens settings");
         toggleRow(group, "row_classic_menu", "Original menu buttons", "Rate button on the home screen and a leaderboard button after a crash");
+        group = addGroup(page, "Performance");
+        choiceRowWithNote(group, "row_frame_rate_limit", "Frame rate limit", "Lower limits save battery. Unlimited follows your screen",
+                "Unlimited", "30", "60", "90", "120");
         group = addGroup(page, "Debug and bug reports");
         toggleRow(group, "row_show_fps", "FPS counter", "Shows frames per second in the top left corner");
         toggleRow(group, "row_show_hitboxes", "Show hitboxes", "Outlines everything that can collide");
@@ -2939,10 +3169,19 @@ public class SettingsActivity extends AppCompatActivity {
 
         page = addPage(ADVANCED_PAGE);
         group = addGroup(page, "Classic feel");
-        actionRow(group, "button_classic_feel", "Use classic feel", CLASSIC_SUMMARY, COLOR_PRIMARY);
+        actionRow(group, "button_classic_tab", "Classic settings", "Classic feel and every setting it changes, in one tab", COLOR_PRIMARY);
         group = addGroup(page, "Timing");
-        toggleRow(group, "row_fixed_step", "Fixed 60 Hz physics", "Moves the game in steps of 1/60 s, smoothed to your screen's refresh rate");
+        toggleRow(group, "row_fixed_step", "Fixed-step physics", "Moves the game in fixed steps instead of once per screen refresh");
+        choiceRowWithNote(group, "row_fixed_step_rate", "Step rate", "Steps per second. Classic feel uses 60", "30 Hz", "60 Hz", "120 Hz");
+        choiceRowWithNote(group, "row_fixed_step_timing", "Step timing",
+                "Smooth matches steps to your screen and draws the motion in between. Original is the v1.5.1 timing", "Smooth", "Original");
         toggleRow(group, "row_pixel_steps", "Whole-pixel movement", "The bird moves a whole number of game pixels per step");
+
+        page = addPage(CLASSIC_PAGE);
+        group = addGroup(page, "Classic feel");
+        actionRow(group, "button_classic_feel", "Use classic feel", CLASSIC_SUMMARY, COLOR_PRIMARY);
+        actionRow(group, "button_standard_feel", "Back to standard feel", "Puts every setting below back to its default", COLOR_ON);
+        valueRow(group, "row_classic_status", "Matching Classic feel", "Each setting below shows its Classic value", "0/0");
 
         page = addPage(PRESETS_PAGE);
         group = addGroup(page, "Saved setups");
@@ -3345,6 +3584,16 @@ public class SettingsActivity extends AppCompatActivity {
         ChoiceSetting boardTab = new ChoiceSetting(PREF_BOARD_TAB, DEFAULT_BOARD_TAB, rowView("row_board_tab"),
                 new int[]{0, 1}, new int[]{COLOR_PRIMARY, COLOR_SKY}, null);
         boardTab.randomizable = false;
+        ChoiceSetting stepRate = new ChoiceSetting(PREF_FIXED_STEP_RATE, DEFAULT_FIXED_STEP_RATE, rowView("row_fixed_step_rate"),
+                STEP_RATES, new int[]{COLOR_SKY, COLOR_PRIMARY, 0xFF9C8CFF}, null);
+        stepRate.randomizable = false;
+        ChoiceSetting stepTiming = new ChoiceSetting(PREF_FIXED_STEP_TIMING, DEFAULT_FIXED_STEP_TIMING, rowView("row_fixed_step_timing"),
+                new int[]{STEP_TIMING_SMOOTH, STEP_TIMING_ORIGINAL}, new int[]{COLOR_PRIMARY, COLOR_SKY}, null);
+        stepTiming.randomizable = false;
+        ChoiceSetting frameLimit = new ChoiceSetting(PREF_FRAME_RATE_LIMIT, DEFAULT_FRAME_RATE_LIMIT, rowView("row_frame_rate_limit"),
+                FRAME_LIMITS, new int[]{COLOR_PRIMARY, 0xFFFC7858, COLOR_SKY, 0xFF9C8CFF, 0xFF9BE15D}, null);
+        frameLimit.randomizable = false;
+        frameLimit.note = "used in the game";
         ChoiceSetting boardSize = new ChoiceSetting(PREF_BOARD_SIZE, DEFAULT_BOARD_SIZE, rowView("row_board_size"),
                 new int[]{0, 1, 2, 3, 4}, new int[]{COLOR_PRIMARY, COLOR_SKY, 0xFF9C8CFF, 0xFF9BE15D, 0xFFFC7858}, null);
         boardSize.randomizable = false;
@@ -3468,7 +3717,8 @@ public class SettingsActivity extends AppCompatActivity {
         TextView summary = summaries.get("button_board_name");
         if (summary == null) return;
         String name = Leaderboard.name(prefs);
-        summary.setText(name.isEmpty() ? "Not set" : Leaderboard.nameTaken(prefs) ? name + "  \u00B7  taken, choose another" : name);
+        summary.setText(name.isEmpty() ? "Not set" : Leaderboard.nameRefused(prefs) ? name + "  \u00B7  not allowed, choose another"
+                : Leaderboard.nameTaken(prefs) ? name + "  \u00B7  taken, choose another" : name);
         TextView rules = summaries.get("button_board_rules");
         if (rules != null) rules.setText(leaderboardStatus());
     }
@@ -3554,6 +3804,10 @@ public class SettingsActivity extends AppCompatActivity {
 
     private void syncAllViews() {
         for (Setting setting : settings) setting.syncView();
+        for (Setting twin : twins) {
+            twin.restore(twin.source.capture());
+            twin.syncView();
+        }
     }
 
     private Map<String, Object> snapshot() {
@@ -3603,23 +3857,30 @@ public class SettingsActivity extends AppCompatActivity {
     }
 
     private void onUserChange(Setting setting) {
+        if (setting.source != null) {
+            Setting origin = setting.source;
+            origin.restore(setting.capture());
+            origin.syncView();
+            setting = origin;
+        }
+        syncTwin(setting);
         String extra = null;
         if (setting == weather && weather.value == WEATHER_STORM && !screenShake.value) {
             screenShake.value = true;
-            screenShake.syncView();
+            show(screenShake);
             scheduleSave(screenShake);
             extra = "screen shake turned on for thunder";
         }
         if (setting == drunkMode && drunkMode.value && drunkStrength.value <= 0f) {
             drunkStrength.value = 1f;
-            drunkStrength.syncView();
+            show(drunkStrength);
             scheduleSave(drunkStrength);
         }
         if (setting == activityLog && !activityLog.value) {
             extra = "not recommended";
             announce("Activity log off. Bug reports won't show what happened", "Turn on", v -> {
                 activityLog.value = true;
-                activityLog.syncView();
+                show(activityLog);
                 scheduleSave(activityLog);
                 showCaption("Activity log: on");
             });
@@ -3675,6 +3936,7 @@ public class SettingsActivity extends AppCompatActivity {
                 rowOf(PREF_MAX_TILT_UP), rowOf(PREF_MAX_TILT_DOWN), rowOf(PREF_TILT_SPEED),
                 rowOf(PREF_WING_SPEED), rowOf(PREF_DAY_NIGHT_LENGTH), rowOf(PREF_CRASH_FLASH_FADE),
                 rowOf(PREF_PIXEL_STEPS_ENABLED), rowOf(PREF_TILT_STYLE),
+                rowOf(PREF_FIXED_STEP_RATE), rowOf(PREF_FIXED_STEP_TIMING),
                 rowOf(PREF_RAMP_TOP_SPEED), rowOf(PREF_RAMP_MIN_GAP),
                 rowOf(PREF_SOUND_VOLUME), rowOf(PREF_WEATHER_VOLUME),
                 rowOf(PREF_KEY_FLAP), rowOf(PREF_KEY_FLAP_ALT), rowOf(PREF_KEY_PAUSE),
@@ -3690,12 +3952,28 @@ public class SettingsActivity extends AppCompatActivity {
                 birdTilt.value, birdTilt.value, birdTilt.value,
                 wingAnimation.value, dayNight.value, crashFlash.value,
                 fixedStep.value, birdTilt.value,
+                fixedStep.value, fixedStep.value,
                 number(PREF_SPEED_RAMP) > 0f, number(PREF_GAP_SHRINK) > 0f,
                 sound.value, sound.value,
                 keyboard.value, keyboard.value, keyboard.value,
                 keyboard.value, keyboard.value,
                 flag(PREF_NO_CLIP_ENABLED), flag(PREF_NO_CLIP_ENABLED) && flag(PREF_GOD_FALL_ENABLED)};
 
+        if (!twins.isEmpty()) {
+            List<View> allRows = new ArrayList<>(Arrays.asList(rows));
+            List<Boolean> allShown = new ArrayList<>();
+            for (boolean one : shown) allShown.add(one);
+            for (int i = 0; i < rows.length; i++) {
+                Setting owner = rowSettings.get(rows[i]);
+                if (owner != null && owner.twin != null) {
+                    allRows.add(owner.twin.row);
+                    allShown.add(shown[i]);
+                }
+            }
+            rows = allRows.toArray(new View[0]);
+            shown = new boolean[allShown.size()];
+            for (int i = 0; i < shown.length; i++) shown[i] = allShown.get(i);
+        }
         boolean changed = false;
         for (int i = 0; i < rows.length; i++) {
             if (dependencyHidden.contains(rows[i]) == shown[i]) changed = true;
@@ -3717,6 +3995,7 @@ public class SettingsActivity extends AppCompatActivity {
         background.setEnabled(!dayNight.value);
         pipeColor.setEnabled(!randomPipeColors.value);
         refreshClassicSummary();
+        refreshClassicTab();
     }
 
     private void refreshClassicSummary() {
@@ -3861,6 +4140,8 @@ public class SettingsActivity extends AppCompatActivity {
                 }));
 
         rowView("button_classic_feel").setOnClickListener(v -> applyBulkChange(this::applyClassicFeel, "Classic feel applied"));
+        rowView("button_standard_feel").setOnClickListener(v -> applyBulkChange(this::applyStandardFeel, "Standard feel restored"));
+        rowView("button_classic_tab").setOnClickListener(v -> selectPage(CLASSIC_PAGE, true));
         rowView("button_export_settings").setOnClickListener(v -> startExport());
         rowView("button_import_settings").setOnClickListener(v -> startImport());
         rowView("button_share_settings").setOnClickListener(v -> shareSettings());
@@ -3936,37 +4217,129 @@ public class SettingsActivity extends AppCompatActivity {
         ((ChoiceSetting) settingsByKey.get(key)).value = value;
     }
 
+    private static final Object[][] CLASSIC_VALUES = {
+            {"Flight", PREF_GRAVITY, CLASSIC_GRAVITY},
+            {"Flight", PREF_JUMP_STRENGTH, CLASSIC_FLAP},
+            {"Flight", PREF_MAX_FALL_SPEED, CLASSIC_MAX_FALL_SPEED},
+            {"Flight", PREF_CEILING_ENABLED, false},
+            {"Flight", PREF_FLAP_LIMIT_ENABLED, true},
+            {"Flight", PREF_CRASH_GRAVITY, 1f},
+            {"Pipes", PREF_GAME_SPEED, CLASSIC_SPEED},
+            {"Pipes", PREF_PIPE_GAP, CLASSIC_GAP},
+            {"Pipes", PREF_PIPE_SPACING, CLASSIC_SPACING},
+            {"Pipes", PREF_GAP_PLACEMENT, GAP_PLACEMENT_CLASSIC},
+            {"Pipes", PREF_MOVING_PIPES_ENABLED, false},
+            {"Bird", PREF_HITBOX_SHAPE, HITBOX_SHAPE_SQUARE},
+            {"Bird", PREF_BIRD_POSITION, (float) CLASSIC_BIRD_POSITION},
+            {"Bird", PREF_START_HEIGHT, (float) CLASSIC_START_HEIGHT},
+            {"Bird", PREF_WING_SPEED, CLASSIC_WING_SPEED},
+            {"Bird", PREF_TILT_STYLE, TILT_STYLE_CLASSIC},
+            {"Bird", PREF_MAX_TILT_UP, (float) CLASSIC_TILT_UP},
+            {"Bird", PREF_MAX_TILT_DOWN, (float) CLASSIC_TILT_DOWN},
+            {"Timing", PREF_FIXED_STEP_ENABLED, true},
+            {"Timing", PREF_FIXED_STEP_RATE, DEFAULT_FIXED_STEP_RATE},
+            {"Timing", PREF_FIXED_STEP_TIMING, DEFAULT_FIXED_STEP_TIMING},
+            {"Timing", PREF_PIXEL_STEPS_ENABLED, true},
+            {"Look", PREF_BG_SCROLL_SPEED, 0f},
+            {"Look", PREF_GAMEOVER_OPACITY, 0f},
+            {"Look", PREF_SCREEN_SHAKE_ENABLED, false},
+            {"Look", PREF_CRASH_FLASH_ENABLED, true},
+            {"Look", PREF_CRASH_FLASH_LENGTH, (float) CLASSIC_FLASH_LENGTH},
+            {"Look", PREF_CRASH_FLASH_FADE, FLASH_FADE_SHARP},
+            {"Scoring", PREF_SCORE_POINT, SCORE_POINT_CLASSIC},
+    };
+
+    private void setClassicValue(String key, Object value) {
+        if (value instanceof Boolean) setFlag(key, (Boolean) value);
+        else if (value instanceof Float) setNumber(key, (Float) value);
+        else setOption(key, (Integer) value);
+    }
+
     private void applyClassicFeel() {
         for (Setting setting : settings) {
             if (!isPersonal(setting)) setting.reset();
         }
-        setFlag(PREF_FIXED_STEP_ENABLED, true);
-        setFlag(PREF_PIXEL_STEPS_ENABLED, true);
-        setNumber(PREF_GRAVITY, CLASSIC_GRAVITY);
-        setNumber(PREF_JUMP_STRENGTH, CLASSIC_FLAP);
-        setNumber(PREF_MAX_FALL_SPEED, CLASSIC_MAX_FALL_SPEED);
-        setNumber(PREF_CRASH_GRAVITY, 1f);
-        setFlag(PREF_CEILING_ENABLED, false);
-        setFlag(PREF_FLAP_LIMIT_ENABLED, true);
-        setNumber(PREF_GAME_SPEED, CLASSIC_SPEED);
-        setNumber(PREF_PIPE_GAP, CLASSIC_GAP);
-        setNumber(PREF_PIPE_SPACING, CLASSIC_SPACING);
-        setOption(PREF_GAP_PLACEMENT, GAP_PLACEMENT_CLASSIC);
-        setFlag(PREF_MOVING_PIPES_ENABLED, false);
-        setOption(PREF_HITBOX_SHAPE, HITBOX_SHAPE_SQUARE);
-        setOption(PREF_SCORE_POINT, SCORE_POINT_CLASSIC);
-        setOption(PREF_TILT_STYLE, TILT_STYLE_CLASSIC);
-        setNumber(PREF_MAX_TILT_UP, CLASSIC_TILT_UP);
-        setNumber(PREF_MAX_TILT_DOWN, CLASSIC_TILT_DOWN);
-        setNumber(PREF_WING_SPEED, CLASSIC_WING_SPEED);
-        setNumber(PREF_BIRD_POSITION, CLASSIC_BIRD_POSITION);
-        setNumber(PREF_START_HEIGHT, CLASSIC_START_HEIGHT);
-        setNumber(PREF_BG_SCROLL_SPEED, 0f);
-        setNumber(PREF_GAMEOVER_OPACITY, 0f);
-        setFlag(PREF_SCREEN_SHAKE_ENABLED, false);
-        setFlag(PREF_CRASH_FLASH_ENABLED, true);
-        setNumber(PREF_CRASH_FLASH_LENGTH, CLASSIC_FLASH_LENGTH);
-        setOption(PREF_CRASH_FLASH_FADE, FLASH_FADE_SHARP);
+        for (Object[] entry : CLASSIC_VALUES) setClassicValue((String) entry[1], entry[2]);
+    }
+
+    private void applyStandardFeel() {
+        for (Object[] entry : CLASSIC_VALUES) {
+            Setting setting = settingsByKey.get(entry[1]);
+            if (setting != null) setting.reset();
+        }
+    }
+
+    private void buildClassicTwins() {
+        LinearLayout page = (LinearLayout) pages[CLASSIC_PAGE];
+        String section = null;
+        LinearLayout group = null;
+        buildingTwin = true;
+        try {
+            for (Object[] entry : CLASSIC_VALUES) {
+                Setting source = settingsByKey.get(entry[1]);
+                if (source == null) continue;
+                if (!entry[0].equals(section)) {
+                    section = (String) entry[0];
+                    group = addGroup(page, section);
+                }
+                String name = "classic_" + source.key;
+                if (source instanceof ToggleSetting) {
+                    toggleRow(group, name, source.label, "Classic");
+                } else if (source instanceof NumberSetting) {
+                    sliderRow(group, name, source.label, "Classic", source.describe());
+                } else if (source instanceof ChoiceSetting) {
+                    choiceRowWithNote(group, name, source.label, "Classic", ((ChoiceSetting) source).names);
+                } else {
+                    continue;
+                }
+                Setting twin = source.twinFor(rowView(name));
+                twin.source = source;
+                twin.classicValue = entry[2];
+                source.twin = twin;
+                twinRows.add(twin.row);
+                twins.add(twin);
+            }
+        } finally {
+            buildingTwin = false;
+        }
+    }
+
+    private void syncTwin(Setting setting) {
+        Setting twin = setting.twin;
+        if (twin == null) return;
+        twin.restore(setting.capture());
+        twin.syncView();
+    }
+
+    private void show(Setting setting) {
+        setting.syncView();
+        syncTwin(setting);
+    }
+
+    private void refreshClassicTab() {
+        if (twins.isEmpty()) return;
+        int matching = 0;
+        for (Setting twin : twins) {
+            Object current = twin.capture();
+            twin.restore(twin.classicValue);
+            String classic = twin.describe();
+            twin.restore(current);
+            boolean same = twin.classicValue.equals(twin.source.capture());
+            if (same) matching++;
+            TextView note = summaries.get("classic_" + twin.key);
+            if (note != null) {
+                note.setText(same ? "Classic: " + classic + "  (matches)" : "Classic: " + classic);
+                note.setTextColor(same ? COLOR_PRIMARY : COLOR_ON_VARIANT);
+            }
+        }
+        View status = rowView("row_classic_status");
+        TextView pill = (TextView) status.findViewWithTag(TAG_VALUE);
+        if (pill != null) pill.setText(matching + "/" + twins.size());
+        TextView summary = summaries.get("row_classic_status");
+        if (summary != null) {
+            summary.setText(matching == twins.size() ? "Every setting below matches Classic feel"
+                    : (twins.size() - matching) + " setting" + (twins.size() - matching == 1 ? "" : "s") + " below differ from Classic feel");
+        }
     }
 
     private String exportJson() {
@@ -5008,15 +5381,23 @@ public class SettingsActivity extends AppCompatActivity {
         final String label;
         boolean randomizable = true;
         String note;
+        Setting twin;
+        Setting source;
+        Object classicValue;
 
         Setting(String key, View rowId) {
             this.key = key;
             this.row = rowId;
             String text = firstText(row);
             this.label = text != null ? text : key;
+            if (buildingTwin) return;
             rowSettings.put(row, this);
             settings.add(this);
             settingsByKey.put(key, this);
+        }
+
+        Setting twinFor(View twinRow) {
+            throw new IllegalStateException(key + " can't be mirrored");
         }
 
         abstract void read(Map<String, ?> source);
@@ -5056,6 +5437,11 @@ public class SettingsActivity extends AppCompatActivity {
         final boolean defaultValue;
         final MaterialSwitch toggle;
         boolean value;
+
+        @Override
+        Setting twinFor(View twinRow) {
+            return new ToggleSetting(key, defaultValue, twinRow);
+        }
 
         ToggleSetting(String key, boolean defaultValue, View rowId) {
             super(key, rowId);
@@ -5161,6 +5547,13 @@ public class SettingsActivity extends AppCompatActivity {
         final ChipStyle pillStyle;
         String zeroLabel;
         float value;
+
+        @Override
+        Setting twinFor(View twinRow) {
+            NumberSetting copy = new NumberSetting(key, defaultValue, integer, sliderMin, sliderMax, step, min, max, unit, twinRow);
+            copy.zeroLabel = zeroLabel;
+            return copy;
+        }
 
         NumberSetting(String key, float defaultValue, boolean integer, float sliderMin, float sliderMax, float step,
                       float min, float max, int unit, View rowId) {
@@ -5385,8 +5778,20 @@ public class SettingsActivity extends AppCompatActivity {
         boolean enabled = true;
         int value;
 
+        final int[] colors;
+        final String[] swatchNames;
+
+        @Override
+        Setting twinFor(View twinRow) {
+            ChoiceSetting copy = new ChoiceSetting(key, defaultValue, twinRow, values, colors, swatchNames);
+            copy.setEnabled(enabled);
+            return copy;
+        }
+
         ChoiceSetting(String key, int defaultValue, View rowId, int[] values, int[] colors, String[] swatchNames) {
             super(key, rowId);
+            this.colors = colors;
+            this.swatchNames = swatchNames;
             this.defaultValue = defaultValue;
             this.values = values;
             this.value = defaultValue;
