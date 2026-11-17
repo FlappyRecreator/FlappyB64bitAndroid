@@ -1945,6 +1945,16 @@ final class Replayer {
         return Float.floatToIntBits(a) == Float.floatToIntBits(b);
     }
 
+    private static int oldestRules() {
+        try {
+            Field oldest = GameView.class.getDeclaredField("REPLAY_RULES_OLDEST");
+            oldest.setAccessible(true);
+            return oldest.getInt(null);
+        } catch (ReflectiveOperationException | RuntimeException e) {
+            return GameView.REPLAY_RULES;
+        }
+    }
+
     static Result run(byte[] compressed, int claimedScore, boolean claimedClassic) {
         Result result = new Result();
         Recording r;
@@ -1953,7 +1963,7 @@ final class Replayer {
         } catch (IOException | RuntimeException e) {
             return result.fail(REJECTED, "the replay could not be read");
         }
-        if (r.format != GameView.REPLAY_FORMAT || r.rules != GameView.REPLAY_RULES) {
+        if (r.format != GameView.REPLAY_FORMAT || r.rules < oldestRules() || r.rules > GameView.REPLAY_RULES) {
             return result.fail(SKIPPED, "it was recorded by a different version of the game");
         }
         result.mode = r.mode;
