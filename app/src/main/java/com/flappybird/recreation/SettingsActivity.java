@@ -381,17 +381,13 @@ public class SettingsActivity extends AppCompatActivity {
                 {PREF_AUTOPILOT_ENABLED, DEFAULT_AUTOPILOT_ENABLED, null},
                 {PREF_SPEED_RAMP, DEFAULT_SPEED_RAMP, null},
                 {PREF_GAP_SHRINK, DEFAULT_GAP_SHRINK, null},
-                {PREF_FIXED_STEP_ENABLED, DEFAULT_FIXED_STEP_ENABLED, true},
                 {PREF_MAX_FALL_SPEED, DEFAULT_MAX_FALL_SPEED, CLASSIC_MAX_FALL_SPEED},
                 {PREF_CEILING_ENABLED, DEFAULT_CEILING_ENABLED, false},
-                {PREF_PIXEL_STEPS_ENABLED, DEFAULT_PIXEL_STEPS_ENABLED, true},
                 {PREF_FLAP_LIMIT_ENABLED, DEFAULT_FLAP_LIMIT_ENABLED, true},
                 {PREF_HITBOX_SHAPE, DEFAULT_HITBOX_SHAPE, HITBOX_SHAPE_SQUARE},
                 {PREF_GAP_PLACEMENT, DEFAULT_GAP_PLACEMENT, GAP_PLACEMENT_CLASSIC},
                 {PREF_SCORE_POINT, DEFAULT_SCORE_POINT, SCORE_POINT_CLASSIC},
                 {PREF_BIRD_POSITION, DEFAULT_BIRD_POSITION, CLASSIC_BIRD_POSITION},
-                {PREF_START_HEIGHT, DEFAULT_START_HEIGHT, CLASSIC_START_HEIGHT},
-                {PREF_SHOW_HITBOXES, DEFAULT_SHOW_HITBOXES, null},
         };
     }
 
@@ -418,7 +414,10 @@ public class SettingsActivity extends AppCompatActivity {
         }
         Object weather = stored.get(PREF_WEATHER_EFFECT);
         if (weather != null && !(weather instanceof Integer && (Integer) weather != WEATHER_SLOW_MOTION)) return PREF_WEATHER_EFFECT;
-        return standard || classic ? null : FAIR_MIXED;
+        if (!standard && !classic) return FAIR_MIXED;
+        boolean stepped = Boolean.TRUE.equals(stored.containsKey(PREF_FIXED_STEP_ENABLED) ? stored.get(PREF_FIXED_STEP_ENABLED) : DEFAULT_FIXED_STEP_ENABLED)
+                && Boolean.TRUE.equals(stored.containsKey(PREF_PIXEL_STEPS_ENABLED) ? stored.get(PREF_PIXEL_STEPS_ENABLED) : DEFAULT_PIXEL_STEPS_ENABLED);
+        return stepped && standard ? PREF_PIXEL_STEPS_ENABLED : null;
     }
 
     public static int fairPlayMode(Map<String, ?> stored) {
@@ -435,6 +434,7 @@ public class SettingsActivity extends AppCompatActivity {
         if (FAIR_MIXED.equals(key)) return "a mix of Classic and normal settings";
         if (PREF_NO_CLIP_ENABLED.equals(key)) return "God mode";
         if (PREF_WEATHER_EFFECT.equals(key)) return "thunderstorm";
+        if (PREF_PIXEL_STEPS_ENABLED.equals(key)) return "whole-pixel movement";
         String name = key.startsWith("pref_") ? key.substring(5) : key;
         if (name.endsWith("_enabled")) name = name.substring(0, name.length() - 8);
         if (name.endsWith("_percent")) name = name.substring(0, name.length() - 8);
@@ -1246,7 +1246,8 @@ public class SettingsActivity extends AppCompatActivity {
                 if (http.code == 400) return "The leaderboard is not set up correctly";
                 return "Leaderboard error " + http.code;
             }
-            return NO_CONNECTION;
+            if (error instanceof IOException) return NO_CONNECTION;
+            return "The leaderboard sent something unexpected";
         }
 
         private static void log(Context context, String message) {
@@ -1798,8 +1799,10 @@ public class SettingsActivity extends AppCompatActivity {
             + "# Type default as a value to go back to the default.\n"
             + "# Settings you delete keep their current value.\n";
     private static final String CLASSIC_SUMMARY = "Matches the flight, pipes and scoring of the 2013 Android game";
-    private static final int TAB_COUNT = 11;
+    private static final int TAB_COUNT = 13;
     private static final int ABOUT_PAGE = 10;
+    private static final int SCORING_PAGE = 11;
+    private static final int LEADERBOARD_PAGE = 12;
     public static final String PROJECT_URL = "https://github.com/FlappyRecreator/FlappyB64bitAndroid";
     private static final String MADE_BY = "Breathe";
     private static final int ADVANCED_PAGE = 7;
@@ -2095,6 +2098,8 @@ public class SettingsActivity extends AppCompatActivity {
             if (i == ADVANCED_PAGE) tabs[i] = createTab("Advanced", presetsTab, presetsTab);
             else if (i == ALL_PAGE) tabs[i] = createTab("All", presetsTab, tabs[0]);
             else if (i == ABOUT_PAGE) tabs[i] = createTab("About", presetsTab, null);
+            else if (i == SCORING_PAGE) tabs[i] = createTab("Scoring", presetsTab, tabs[4]);
+            else if (i == LEADERBOARD_PAGE) tabs[i] = createTab("Leaderboard", presetsTab, tabs[ADVANCED_PAGE]);
             else tabs[i] = findViewById(TAB_IDS[i < ADVANCED_PAGE ? i : i - 1]);
             tabStyles[i] = new ChipStyle(tabs[i], COLOR_ROW, COLOR_PRIMARY, COLOR_ON_VARIANT, COLOR_ON_PRIMARY,
                     dp(12), dp(20), 0, 0);
@@ -2799,6 +2804,12 @@ public class SettingsActivity extends AppCompatActivity {
         group = addGroup(page, "Position");
         sliderRow(group, "row_bird_position", "Distance across", "How far across the screen the bird flies", "33%");
         sliderRow(group, "row_start_height", "Starting height", "Where the bird waits for the first tap", "50%");
+        group = addGroup(page, "Tilt");
+        toggleRow(group, "row_bird_tilt", "Bird tilts", "Noses up on a flap and dives when falling");
+        choiceRow(group, "row_tilt_style", "Tilt style", "Smooth", "Classic");
+        sliderRow(group, "row_max_tilt_up", "Nose-up angle", null, "25 deg");
+        sliderRow(group, "row_max_tilt_down", "Dive angle", null, "90 deg");
+        sliderRow(group, "row_tilt_speed", "Tilt speed", null, "1x");
 
         page = addPage(1);
         group = addGroup(page, "Sky");
@@ -2836,6 +2847,11 @@ public class SettingsActivity extends AppCompatActivity {
         sliderRow(group, "row_gravity", "Gravity", null, "1x");
         sliderRow(group, "row_jump", "Flap strength", null, "1x");
         sliderRow(group, "row_hang_delay", "Hang time", "Pause before the bird tips into a dive", "1x");
+        group = addGroup(page, "Falling");
+        sliderRow(group, "row_max_fall_speed", "Max fall speed", "Caps how fast the bird drops, compared to a flap", "Off");
+        toggleRow(group, "row_ceiling", "Ceiling", "Keeps the bird from flying far above the screen");
+        toggleRow(group, "row_flap_limit", "No flapping off screen", "Taps do nothing while the bird is above the top edge");
+        sliderRow(group, "row_crash_gravity", "Crash fall", "How hard the bird drops after a crash", "1.5x");
         group = addGroup(page, "Speed");
         sliderRow(group, "row_game_speed", "Game speed", null, "1x");
         sliderRow(group, "row_pipe_speed_variation", "Speed surprise", "Random speed change every round", "0x");
@@ -2844,8 +2860,11 @@ public class SettingsActivity extends AppCompatActivity {
         sliderRow(group, "row_ramp_top_speed", "Top speed", "Where the speeding up stops", "3x");
         sliderRow(group, "row_gap_shrink", "Gap shrinks", "Tighter for every 10 points you score", "0%");
         sliderRow(group, "row_ramp_min_gap", "Smallest gap", "Where the shrinking stops", "55%");
-        group = addGroup(page, "Scoring");
+
+        page = addPage(SCORING_PAGE);
+        group = addGroup(page, "Points");
         sliderRow(group, "row_score_multiplier", "Points per pipe", null, "1");
+        choiceRow(group, "row_score_point", "Point is scored at the pipe's", "Start", "Middle", "End", "Classic");
         group = addGroup(page, "Medals");
         sliderRow(group, "row_medal_bronze", "Bronze", "Score needed for each medal", "10");
         sliderRow(group, "row_medal_silver", "Silver", null, "20");
@@ -2882,7 +2901,7 @@ public class SettingsActivity extends AppCompatActivity {
         toggleRow(group, "row_reverse_pipes", "Reverse pipes", "Pipes come from the left instead");
 
         page = addPage(6);
-        group = addGroup(page, "Feedback");
+        group = addGroup(page, "Sound and vibration");
         toggleRow(group, "row_sound", "Sound effects", "Flaps, points, crashes and weather");
         sliderRow(group, "row_sound_volume", "Effects volume", null, "100%");
         sliderRow(group, "row_weather_volume", "Weather volume", "Rain and storm loops", "100%");
@@ -2899,41 +2918,31 @@ public class SettingsActivity extends AppCompatActivity {
         keyRow(group, "row_key_settings", "Open settings", "From the home and score screens", DEFAULT_KEY_SETTINGS);
         toggleRow(group, "row_right_click_pause", "Right click pauses", "Right mouse button pauses and resumes a run");
         toggleRow(group, "row_hide_cursor", "Hide the mouse pointer", "Hidden during a run until you move the mouse");
-        group = addGroup(page, "Online leaderboard");
+        group = addGroup(page, "Interface");
+        toggleRow(group, "row_hide_settings_icon", "Hide settings button", "The top right corner still opens settings");
+        toggleRow(group, "row_classic_menu", "Original menu buttons", "Rate button on the home screen and a leaderboard button after a crash");
+        group = addGroup(page, "Debug and bug reports");
+        toggleRow(group, "row_show_fps", "FPS counter", "Shows frames per second in the top left corner");
+        toggleRow(group, "row_show_hitboxes", "Show hitboxes", "Outlines everything that can collide");
+        toggleRow(group, "row_activity_log_enabled", "Activity log", "Records rounds, changes and crashes for bug reports. Turning it off is not recommended");
+
+        page = addPage(LEADERBOARD_PAGE);
+        group = addGroup(page, "Posting scores");
         toggleRow(group, "row_board_auto_post", "Post scores automatically", "Fair rounds go to the online leaderboard when you're connected");
         actionRow(group, "button_board_name", "Leaderboard name", "Not set", COLOR_ON);
         actionRow(group, "button_board_rules", "What counts as a real score", "Checking your settings...", COLOR_ON);
         toggleRow(group, "row_board_show_status", "Show posting status", "A short note on the score screen says whether the round was posted");
+        group = addGroup(page, "Leaderboard screen");
         toggleRow(group, "row_board_open_on_best", "Open the leaderboard after a new best", "Shows where you placed when a posted score beats your best");
         choiceRow(group, "row_board_tab", "Leaderboard opens on", "All time", "Weekly");
         choiceRow(group, "row_board_size", "Scores shown on the leaderboard", "10", "25", "50", "100", "All");
-        group = addGroup(page, "Interface");
-        toggleRow(group, "row_hide_settings_icon", "Hide settings button", "The top right corner still opens settings");
-        toggleRow(group, "row_classic_menu", "Original menu buttons", "Rate button on the home screen and a leaderboard button after a crash");
-        group = addGroup(page, "Debug");
-        toggleRow(group, "row_show_fps", "FPS counter", "Shows frames per second in the top left corner");
-        toggleRow(group, "row_show_hitboxes", "Show hitboxes", "Outlines everything that can collide");
 
         page = addPage(ADVANCED_PAGE);
         group = addGroup(page, "Classic feel");
         actionRow(group, "button_classic_feel", "Use classic feel", CLASSIC_SUMMARY, COLOR_PRIMARY);
-        toggleRow(group, "row_fixed_step", "Fixed 60 Hz physics", "Moves the game in steps of 1/60 s instead of once per screen refresh");
+        group = addGroup(page, "Timing");
+        toggleRow(group, "row_fixed_step", "Fixed 60 Hz physics", "Moves the game in steps of 1/60 s, smoothed to your screen's refresh rate");
         toggleRow(group, "row_pixel_steps", "Whole-pixel movement", "The bird moves a whole number of game pixels per step");
-        group = addGroup(page, "Falling");
-        sliderRow(group, "row_max_fall_speed", "Max fall speed", "Caps how fast the bird drops, compared to a flap", "Off");
-        toggleRow(group, "row_ceiling", "Ceiling", "Keeps the bird from flying far above the screen");
-        toggleRow(group, "row_flap_limit", "No flapping off screen", "Taps do nothing while the bird is above the top edge");
-        sliderRow(group, "row_crash_gravity", "Crash fall", "How hard the bird drops after a crash", "1.5x");
-        group = addGroup(page, "Tilt");
-        toggleRow(group, "row_bird_tilt", "Bird tilts", "Noses up on a flap and dives when falling");
-        choiceRow(group, "row_tilt_style", "Tilt style", "Smooth", "Classic");
-        sliderRow(group, "row_max_tilt_up", "Nose-up angle", null, "25 deg");
-        sliderRow(group, "row_max_tilt_down", "Dive angle", null, "90 deg");
-        sliderRow(group, "row_tilt_speed", "Tilt speed", null, "1x");
-        group = addGroup(page, "Scoring");
-        choiceRow(group, "row_score_point", "Point is scored at the pipe's", "Start", "Middle", "End", "Classic");
-        group = addGroup(page, "Bug reports");
-        toggleRow(group, "row_activity_log_enabled", "Activity log", "Records rounds, changes and crashes for bug reports. Turning it off is not recommended");
 
         page = addPage(PRESETS_PAGE);
         group = addGroup(page, "Saved setups");
@@ -3470,10 +3479,13 @@ public class SettingsActivity extends AppCompatActivity {
                 + "\u2022 you're online when the round starts and when it ends\n"
                 + "\u2022 nothing in the game is changed or sped up while you play\n\n"
                 + "These never matter: colors, backgrounds, bird and pipe looks, sound, vibration, rain and snow, day and night, "
-                + "screen shake, motion blur, dimming, the crash flash, bird tilt, controls and the FPS counter.\n\n"
-                + "These stop scores from counting: God mode, autopilot, extra lives, golden pipes, thunderstorm, hitbox outlines, "
-                + "and any change to physics, speed, pipes, bird size or hitbox, the difficulty ramp or the Advanced tab, unless it "
-                + "matches Classic feel.\n\n"
+                + "screen shake, motion blur, dimming, the crash flash, bird tilt, controls, the FPS counter, hitbox outlines, "
+                + "the starting height and Fixed 60 Hz physics. Classic feel also counts with Fixed 60 Hz physics or "
+                + "whole-pixel movement turned off.\n\n"
+                + "These stop scores from counting: God mode, autopilot, extra lives, golden pipes, thunderstorm, and any change "
+                + "to gravity, flap strength, speed, pipes, bird size or hitbox, falling rules, scoring or the difficulty ramp, "
+                + "unless it matches Classic feel. Whole-pixel movement together with Fixed 60 Hz physics changes how the bird "
+                + "falls, so that pair only counts with Classic feel.\n\n"
                 + "Pausing is fine. Rounds played offline stay on this phone and are not posted later.\n\n"
                 + "Verified scores: when you post a new best, a recording of your taps is sent too. A checker replays it with the "
                 + "real game rules, and if it plays out to the same score, the score gets a purple check mark. The leaderboard "

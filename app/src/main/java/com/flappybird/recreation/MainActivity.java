@@ -300,6 +300,8 @@ class GameView extends View implements Choreographer.FrameCallback {
     private static final float BOARD_SIDE_MIN_FIT = 0.8f;
     private static final float BOARD_CACHE_PIXELS = 4500000f;
     private static final int STATUS_PILL = 0xCC0D1321;
+    private static final String BOARD_OFFLINE_NOTE = "No internet connection";
+    private static final float BOARD_RETRY_SEC = 5f;
     private static final float STATUS_FADE_IN_SEC = 0.18f;
     private static final float STATUS_HOLD_SEC = 2f;
     private static final float STATUS_FADE_OUT_SEC = 0.4f;
@@ -402,6 +404,8 @@ class GameView extends View implements Choreographer.FrameCallback {
     private static final int[] CRASH_FLASH_COLORS = {Color.WHITE, 0xFFFF3B30, 0xFFFFD23F, Color.BLACK};
     private static final float FIXED_STEP_SEC = 1.0f / 60.0f;
     private static final int MAX_FIXED_STEPS = 8;
+    private static final float STEP_SNAP = 0.03f;
+    private static final float STEP_EPSILON = 0.00002f;
     private static final float PIXEL_STEP_EPSILON = 0.001f;
     private static final float CLASSIC_TILT_KICK_PER_SEC = -600f;
     private static final float CLASSIC_TILT_PULL_PER_SEC2 = 1440f;
@@ -652,7 +656,8 @@ class GameView extends View implements Choreographer.FrameCallback {
     private final int sealKey = (int) (System.nanoTime() * 0x9E3779B1L) | 1;
     private int settingsSeal, tuningSeal, roundPipes, pipesCheck;
     static final int REPLAY_FORMAT = 1;
-    static final int REPLAY_RULES = 1;
+    static final int REPLAY_RULES = 2;
+    static final int REPLAY_RULES_OLDEST = 1;
     static final int REPLAY_FLAP = 0xFFFFFFFF;
     static final int REPLAY_MAX_EVENTS = 4000000;
     private final Random seedSource = new Random();
@@ -672,6 +677,10 @@ class GameView extends View implements Choreographer.FrameCallback {
     private String boardStatusSeen;
     private float boardStatusAge, boardStatusAlpha;
     private boolean returningHome;
+    private boolean motionValid;
+    private GameState motionState;
+    private float pastBirdX, pastBirdY, pastGroundX, pastBackgroundX;
+    private float keptBirdX, keptBirdY, keptGroundX, keptBackgroundX;
     private float returnHoldSec;
     private final RectF boardStatusPill = new RectF();
     private Paint boardStatusPaint;
@@ -683,7 +692,8 @@ class GameView extends View implements Choreographer.FrameCallback {
     private final float[] keyboardSpring = new float[2];
     private final float[] hideSpring = new float[2];
     private final float[] dimSpring = new float[2];
-    private boolean nameSide, boardCached, boardRefreshPending;
+    private boolean nameSide, boardCached, boardRefreshPending, boardOffline;
+    private float boardRetrySec;
     private float sideFit = 1f, sidePanelWidth, boardUnit, boardLeft, boardTop;
     private Bitmap boardCache;
     private Canvas boardCacheCanvas;
@@ -1585,6 +1595,7 @@ class GameView extends View implements Choreographer.FrameCallback {
     }
 
     private void spawnPipes() {
+        motionValid = false;
         pipes.clear();
         float direction = settingReversePipesEnabled ? -1 : 1;
         float firstX = firstPipeX();
@@ -2866,6 +2877,58 @@ class GameView extends View implements Choreographer.FrameCallback {
         update(dt);
     }
 
+    private void holdMotion() {
+        pastBirdX = birdX;
+        pastBirdY = birdY;
+        pastGroundX = groundX;
+        pastBackgroundX = backgroundX;
+        for (int i = 0; i < pipes.size(); i++) {
+            Pipe pipe = pipes.get(i);
+            pipe.pastX = pipe.x;
+        }
+        motionState = gameState;
+        motionValid = true;
+    }
+
+    private static float blendWrapped(float past, float now, float amount, float length) {
+        float change = now - past;
+        if (length > 0f && Math.abs(change) > length / 2f) change -= Math.signum(change) * length;
+        float value = now + change * amount;
+        return length > 0f ? value % length : value;
+    }
+
+    private boolean blendMotion() {
+        if (!settingFixedStepEnabled || !motionValid || isPaused || settingShowHitboxes || gameState != motionState) return false;
+        float amount = stepAccumulator / FIXED_STEP_SEC;
+        if (!(amount > 0f) || amount >= 1f) return false;
+        keptBirdX = birdX;
+        keptBirdY = birdY;
+        keptGroundX = groundX;
+        keptBackgroundX = backgroundX;
+        birdX += (birdX - pastBirdX) * amount;
+        birdY += (birdY - pastBirdY) * amount;
+        groundX = blendWrapped(pastGroundX, groundX, amount, groundBitmap.getWidth());
+        backgroundX = blendWrapped(pastBackgroundX, backgroundX, amount, bgDayBitmap.getWidth());
+        for (int i = 0; i < pipes.size(); i++) {
+            Pipe pipe = pipes.get(i);
+            pipe.keptX = pipe.x;
+            float change = pipe.x - pipe.pastX;
+            if (Math.abs(change) < pipe.width) pipe.x += change * amount;
+        }
+        return true;
+    }
+
+    private void restoreMotion() {
+        birdX = keptBirdX;
+        birdY = keptBirdY;
+        groundX = keptGroundX;
+        backgroundX = keptBackgroundX;
+        for (int i = 0; i < pipes.size(); i++) {
+            Pipe pipe = pipes.get(i);
+            pipe.x = pipe.keptX;
+        }
+    }
+
     private Leaderboard.Replay takeReplay() {
         boolean usable = replayLive && replayHeader != null && replayEvents != null && replayCount > 0
                 && replayPrefs != null && replayPrefs.equals(replayPrefs(prefs.getAll()));
@@ -3189,6 +3252,8 @@ class GameView extends View implements Choreographer.FrameCallback {
 
     private void openBoard() {
         resetBoardScroll();
+        boardOffline = false;
+        boardRetrySec = 0f;
         boardTab = settingBoardTab;
         boardShowAll = Boolean.TRUE.equals(prefs.getAll().get(BOARD_SHOW_ALL_KEY));
         boardOpen = true;
@@ -3222,6 +3287,10 @@ class GameView extends View implements Choreographer.FrameCallback {
         settle(hideSpring, boardSqueezed ? 1f : 0f, glide, 20f, 0.004f);
         settle(dimSpring, nameOverlayOpen ? 1f : 0f, glide, 20f, 0.004f);
         if (nameSpring[0] == 0f && boardCache != null) releaseBoardCache();
+        if (boardOpen && boardOffline && !boardLoading && !boardClosing && !nameOverlayOpen) {
+            boardRetrySec += step;
+            if (boardRetrySec >= BOARD_RETRY_SEC) refreshBoard();
+        }
         if (boardRefreshPending && !nameOverlayOpen && nameSpring[0] < 0.02f) {
             boardRefreshPending = false;
             if (boardOpen) refreshBoard();
@@ -3293,14 +3362,17 @@ class GameView extends View implements Choreographer.FrameCallback {
             return;
         }
         boardLoading = true;
-        boardNote = "Loading...";
+        boardNote = boardOffline ? BOARD_OFFLINE_NOTE : "Loading...";
         Leaderboard.fetch(getContext(), settingBoardSize, this::post, (board, error) -> {
             boardLoading = false;
+            boardRetrySec = 0f;
             if (board != null) {
+                boardOffline = false;
                 boardData = board;
                 boardNote = boardHint();
             } else {
-                boardNote = error != null ? error : Leaderboard.NO_CONNECTION;
+                boardOffline = error == null || Leaderboard.NO_CONNECTION.equals(error);
+                boardNote = boardOffline ? BOARD_OFFLINE_NOTE : error;
             }
         });
     }
@@ -3584,6 +3656,7 @@ class GameView extends View implements Choreographer.FrameCallback {
         key = key * 31L + System.identityHashCode(boardData);
         key = key * 31L + (boardNote == null ? 0 : boardNote.hashCode());
         key = key * 31L + (boardLoading ? 1 : 2);
+        key = key * 31L + (boardOffline ? 1 : 2);
         key = key * 31L + boardTab;
         key = key * 31L + (boardShowAll ? 1 : 2);
         key = key * 31L + Float.floatToIntBits(boardScroll);
@@ -3722,8 +3795,18 @@ class GameView extends View implements Choreographer.FrameCallback {
         }
 
         float footerTop = youTop + rowHeight;
+        boolean offline = boardOffline;
+        if (offline && count == 0) {
+            float middle = rowsTop + rowsHeight / 2f;
+            boardText(canvas, "NO INTERNET", left + width / 2f, middle - 4f * unit, 13f * unit, BOARD_ORANGE, Paint.Align.CENTER, width - 30f * unit);
+            boardText(canvas, "Connect to see the leaderboard", left + width / 2f, middle + 10f * unit, 7.5f * unit, BOARD_DARK,
+                    Paint.Align.CENTER, width - 30f * unit);
+            boardText(canvas, "Trying again every few seconds", left + width / 2f, middle + 21f * unit, 6.5f * unit, BOARD_DARK,
+                    Paint.Align.CENTER, width - 30f * unit);
+        }
         if (!boardNote.isEmpty()) {
-            boardText(canvas, boardNote, left + width / 2f, footerTop + 15f * unit, 8f * unit, BOARD_DARK, Paint.Align.CENTER, width - 20f * unit);
+            boardText(canvas, boardNote, left + width / 2f, footerTop + 15f * unit, 8f * unit, offline ? BOARD_ORANGE : BOARD_DARK,
+                    Paint.Align.CENTER, width - 20f * unit);
         }
         float buttonTop = footerTop + 24f * unit;
         float buttonWidth = 84f * unit;
@@ -3858,7 +3941,15 @@ class GameView extends View implements Choreographer.FrameCallback {
     protected void onDraw(Canvas canvas) {
         super.onDraw(canvas);
         if (!isReady) return;
+        boolean blended = blendMotion();
+        try {
+            drawFrame(canvas);
+        } finally {
+            if (blended) restoreMotion();
+        }
+    }
 
+    private void drawFrame(Canvas canvas) {
         boolean shaking = shakeTimer > 0;
         if (shaking) canvas.drawColor(Color.BLACK);
 
@@ -5108,16 +5199,24 @@ class GameView extends View implements Choreographer.FrameCallback {
             updateCursor();
         }
         if (settingFixedStepEnabled) {
-            stepAccumulator += Math.min(deltaTime, FIXED_STEP_SEC * MAX_FIXED_STEPS);
+            float advance = Math.min(deltaTime, FIXED_STEP_SEC * MAX_FIXED_STEPS);
+            if (advance > 0f) {
+                float framesPerStep = FIXED_STEP_SEC / advance;
+                int whole = Math.round(framesPerStep);
+                if (whole >= 1 && whole <= 4 && Math.abs(framesPerStep - whole) < STEP_SNAP * whole) advance = FIXED_STEP_SEC / whole;
+            }
+            stepAccumulator += advance;
             int steps = 0;
-            while (stepAccumulator >= FIXED_STEP_SEC && steps < MAX_FIXED_STEPS) {
+            while (stepAccumulator >= FIXED_STEP_SEC - STEP_EPSILON && steps < MAX_FIXED_STEPS) {
+                holdMotion();
                 step(FIXED_STEP_SEC);
-                stepAccumulator -= FIXED_STEP_SEC;
+                if (gameState != motionState) motionValid = false;
+                stepAccumulator = Math.max(0f, stepAccumulator - FIXED_STEP_SEC);
                 steps++;
             }
-            if (steps == 0) return;
         } else {
             stepAccumulator = 0f;
+            motionValid = false;
             step(Math.min(deltaTime, MAX_FRAME_DELTA_SEC));
         }
         invalidate();
@@ -5574,7 +5673,7 @@ class Pipe {
     }
     private static float pipeBodyWidth, pipeBodyOffsetX;
 
-    float x;
+    float x, pastX = Float.NaN, keptX;
     int topPipeY;
     boolean isScored;
     int width, height;
