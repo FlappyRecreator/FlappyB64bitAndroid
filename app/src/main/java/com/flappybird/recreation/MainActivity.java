@@ -299,6 +299,11 @@ class GameView extends View implements Choreographer.FrameCallback {
     private static final float BOARD_PAIR_UNITS = BOARD_WIDTH_UNITS + BOARD_SIDE_GAP + NamePanel.WIDTH_UNITS * 0.95f + 16f;
     private static final float BOARD_SIDE_MIN_FIT = 0.8f;
     private static final float BOARD_CACHE_PIXELS = 4500000f;
+    private static final int STATUS_PILL = 0xCC0D1321;
+    private static final float STATUS_FADE_IN_SEC = 0.18f;
+    private static final float STATUS_HOLD_SEC = 2f;
+    private static final float STATUS_FADE_OUT_SEC = 0.4f;
+    private static final float RETURN_HOME_HOLD_SEC = 0.3f;
     private static final float BOARD_OPEN_SEC = 0.32f;
     private static final float BOARD_CLOSE_SEC = 0.18f;
     private static final int BOARD_TAB_IDLE = 0xFFC9C27E;
@@ -664,6 +669,11 @@ class GameView extends View implements Choreographer.FrameCallback {
     private int settingBoardTab;
     private int settingBoardSize = 10;
     private String boardStatusText;
+    private String boardStatusSeen;
+    private float boardStatusAge, boardStatusAlpha;
+    private boolean returningHome;
+    private float returnHoldSec;
+    private final RectF boardStatusPill = new RectF();
     private Paint boardStatusPaint;
     private boolean nameOverlayOpen, boardSqueezed;
     private int imeInset;
@@ -1649,6 +1659,7 @@ class GameView extends View implements Choreographer.FrameCallback {
                 birdX = baseBirdX;
                 birdY = homeBirdY();
                 birdRotation = 0;
+                if (transitionAlpha > 0f) transitionAlpha = Math.max(0f, transitionAlpha - TRANSITION_FADE_SPEED_PER_SEC * realDeltaTime);
                 break;
             case TRANSITION_TO_WAITING:
                 updateTransitionToWaiting(gameDeltaTime);
@@ -2216,12 +2227,21 @@ class GameView extends View implements Choreographer.FrameCallback {
             darkenPaint.setAlpha(Math.max(0, Math.min(255, (int) (maxAlphaFromSettings * progress))));
         }
 
-        if (isRestarting) {
+        if (isRestarting && returningHome && returnHoldSec > 0f) {
+            returnHoldSec -= realDeltaTime;
+        } else if (isRestarting) {
             transitionAlpha += TRANSITION_FADE_SPEED_PER_SEC * realDeltaTime;
             if (transitionAlpha >= 255) {
                 transitionAlpha = 255;
-                resetGame();
-                gameState = GameState.TRANSITION_TO_WAITING;
+                if (returningHome) {
+                    returningHome = false;
+                    loadSettings();
+                    resetGame();
+                    gameState = GameState.HOME;
+                } else {
+                    resetGame();
+                    gameState = GameState.TRANSITION_TO_WAITING;
+                }
                 isFadingOut = false;
             }
         }
@@ -3096,6 +3116,27 @@ class GameView extends View implements Choreographer.FrameCallback {
         layoutBoard();
     }
 
+    private boolean boardStatusPlace() {
+        return boardStatusText != null && settingBoardShowStatus && gameState == GameState.PANEL_SLIDING && !playButtonRect.isEmpty();
+    }
+
+    private void animateBoardStatus(float step) {
+        if (boardStatusText != boardStatusSeen) {
+            boardStatusSeen = boardStatusText;
+            boardStatusAge = boardStatusAlpha > 0f ? STATUS_FADE_IN_SEC : 0f;
+        }
+        if (!boardStatusPlace()) {
+            boardStatusAlpha = 0f;
+            return;
+        }
+        boardStatusAge += step;
+        float rise = Math.min(1f, boardStatusAge / STATUS_FADE_IN_SEC);
+        float fall = Math.max(0f, Math.min(1f, (boardStatusAge - STATUS_FADE_IN_SEC - STATUS_HOLD_SEC) / STATUS_FADE_OUT_SEC));
+        rise = rise * rise * (3f - 2f * rise);
+        fall = fall * fall * (3f - 2f * fall);
+        boardStatusAlpha = rise * (1f - fall);
+    }
+
     private void drawBoardStatus(Canvas canvas) {
         if (boardStatusPaint == null) {
             boardStatusPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -3106,21 +3147,30 @@ class GameView extends View implements Choreographer.FrameCallback {
             }
             boardStatusPaint.setTypeface(face != null ? face : Typeface.DEFAULT_BOLD);
             boardStatusPaint.setTextAlign(Paint.Align.CENTER);
+            boardStatusPaint.setStyle(Paint.Style.FILL);
         }
+        float alpha = Math.max(0f, Math.min(1f, boardStatusAlpha));
         float size = 7f * scale;
+        float padX = 7f * scale;
+        float usable = screenWidth - safeInsetLeft - safeInsetRight;
+        float maxWidth = usable - 12f * scale - padX * 2f;
         boardStatusPaint.setTextSize(size);
-        float maxWidth = screenWidth - safeInsetLeft - safeInsetRight - 16f * scale;
         float width = boardStatusPaint.measureText(boardStatusText);
-        if (width > maxWidth && maxWidth > 0f) boardStatusPaint.setTextSize(size * maxWidth / width);
-        float x = safeInsetLeft + (screenWidth - safeInsetLeft - safeInsetRight) / 2f;
-        float y = playButtonRect.bottom + 14f * scale;
-        boardStatusPaint.setStyle(Paint.Style.STROKE);
-        boardStatusPaint.setStrokeWidth(Math.max(1f, scale * 1.2f));
-        boardStatusPaint.setColor(BOARD_DARK);
-        canvas.drawText(boardStatusText, x, y, boardStatusPaint);
-        boardStatusPaint.setStyle(Paint.Style.FILL);
+        if (width > maxWidth && maxWidth > 0f) {
+            size *= maxWidth / width;
+            boardStatusPaint.setTextSize(size);
+            width = maxWidth;
+        }
+        float height = size * 2.1f;
+        float x = safeInsetLeft + usable / 2f;
+        float y = playButtonRect.bottom + 13f * scale + (1f - alpha) * 3f * scale;
+        boardStatusPill.set(x - width / 2f - padX, y - height / 2f, x + width / 2f + padX, y + height / 2f);
+        boardStatusPaint.setColor(STATUS_PILL);
+        boardStatusPaint.setAlpha(Math.round(Color.alpha(STATUS_PILL) * alpha));
+        canvas.drawRoundRect(boardStatusPill, height / 2f, height / 2f, boardStatusPaint);
         boardStatusPaint.setColor(Color.WHITE);
-        canvas.drawText(boardStatusText, x, y, boardStatusPaint);
+        boardStatusPaint.setAlpha(Math.round(255f * alpha));
+        canvas.drawText(boardStatusText, x, y + size * 0.37f, boardStatusPaint);
     }
 
     boolean closeBoardIfOpen() {
@@ -3166,6 +3216,7 @@ class GameView extends View implements Choreographer.FrameCallback {
     private void animateBoard(float deltaTime) {
         float step = Math.min(0.1f, Math.max(0f, deltaTime));
         float glide = Math.min(step, 1f / 30f);
+        animateBoardStatus(glide);
         settle(keyboardSpring, Math.max(imeInset, keyboardCut), glide, 18f, 0.5f);
         settle(nameSpring, nameOverlayOpen && boardOpen ? 1f : 0f, glide, 17f, 0.002f);
         settle(hideSpring, boardSqueezed ? 1f : 0f, glide, 20f, 0.004f);
@@ -3830,9 +3881,7 @@ class GameView extends View implements Choreographer.FrameCallback {
         drawHud(canvas);
         if (settingShowFps) drawFps(canvas);
         if (isPaused) drawPauseOverlay(canvas);
-        if (boardStatusText != null && settingBoardShowStatus && gameState == GameState.PANEL_SLIDING && !playButtonRect.isEmpty()) {
-            drawBoardStatus(canvas);
-        }
+        if (boardStatusAlpha > 0f && boardStatusPlace()) drawBoardStatus(canvas);
         if (boardOpen) drawBoard(canvas);
         if (!boardOpen && (nameOverlayOpen || dimSpring[0] > 0f)) drawNameBackdrop(canvas);
 
@@ -4975,14 +5024,20 @@ class GameView extends View implements Choreographer.FrameCallback {
         settingsOpening = false;
         if (isRunning || !isReady) return;
 
-        loadSettings();
-        if (gameState == GameState.HOME || gameState == GameState.PANEL_SLIDING) {
-            resetGame();
-            gameState = GameState.HOME;
-            transitionAlpha = 0;
-            isFadingOut = false;
+        if (gameState == GameState.PANEL_SLIDING) {
+            if (!returningHome) returnHoldSec = transitionAlpha > 0f ? 0f : RETURN_HOME_HOLD_SEC;
+            returningHome = true;
+            isRestarting = true;
+            cancelButtonPress();
         } else {
-            updateWeatherSounds();
+            loadSettings();
+            if (gameState == GameState.HOME) {
+                resetGame();
+                transitionAlpha = 0;
+                isFadingOut = false;
+            } else {
+                updateWeatherSounds();
+            }
         }
         startLoop();
     }
