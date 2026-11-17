@@ -50,6 +50,7 @@ import android.view.MotionEvent;
 import android.view.PointerIcon;
 import android.view.View;
 import android.view.WindowManager;
+import android.view.animation.AccelerateInterpolator;
 import android.view.animation.OvershootInterpolator;
 import android.view.inputmethod.EditorInfo;
 import android.view.inputmethod.InputMethodManager;
@@ -375,6 +376,9 @@ class GameView extends View implements Choreographer.FrameCallback {
     private static final int MIN_PLAYABLE_HEIGHT_PX = 48;
 
     private static final float BUTTON_PRESS_SPEED = 25f;
+    private static final float SETTINGS_PRESSED_SCALE = 0.86f;
+    private static final float SETTINGS_PRESS_TURN = 60f;
+    private static final long SETTINGS_OPEN_DELAY_MS = 140L;
     private static final float TRANSITION_FADE_SPEED_PER_SEC = 800.0f;
     private static final float FLASH_DECAY_PER_SEC = 1500f;
     private static final int[] CRASH_FLASH_COLORS = {Color.WHITE, 0xFFFF3B30, 0xFFFFD23F, Color.BLACK};
@@ -651,6 +655,10 @@ class GameView extends View implements Choreographer.FrameCallback {
     private boolean nameOverlayOpen, boardSqueezed;
     private int imeInset;
     private float boardReserve, boardReserveShown;
+    private float keyboardCut, keyboardShown;
+    private float settingsScale = 1f, settingsScaleVelocity, settingsSpin, settingsSpinTarget;
+    private boolean settingsOpening;
+    private Paint spinPaint;
     private boolean boardOpen, boardClosing, boardLoading;
     private float boardAnim, boardAlpha = 1f;
     private int boardTab;
@@ -875,11 +883,13 @@ class GameView extends View implements Choreographer.FrameCallback {
             Insets bars = windowInsets.getInsets(WindowInsetsCompat.Type.systemBars());
             Insets safe = windowInsets.getInsets(
                     WindowInsetsCompat.Type.systemBars() | WindowInsetsCompat.Type.displayCutout());
+            boolean changed = windowInsetTop != bars.top || windowInsetBottom != bars.bottom
+                    || windowInsetLeft != safe.left || windowInsetRight != safe.right || !isReady;
             windowInsetTop = bars.top;
             windowInsetBottom = bars.bottom;
             windowInsetLeft = safe.left;
             windowInsetRight = safe.right;
-            applyLayout();
+            if (changed) applyLayout();
             return WindowInsetsCompat.CONSUMED;
         });
     }
@@ -1242,6 +1252,19 @@ class GameView extends View implements Choreographer.FrameCallback {
     @Override
     protected void onSizeChanged(int w, int h, int oldw, int oldh) {
         super.onSizeChanged(w, h, oldw, oldh);
+        if (isReady && screenWidth > 0 && w == screenWidth && h > 0) {
+            if (h < screenHeight && (nameOverlayOpen || keyboardCut > 0f)) {
+                keyboardCut = screenHeight - h;
+                invalidate();
+                return;
+            }
+            if (h == screenHeight) {
+                keyboardCut = 0f;
+                invalidate();
+                return;
+            }
+        }
+        keyboardCut = 0f;
         screenWidth = w;
         screenHeight = h;
         applyLayout();
@@ -1696,9 +1719,51 @@ class GameView extends View implements Choreographer.FrameCallback {
         playBtnProgress += (playBtnTarget - playBtnProgress) * pressSpeed;
         scoreBtnProgress += (scoreBtnTarget - scoreBtnProgress) * pressSpeed;
         rateBtnProgress += (rateBtnTarget - rateBtnProgress) * pressSpeed;
-        settingsBtnProgress += (settingsBtnTarget - settingsBtnProgress) * pressSpeed;
         okBtnProgress += (okBtnTarget - okBtnProgress) * pressSpeed;
-        gameOverSettingsBtnProgress += (gameOverSettingsBtnTarget - gameOverSettingsBtnProgress) * pressSpeed;
+        float press = 1f - (float) Math.exp(-Math.max(0f, dt) * 18f);
+        settingsBtnProgress += (settingsBtnTarget - settingsBtnProgress) * press;
+        gameOverSettingsBtnProgress += (gameOverSettingsBtnTarget - gameOverSettingsBtnProgress) * press;
+        float scaleTarget = settingsBtnTarget > 0f || gameOverSettingsBtnTarget > 0f ? SETTINGS_PRESSED_SCALE : 1f;
+        float remaining = Math.min(0.1f, Math.max(0f, dt));
+        while (remaining > 0f) {
+            float h = Math.min(remaining, 1f / 240f);
+            settingsScaleVelocity += ((scaleTarget - settingsScale) * 700f - settingsScaleVelocity * 30f) * h;
+            settingsScale += settingsScaleVelocity * h;
+            remaining -= h;
+        }
+        if (Math.abs(scaleTarget - settingsScale) < 0.0005f && Math.abs(settingsScaleVelocity) < 0.01f) {
+            settingsScale = scaleTarget;
+            settingsScaleVelocity = 0f;
+        }
+        settingsSpin += (settingsSpinTarget - settingsSpin) * (1f - (float) Math.exp(-Math.max(0f, dt) * 9f));
+        if (Math.abs(settingsSpinTarget - settingsSpin) < 0.05f) {
+            settingsSpin = settingsSpinTarget % 360f;
+            settingsSpinTarget = settingsSpin;
+        }
+    }
+
+    private float spinBase() {
+        return (float) Math.floor(settingsSpin / 360f) * 360f;
+    }
+
+    private void drawSettingsGear(Canvas canvas, int alpha, float extraScale) {
+        float drawScale = settingsScale * extraScale;
+        boolean turning = settingsSpin != 0f;
+        Paint paint = pixelPaint;
+        if (turning) {
+            if (spinPaint == null) {
+                spinPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+                spinPaint.setFilterBitmap(true);
+            }
+            paint = spinPaint;
+        }
+        paint.setAlpha(alpha);
+        canvas.save();
+        canvas.scale(drawScale, drawScale, settingsButtonDestRect.centerX(), settingsButtonDestRect.centerY());
+        if (turning) canvas.rotate(settingsSpin, settingsButtonDestRect.centerX(), settingsButtonDestRect.centerY());
+        canvas.drawBitmap(settingsButtonBitmap, settingsButtonDestRect.left, settingsButtonDestRect.top, paint);
+        canvas.restore();
+        paint.setAlpha(255);
     }
 
     private void updateScrolling(float dt) {
@@ -2880,9 +2945,13 @@ class GameView extends View implements Choreographer.FrameCallback {
 
     void setNameOverlay(boolean open) {
         nameOverlayOpen = open;
-        if (!open) boardReserve = 0f;
+        if (!open) postDelayed(this::releaseBoardReserve, 110);
         boardPressed = null;
         invalidate();
+    }
+
+    private void releaseBoardReserve() {
+        if (!nameOverlayOpen) boardReserve = 0f;
     }
 
     private float baseBoardUnit() {
@@ -2891,7 +2960,7 @@ class GameView extends View implements Choreographer.FrameCallback {
     }
 
     private float overlayBottom() {
-        return Math.min(systemBarTop + getPlayableHeight(), screenHeight - imeInset);
+        return Math.min(systemBarTop + getPlayableHeight(), screenHeight - keyboardShown);
     }
 
     private void placeNamePanel() {
@@ -2985,7 +3054,11 @@ class GameView extends View implements Choreographer.FrameCallback {
 
     private void animateBoard(float deltaTime) {
         float step = Math.min(0.1f, Math.max(0f, deltaTime));
-        boardReserveShown += (boardReserve - boardReserveShown) * Math.min(1f, step * 12f);
+        float glide = 1f - (float) Math.exp(-step * 13f);
+        float keyboard = Math.max(imeInset, keyboardCut);
+        keyboardShown += (keyboard - keyboardShown) * glide;
+        if (Math.abs(keyboard - keyboardShown) < 0.5f) keyboardShown = keyboard;
+        boardReserveShown += (boardReserve - boardReserveShown) * glide;
         if (Math.abs(boardReserve - boardReserveShown) < 0.5f) boardReserveShown = boardReserve;
         if (!boardOpen) return;
         if (!boardDragging) {
@@ -4025,13 +4098,7 @@ class GameView extends View implements Choreographer.FrameCallback {
 
         if (settingsButtonBitmap != null) {
             layoutSettingsButton();
-            if (!settingHideSettingsIcon) {
-                float currentScale = 1.0f - (settingsBtnProgress * 0.15f);
-                canvas.save();
-                canvas.scale(currentScale, currentScale, settingsButtonDestRect.centerX(), settingsButtonDestRect.centerY());
-                canvas.drawBitmap(settingsButtonBitmap, settingsButtonDestRect.left, settingsButtonDestRect.top, pixelPaint);
-                canvas.restore();
-            }
+            if (!settingHideSettingsIcon) drawSettingsGear(canvas, 255, 1f);
         }
 
         float originalPlayWidth = playButtonBitmap.getWidth();
@@ -4169,16 +4236,8 @@ class GameView extends View implements Choreographer.FrameCallback {
         if (settingsButtonBitmap != null && gameOverSettingsAnimProgress > 0) {
             layoutSettingsButton();
             if (!settingHideSettingsIcon) {
-                float baseScale = 1.0f - (gameOverSettingsBtnProgress * 0.15f);
                 float popScale = (float) (Math.sin(gameOverSettingsAnimProgress * Math.PI / 2));
-                float finalScale = baseScale * popScale;
-
-                pixelPaint.setAlpha((int) (255 * gameOverSettingsAnimProgress));
-                canvas.save();
-                canvas.scale(finalScale, finalScale, settingsButtonDestRect.centerX(), settingsButtonDestRect.centerY());
-                canvas.drawBitmap(settingsButtonBitmap, settingsButtonDestRect.left, settingsButtonDestRect.top, pixelPaint);
-                canvas.restore();
-                pixelPaint.setAlpha(255);
+                drawSettingsGear(canvas, (int) (255 * gameOverSettingsAnimProgress), popScale);
             }
         }
     }
@@ -4502,6 +4561,9 @@ class GameView extends View implements Choreographer.FrameCallback {
         settingsBtnTarget = (pressedButtonRect == settingsButtonRect && onHome) ? 1f : 0f;
         okBtnTarget = (pressedButtonRect == playButtonRect && onPanel) ? 1f : 0f;
         gameOverSettingsBtnTarget = (pressedButtonRect == settingsButtonRect && onPanel) ? 1f : 0f;
+        if (pressedButtonRect == settingsButtonRect && (onHome || onPanel) && !settingsOpening && settingsSpinTarget % 360f == 0f) {
+            settingsSpinTarget = Math.max(settingsSpinTarget, settingsSpin) + SETTINGS_PRESS_TURN;
+        }
     }
 
     private void handleGameplayTap() {
@@ -4563,7 +4625,7 @@ class GameView extends View implements Choreographer.FrameCallback {
                 } else if (button == rateButtonRect) {
                     openRatePage();
                 } else if (button == settingsButtonRect) {
-                    openSettings();
+                    openSettingsSoon();
                 }
             } else if (gameState == GameState.PANEL_SLIDING) {
                 playSound(soundSwooshing);
@@ -4572,7 +4634,7 @@ class GameView extends View implements Choreographer.FrameCallback {
                 } else if (button == scoreButtonRect) {
                     openBoard();
                 } else if (button == settingsButtonRect) {
-                    openSettings();
+                    openSettingsSoon();
                 }
             }
         }
@@ -4597,10 +4659,21 @@ class GameView extends View implements Choreographer.FrameCallback {
         settingsBtnTarget = 0f;
         okBtnTarget = 0f;
         gameOverSettingsBtnTarget = 0f;
+        if (!settingsOpening && settingsSpinTarget % 360f != 0f) settingsSpinTarget = spinBase();
         if (pressedButtonRect != null) {
             pressedButtonRect = null;
             invalidate();
         }
+    }
+
+    private void openSettingsSoon() {
+        if (settingsOpening) return;
+        settingsOpening = true;
+        settingsSpinTarget = spinBase() + 360f;
+        postDelayed(() -> {
+            settingsOpening = false;
+            openSettings();
+        }, SETTINGS_OPEN_DELAY_MS);
     }
 
     private void openSettings() {
@@ -5394,6 +5467,7 @@ final class NamePanel extends FrameLayout {
     static final float WIDTH_UNITS = 200f;
     private static final String HELP = "Letters, numbers, spaces and _";
 
+    private final FrameLayout holder;
     private final Card card;
     private final TextView title;
     private final TextView message;
@@ -5404,8 +5478,12 @@ final class NamePanel extends FrameLayout {
     private final PixelButton ok;
     private Listener listener;
     private float unit = -1f;
+    private float measuredUnit = -1f;
+    private int measuredHeight;
+    private boolean measureDirty = true;
     private boolean busy;
     private boolean firstTime;
+    private boolean closing;
 
     static final class Card extends LinearLayout {
         private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -5545,7 +5623,9 @@ final class NamePanel extends FrameLayout {
         card.addView(field);
         card.addView(info);
         card.addView(buttons);
-        addView(card, new FrameLayout.LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT, Gravity.CENTER_HORIZONTAL | Gravity.TOP));
+        holder = new FrameLayout(context);
+        holder.addView(card, new FrameLayout.LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT));
+        addView(holder, new FrameLayout.LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT, Gravity.CENTER_HORIZONTAL | Gravity.TOP));
         setVisibility(GONE);
         setClickable(false);
 
@@ -5587,11 +5667,16 @@ final class NamePanel extends FrameLayout {
         field.setText(current == null ? "" : current);
         field.setSelection(field.getText() == null ? 0 : field.getText().length());
         refreshState(null);
+        closing = false;
+        measureDirty = true;
         setVisibility(VISIBLE);
+        card.animate().cancel();
         card.setAlpha(0f);
-        card.setScaleX(0.85f);
-        card.setScaleY(0.85f);
-        card.animate().alpha(1f).scaleX(1f).scaleY(1f).setDuration(220).setInterpolator(new OvershootInterpolator(1.6f)).start();
+        card.setScaleX(0.9f);
+        card.setScaleY(0.9f);
+        card.setTranslationY(Math.max(1f, unit) * 10f);
+        card.animate().alpha(1f).scaleX(1f).scaleY(1f).translationY(0f).setDuration(260)
+                .setInterpolator(new OvershootInterpolator(1.1f)).start();
         field.requestFocus();
         post(() -> {
             InputMethodManager keyboard = (InputMethodManager) getContext().getSystemService(Context.INPUT_METHOD_SERVICE);
@@ -5600,16 +5685,24 @@ final class NamePanel extends FrameLayout {
     }
 
     void close() {
+        if (getVisibility() != VISIBLE || closing) return;
         InputMethodManager keyboard = (InputMethodManager) getContext().getSystemService(Context.INPUT_METHOD_SERVICE);
         if (keyboard != null) keyboard.hideSoftInputFromWindow(field.getWindowToken(), 0);
         field.clearFocus();
         busy = false;
         listener = null;
-        setVisibility(GONE);
+        closing = true;
+        card.animate().cancel();
+        card.animate().alpha(0f).scaleX(0.94f).scaleY(0.94f).translationY(Math.max(1f, unit) * 8f).setDuration(170)
+                .setInterpolator(new AccelerateInterpolator()).withEndAction(() -> {
+                    if (!closing) return;
+                    closing = false;
+                    setVisibility(GONE);
+                }).start();
     }
 
     boolean isOpen() {
-        return getVisibility() == VISIBLE;
+        return getVisibility() == VISIBLE && !closing;
     }
 
     boolean cancellable() {
@@ -5640,7 +5733,9 @@ final class NamePanel extends FrameLayout {
             note = "Use at least one letter or number";
             error = true;
         }
-        status.setText(note != null ? note : HELP);
+        String shown = note != null ? note : HELP;
+        if (!shown.contentEquals(status.getText())) measureDirty = true;
+        status.setText(shown);
         status.setTextColor(error ? ORANGE : 0xB3543847);
         counter.setText(raw.length() + "/" + SettingsActivity.Leaderboard.NAME_MAX);
         ok.setEnabled(valid && !busy);
@@ -5659,25 +5754,31 @@ final class NamePanel extends FrameLayout {
 
     int panelHeight(float unit) {
         applyUnit(unit);
-        card.measure(MeasureSpec.makeMeasureSpec(Math.round(WIDTH_UNITS * unit), MeasureSpec.EXACTLY),
-                MeasureSpec.makeMeasureSpec(0, MeasureSpec.UNSPECIFIED));
-        return card.getMeasuredHeight();
+        if (measureDirty || measuredUnit != this.unit) {
+            card.measure(MeasureSpec.makeMeasureSpec(Math.round(WIDTH_UNITS * this.unit), MeasureSpec.EXACTLY),
+                    MeasureSpec.makeMeasureSpec(0, MeasureSpec.UNSPECIFIED));
+            measuredHeight = card.getMeasuredHeight();
+            measuredUnit = this.unit;
+            measureDirty = false;
+        }
+        return measuredHeight;
     }
 
     void place(int top, float unit) {
         applyUnit(unit);
         FrameLayout.LayoutParams params = (FrameLayout.LayoutParams) card.getLayoutParams();
-        int width = Math.round(WIDTH_UNITS * unit);
-        if (params.topMargin != top || params.width != width) {
-            params.topMargin = top;
+        int width = Math.round(WIDTH_UNITS * this.unit);
+        if (params.width != width) {
             params.width = width;
             card.setLayoutParams(params);
         }
+        if (holder.getTranslationY() != top) holder.setTranslationY(top);
     }
 
     private void applyUnit(float unit) {
-        if (Math.abs(unit - this.unit) < 0.001f) return;
+        if (Math.abs(unit - this.unit) < 0.01f * Math.max(0.01f, this.unit)) return;
         this.unit = unit;
+        measureDirty = true;
         card.unit = unit;
         int side = Math.round(10f * unit);
         card.setPadding(side, Math.round(9f * unit), side, Math.round(9f * unit));
