@@ -7,7 +7,7 @@ An unofficial fan recreation of Flappy Bird, rebuilt from scratch for modern And
 </p>
 
 <p align="center">
-  <b><a href="../../releases/latest">Download the latest version</a></b> · Free · No ads · Android 64-bit
+  <b><a href="../../releases/latest">Download the latest version</a></b> • Free • No ads • Android 64-bit • Play on PC via BlueStacks
 </p>
 
 <p align="center"><b>If you enjoy the project, please consider giving it a star!</b></p>
