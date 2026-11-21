@@ -1,6 +1,23 @@
+=== FILE: android/Manifest.java
+package android;
+public final class Manifest { public static final class permission { public static final String WRITE_EXTERNAL_STORAGE = "android.permission.WRITE_EXTERNAL_STORAGE"; } }
 === FILE: android/R.java
 package android;
 public final class R { public static final class attr { public static final int state_checked = 0x010100a0, state_enabled = 0x0101009e, state_focused = 0x0101009c; } }
+=== FILE: android/animation/Animator.java
+package android.animation;
+import java.util.ArrayList;
+import java.util.List;
+public abstract class Animator {
+    public interface AnimatorListener { void onAnimationStart(Animator a); void onAnimationEnd(Animator a); void onAnimationCancel(Animator a); void onAnimationRepeat(Animator a); }
+    protected final List<AnimatorListener> simListeners = new ArrayList<>();
+    public void addListener(AnimatorListener l) { simListeners.add(l); }
+}
+=== FILE: android/animation/AnimatorListenerAdapter.java
+package android.animation;
+public abstract class AnimatorListenerAdapter implements Animator.AnimatorListener {
+    public void onAnimationStart(Animator a) {} public void onAnimationEnd(Animator a) {} public void onAnimationCancel(Animator a) {} public void onAnimationRepeat(Animator a) {}
+}
 === FILE: android/animation/TimeInterpolator.java
 package android.animation;
 public interface TimeInterpolator { float getInterpolation(float input); }
@@ -8,16 +25,17 @@ public interface TimeInterpolator { float getInterpolation(float input); }
 package android.animation;
 import java.util.ArrayList;
 import java.util.List;
-public class ValueAnimator {
+public class ValueAnimator extends Animator {
     public interface AnimatorUpdateListener { void onAnimationUpdate(ValueAnimator animation); }
     private float[] values; private float current; private final List<AnimatorUpdateListener> listeners = new ArrayList<>();
     public static ValueAnimator ofFloat(float... v) { if (v == null || v.length == 0) throw new IllegalArgumentException(); ValueAnimator a = new ValueAnimator(); a.values = v; a.current = v[0]; return a; }
     public ValueAnimator setDuration(long d) { if (d < 0) throw new IllegalArgumentException(); return this; }
     public void setInterpolator(TimeInterpolator i) {}
+    public void setStartDelay(long d) {}
     public void addUpdateListener(AnimatorUpdateListener l) { listeners.add(l); }
     public Object getAnimatedValue() { return current; }
     public float getAnimatedFraction() { return 1f; }
-    public void start() { current = values[values.length - 1]; for (AnimatorUpdateListener l : listeners) l.onAnimationUpdate(this); }
+    public void start() { current = values[values.length - 1]; for (AnimatorUpdateListener l : listeners) l.onAnimationUpdate(this); for (AnimatorListener l : new java.util.ArrayList<>(simListeners)) l.onAnimationEnd(this); }
     public void cancel() {}
     public boolean isRunning() { return false; }
 }
@@ -60,6 +78,15 @@ public class Activity extends Context {
     public void finish() { simFinished = true; }
     public boolean onKeyDown(int keyCode, android.view.KeyEvent event) { return false; }
     public boolean onKeyUp(int keyCode, android.view.KeyEvent event) { return false; }
+    public void setContentView(View view) { simRoot = view; }
+    public View getCurrentFocus() { return View.SIM_CURRENT_FOCUS; }
+    public int simTransitions; public void overridePendingTransition(int enter, int exit) { simTransitions++; }
+    public boolean dispatchKeyEvent(android.view.KeyEvent event) { return false; }
+    public boolean simDestroyed;
+    public boolean isDestroyed() { return simDestroyed; }
+    public static String[] simAskedPermissions;
+    public void requestPermissions(String[] permissions, int code) { simAskedPermissions = permissions; }
+    public void onRequestPermissionsResult(int code, String[] permissions, int[] results) {}
 }
 === FILE: android/app/ActivityManager.java
 package android.app;
@@ -114,6 +141,19 @@ public class ContentResolver {
         byte[] data = SIM_FILES.get(uri.simPath); if (data == null) throw new FileNotFoundException(uri.simPath);
         return new ByteArrayInputStream(data);
     }
+    public static int simInserted;
+    public Uri insert(Uri table, ContentValues values) { simInserted++; return Uri.parse(table.toString() + "/" + simInserted); }
+    public int update(Uri uri, ContentValues values, String where, String[] args) { return 1; }
+    public int delete(Uri uri, String where, String[] args) { SIM_FILES.remove(uri.simPath); return 1; }
+}
+=== FILE: android/content/ContentValues.java
+package android.content;
+import java.util.HashMap;
+import java.util.Map;
+public final class ContentValues {
+    public final Map<String, Object> simValues = new HashMap<>();
+    public void put(String key, String value) { simValues.put(key, value); }
+    public void put(String key, Integer value) { simValues.put(key, value); }
 }
 === FILE: android/content/Context.java
 package android.content;
@@ -150,7 +190,7 @@ public abstract class Context {
     public Object getSystemService(String name) { if (ACTIVITY_SERVICE.equals(name)) return new android.app.ActivityManager(); if (POWER_SERVICE.equals(name)) return new android.os.PowerManager(); return VIBRATOR_SERVICE.equals(name) ? vib : CLIPBOARD_SERVICE.equals(name) ? clipboard : INPUT_METHOD_SERVICE.equals(name) ? imm : null; }
     public void startActivity(Intent i) { if (simNoActivities) throw new ActivityNotFoundException("none"); simStartedActivities++; simLastStarted = i; }
     public SharedPreferences getSharedPreferences(String name, int mode) {
-        final Map<String, Object> store = name.startsWith("FlappyBirdProfile_") ? SIM_STORES.computeIfAbsent(name, k -> new HashMap<>()) : SIM_PREFS;
+        final Map<String, Object> store = (name.startsWith("FlappyBirdProfile_") || name.equals("FlappyReplayPlayback")) ? SIM_STORES.computeIfAbsent(name, k -> new HashMap<>()) : SIM_PREFS;
         return new SharedPreferences() {
             private <T> T typed(String k, T d, Class<T> type) { Object v = store.get(k); if (v == null) return d; if (!type.isInstance(v)) throw new ClassCastException(v.getClass().getName() + " cannot be cast to " + type.getName() + " (key " + k + ")"); return type.cast(v); }
             public Map<String, ?> getAll() { return new HashMap<>(store); }
@@ -176,6 +216,8 @@ public abstract class Context {
             }
         };
     }
+    public static java.io.File SIM_CACHE_DIR;
+    public java.io.File getCacheDir() { if (SIM_CACHE_DIR == null) { try { SIM_CACHE_DIR = java.nio.file.Files.createTempDirectory("simcache").toFile(); } catch (java.io.IOException e) { throw new RuntimeException(e); } } return SIM_CACHE_DIR; }
 }
 === FILE: android/content/DialogInterface.java
 package android.content;
@@ -208,6 +250,12 @@ public class Intent {
     public Intent setData(Uri u) { data = u; return this; }
     public Uri getData() { return data; }
     public static Intent createChooser(Intent target, CharSequence title) { Intent c = new Intent(ACTION_CHOOSER); c.putExtra(EXTRA_INTENT, target); return c; }
+    public static final String EXTRA_STREAM = "android.intent.extra.STREAM";
+    public static final int FLAG_GRANT_READ_URI_PERMISSION = 1;
+    public String simClassName; public int simFlags;
+    public Intent setClassName(String pkg, String cls) { simClassName = cls; return this; }
+    public Intent addFlags(int flags) { simFlags |= flags; return this; }
+    public Intent putExtra(String key, Uri value) { return this; }
 }
 === FILE: android/content/SharedPreferences.java
 package android.content;
@@ -216,7 +264,11 @@ public interface SharedPreferences {
     Map<String, ?> getAll();
     int getInt(String k, int d); float getFloat(String k, float d); boolean getBoolean(String k, boolean d); String getString(String k, String d); long getLong(String k, long d); boolean contains(String k);
     Editor edit();
-    interface Editor { Editor putInt(String k, int v); Editor putFloat(String k, float v); Editor putBoolean(String k, boolean v); Editor putString(String k, String v); Editor putLong(String k, long v); Editor remove(String k); Editor clear(); void apply(); boolean commit(); }
+    interface OnSharedPreferenceChangeListener { void onSharedPreferenceChanged(SharedPreferences p, String key); }
+    default java.util.Set<String> getStringSet(String k, java.util.Set<String> d) { return d; }
+    default void registerOnSharedPreferenceChangeListener(OnSharedPreferenceChangeListener l) {}
+    default void unregisterOnSharedPreferenceChangeListener(OnSharedPreferenceChangeListener l) {}
+    interface Editor { Editor putInt(String k, int v); Editor putFloat(String k, float v); Editor putBoolean(String k, boolean v); Editor putString(String k, String v); Editor putLong(String k, long v); Editor remove(String k); Editor clear(); void apply(); boolean commit(); default Editor putStringSet(String k, java.util.Set<String> v) { return this; } }
 }
 === FILE: android/content/pm/ApplicationInfo.java
 package android.content.pm;
@@ -233,7 +285,18 @@ public class PackageManager {
     public static class NameNotFoundException extends Exception { public NameNotFoundException(String s) { super(s); } }
     public static boolean simNoIcon;
     public android.graphics.drawable.Drawable getApplicationIcon(String name) throws NameNotFoundException { if (simNoIcon) throw new NameNotFoundException(name); return new android.graphics.drawable.GradientDrawable(); }
-    public PackageInfo getPackageInfo(String name, int flags) throws NameNotFoundException { PackageInfo info = new PackageInfo(); info.versionName = "1.5.2"; info.versionCode = 152; return info; }
+    public PackageInfo getPackageInfo(String name, int flags) throws NameNotFoundException { PackageInfo info = new PackageInfo(); info.versionName = "1.5.4"; info.versionCode = 154; return info; }
+    public static final int PERMISSION_GRANTED = 0, PERMISSION_DENIED = -1;
+}
+=== FILE: android/content/res/AssetFileDescriptor.java
+package android.content.res;
+public class AssetFileDescriptor implements java.io.Closeable {
+    public final int simId;
+    public AssetFileDescriptor(int id) { simId = id; }
+    public java.io.FileDescriptor getFileDescriptor() { return new java.io.FileDescriptor(); }
+    public long getStartOffset() { return 0; }
+    public long getLength() { return simId; }
+    public void close() {}
 }
 === FILE: android/content/res/ColorStateList.java
 package android.content.res;
@@ -264,6 +327,10 @@ public class Resources {
     public DisplayMetrics getDisplayMetrics() { return SIM_METRICS; }
     public static final Configuration SIM_CONFIG = new Configuration();
     public Configuration getConfiguration() { return SIM_CONFIG; }
+    public static class NotFoundException extends RuntimeException { public NotFoundException(String m) { super(m); } }
+    public static boolean simCompressedRaw; public static int simRawCopies;
+    public AssetFileDescriptor openRawResourceFd(int id) { if (simCompressedRaw) throw new NotFoundException("compressed"); return new AssetFileDescriptor(id); }
+    public java.io.InputStream openRawResource(int id) { simRawCopies++; return new java.io.ByteArrayInputStream(new byte[64]); }
 }
 === FILE: android/graphics/Bitmap.java
 package android.graphics;
@@ -275,7 +342,14 @@ public final class Bitmap {
         if (w <= 0 || h <= 0) throw new IllegalArgumentException("width and height must be > 0");
         this.w = w; this.h = h; this.mutable = mutable; allocCount++; liveBytes += 4L * w * h; peakBytes = Math.max(peakBytes, liveBytes);
     }
-    public static Bitmap simDecoded(int w, int h) { return new Bitmap(w, h, false); }
+    public enum CompressFormat { JPEG, PNG, WEBP }
+    public static int simCompressions;
+    public boolean compress(CompressFormat f, int q, java.io.OutputStream out) { if (recycled) throw new IllegalStateException("recycled"); simCompressions++; try { out.write(("SIMBMP " + w + " " + h).getBytes("UTF-8")); } catch (java.io.IOException e) { return false; } return true; }
+    public static final int DENSITY_NONE = 0; public static int SIM_DEVICE_DENSITY = 440, SIM_RESOURCE_DENSITY = 320;
+    private int density = SIM_DEVICE_DENSITY;
+    public int getDensity() { return density; }
+    public void setDensity(int d) { density = d; }
+    public static Bitmap simDecoded(int w, int h) { Bitmap b = new Bitmap(w, h, false); b.density = SIM_RESOURCE_DENSITY; return b; }
     public static Bitmap createBitmap(int w, int h, Config c) { return new Bitmap(w, h, true); }
     public static int simErases; public void eraseColor(int c) { if (isRecycled()) throw new IllegalStateException("recycled"); simErases++; }
     public static Bitmap createBitmap(Bitmap src, int x, int y, int w, int h) { return createBitmap(src, x, y, w, h, null, false); }
@@ -287,14 +361,14 @@ public final class Bitmap {
         if (!src.mutable && x == 0 && y == 0 && w == src.w && h == src.h && (m == null || m.isIdentity())) return src;
         int nw = w, nh = h;
         if (m != null && !m.isIdentity()) { nw = Math.round(Math.abs(w * m.sx)); nh = Math.round(Math.abs(h * m.sy)); }
-        return new Bitmap(nw, nh, false);
+        Bitmap made = new Bitmap(nw, nh, false); made.density = src.density; return made;
     }
     public static Bitmap createScaledBitmap(Bitmap src, int dw, int dh, boolean filter) {
         Matrix m = new Matrix();
         if (src.w != dw || src.h != dh) m.setScale(dw / (float) src.w, dh / (float) src.h);
         if (dw <= 0 || dh <= 0) throw new IllegalArgumentException("width and height must be > 0");
         Bitmap b = createBitmap(src, 0, 0, src.w, src.h, m, filter);
-        if (b != src && (b.w != dw || b.h != dh)) return new Bitmap(dw, dh, false);
+        if (b != src && (b.w != dw || b.h != dh)) { Bitmap made = new Bitmap(dw, dh, false); made.density = src.density; return made; }
         return b;
     }
     public int getWidth() { return w; }
@@ -305,6 +379,12 @@ public final class Bitmap {
     public boolean hasAlpha() { return hasAlpha; }
     public void prepareToDraw() { if (recycled) throw new IllegalStateException("prepareToDraw on recycled bitmap"); }
     public Config getConfig() { return Config.ARGB_8888; }
+    public static int simFill = 0xFF4EC0CA;
+    public void getPixels(int[] out, int offset, int stride, int x, int y, int width, int height) {
+        if (recycled) throw new IllegalStateException("recycled");
+        if (x < 0 || y < 0 || x + width > w || y + height > h || offset + (height - 1) * stride + width > out.length) throw new IllegalArgumentException("bad getPixels bounds");
+        for (int row = 0; row < height; row++) java.util.Arrays.fill(out, offset + row * stride, offset + row * stride + width, simFill + row % 2);
+    }
 }
 === FILE: android/graphics/BitmapFactory.java
 package android.graphics;
@@ -313,7 +393,12 @@ public class BitmapFactory {
     public static class Options { public boolean inScaled = true; public boolean inMutable; public Bitmap.Config inPreferredConfig; }
     public static Bitmap decodeResource(Resources res, int id, Options o) { return res.simDecode(id); }
     public static Bitmap decodeResource(Resources res, int id) { return res.simDecode(id); }
+    public static int simFileDecodes;
+    public static Bitmap decodeFile(String path) { try { String[] p = new String(java.nio.file.Files.readAllBytes(new java.io.File(path).toPath()), "UTF-8").split(" "); if (!p[0].equals("SIMBMP")) return null; simFileDecodes++; Bitmap b = Bitmap.createBitmap(Integer.parseInt(p[1]), Integer.parseInt(p[2]), Bitmap.Config.ARGB_8888); return b; } catch (Exception e) { return null; } }
 }
+=== FILE: android/graphics/BitmapShader.java
+package android.graphics;
+public class BitmapShader extends Shader { public final Bitmap bitmap; public BitmapShader(Bitmap b, TileMode x, TileMode y) { if (b == null) throw new NullPointerException(); bitmap = b; } }
 === FILE: android/graphics/BlurMaskFilter.java
 package android.graphics;
 public class BlurMaskFilter extends MaskFilter {
@@ -325,11 +410,15 @@ package android.graphics;
 public class Canvas {
     public static long ops; public static long blurOps; public static long pathOps; public int saveDepth;
     public Canvas() {}
-    public Canvas(Bitmap b) { if (b.isRecycled()) throw new IllegalStateException("recycled"); }
+    public int simDensity; public static long SIM_DENSITY_SCALED;
+    public Canvas(Bitmap b) { if (b.isRecycled()) throw new IllegalStateException("recycled"); simDensity = b.getDensity(); }
+    public void setDensity(int density) { simDensity = density; }
+    public DrawFilter simDrawFilter; public static long SIM_FILTERED_SCALES; public void setDrawFilter(DrawFilter filter) { simDrawFilter = filter; if (filter != null) SIM_FILTERED_SCALES++; }
+    public int getDensity() { return simDensity; }
     private static void check(Bitmap b) { if (b == null) throw new NullPointerException("bitmap == null"); if (b.isRecycled()) throw new RuntimeException("Canvas: trying to use a recycled bitmap"); }
     private static void use(Paint p) { if (p == null) throw new NullPointerException("paint == null"); ops++; if (p.maskFilter != null) blurOps++; }
     private static void opt(Paint p) { ops++; if (p != null && p.maskFilter != null) blurOps++; }
-    public void drawBitmap(Bitmap b, float l, float t, Paint p) { check(b); nan(l, t); opt(p); }
+    public void drawBitmap(Bitmap b, float l, float t, Paint p) { check(b); nan(l, t); opt(p); if (simDensity != 0 && b.getDensity() != 0 && simDensity != b.getDensity()) SIM_DENSITY_SCALED++; }
     public static java.util.List<Object[]> simDraws;
     public void drawRoundRect(RectF r, float rx, float ry, Paint p) { use(p); nan(r.left, r.top); nan(r.right, r.bottom); }
     public static final java.util.List<String> simTexts = new java.util.ArrayList<>();
@@ -389,6 +478,9 @@ public class ColorMatrix { public ColorMatrix() {} public void reset() {} public
 === FILE: android/graphics/ColorMatrixColorFilter.java
 package android.graphics;
 public class ColorMatrixColorFilter extends ColorFilter { public ColorMatrixColorFilter(ColorMatrix m) { if (m == null) throw new NullPointerException(); } }
+=== FILE: android/graphics/DrawFilter.java
+package android.graphics;
+public class DrawFilter {}
 === FILE: android/graphics/LightingColorFilter.java
 package android.graphics;
 public class LightingColorFilter extends ColorFilter { public final int simMul, simAdd; public LightingColorFilter(int mul, int add) { simMul = mul; simAdd = add; } }
@@ -425,6 +517,7 @@ public class Paint {
     public enum Align { LEFT, CENTER, RIGHT }
     public float simTextSize = 12f; public void setTextSize(float s) { if (Float.isNaN(s) || s <= 0) throw new IllegalArgumentException("text size " + s); simTextSize = s; }
     public void setTextAlign(Align a) { if (a == null) throw new NullPointerException(); }
+    public float getTextSize() { return simTextSize; }
     public float measureText(String t) { return t.length() * simTextSize * 0.6f; }
     public Typeface setTypeface(Typeface t) { return t; }
     public static long allocCount;
@@ -439,7 +532,7 @@ public class Paint {
     public int getColor() { return color; }
     public void setAlpha(int a) { if (a < 0 || a > 255) throw new IllegalStateException("alpha out of range: " + a); color = (color & 0x00FFFFFF) | (a << 24); }
     public int getAlpha() { return color >>> 24; }
-    public void setStyle(Style s) {}
+    private Style simStyle = Style.FILL; public void setStyle(Style s) { simStyle = s; } public Style getStyle() { return simStyle; }
     public void setStrokeWidth(float w) { if (Float.isNaN(w) || w < 0) throw new IllegalStateException("bad stroke width " + w); strokeWidth = w; }
     public float getStrokeWidth() { return strokeWidth; }
     public void setStrokeCap(Cap c) {}
@@ -454,6 +547,9 @@ public class Paint {
     public void clearShadowLayer() { shadowRadius = 0f; shadowColor = 0; }
     public ColorFilter setColorFilter(ColorFilter f) { colorFilter = f; return f; } public ColorFilter getColorFilter() { return colorFilter; }
 }
+=== FILE: android/graphics/PaintFlagsDrawFilter.java
+package android.graphics;
+public class PaintFlagsDrawFilter extends DrawFilter { public final int clear, set; public PaintFlagsDrawFilter(int clear, int set) { this.clear = clear; this.set = set; } }
 === FILE: android/graphics/Path.java
 package android.graphics;
 public class Path { public static long allocCount; public Path() { allocCount++; } public void reset() {} public void rewind() {} public void moveTo(float x, float y) {} public void lineTo(float x, float y) {} public void quadTo(float x1, float y1, float x2, float y2) {} public void close() {} }
@@ -499,6 +595,7 @@ package android.graphics;
 public class RectF {
     public float left, top, right, bottom;
     public RectF() {}
+    public RectF(RectF r) { set(r.left, r.top, r.right, r.bottom); }
     public RectF(float l, float t, float r, float b) { set(l, t, r, b); }
     public void inset(float dx, float dy) { left += dx; top += dy; right -= dx; bottom -= dy; }
     public void set(float l, float t, float r, float b) { left = l; top = t; right = r; bottom = b; }
@@ -557,6 +654,9 @@ public class GradientDrawable extends Drawable {
     public void setStroke(int width, int color) { simStroke = width; }
     public void setSize(int w, int h) {}
     public void draw(Canvas c) {} public void setAlpha(int a) {} public void setColorFilter(ColorFilter f) {} public int getOpacity() { return -3; }
+    public enum Orientation { TOP_BOTTOM, BOTTOM_TOP, LEFT_RIGHT, RIGHT_LEFT }
+    public GradientDrawable() {}
+    public GradientDrawable(Orientation o, int[] colors) { simColor = colors == null || colors.length == 0 ? 0 : colors[0]; }
 }
 === FILE: android/graphics/drawable/RippleDrawable.java
 package android.graphics.drawable;
@@ -573,6 +673,209 @@ public final class AudioAttributes {
     public static final int USAGE_GAME = 14, CONTENT_TYPE_SONIFICATION = 4;
     public static class Builder { public Builder setUsage(int u) { return this; } public Builder setContentType(int c) { return this; } public AudioAttributes build() { return new AudioAttributes(); } }
 }
+=== FILE: android/media/AudioFormat.java
+package android.media;
+public class AudioFormat { public static final int ENCODING_PCM_16BIT = 2, ENCODING_PCM_FLOAT = 4; }
+=== FILE: android/media/Image.java
+package android.media;
+import java.nio.ByteBuffer;
+public class Image {
+    public static class Plane {
+        private final ByteBuffer buffer; private final int row, pixel;
+        public Plane(ByteBuffer buffer, int row, int pixel) { this.buffer = buffer; this.row = row; this.pixel = pixel; }
+        public ByteBuffer getBuffer() { return buffer; }
+        public int getRowStride() { return row; }
+        public int getPixelStride() { return pixel; }
+    }
+    private final Plane[] planes;
+    public Image(Plane[] planes) { this.planes = planes; }
+    public Plane[] getPlanes() { return planes; }
+}
+=== FILE: android/media/MediaCodec.java
+package android.media;
+import java.nio.ByteBuffer;
+import java.util.ArrayDeque;
+import java.util.ArrayList;
+import java.util.List;
+public final class MediaCodec {
+    public static final int CONFIGURE_FLAG_ENCODE = 1, BUFFER_FLAG_END_OF_STREAM = 4, BUFFER_FLAG_CODEC_CONFIG = 2, BUFFER_FLAG_KEY_FRAME = 1;
+    public static final int INFO_TRY_AGAIN_LATER = -1, INFO_OUTPUT_FORMAT_CHANGED = -2;
+    public static final class BufferInfo { public int offset, size, flags; public long presentationTimeUs; public void set(int o, int s, long t, int f) { offset = o; size = s; presentationTimeUs = t; flags = f; } }
+    public static final List<MediaCodec> SIM_CODECS = new ArrayList<>();
+    public static double simLumaSum; public static long simLumaCount; public static int simPlaneStride = 1;
+    public final String simName; public final boolean simEncoder; public MediaFormat simFormat; public final List<Long> simInputPts = new ArrayList<>();
+    private boolean started, formatSent, released, inputEos; private final ArrayDeque<long[]> pending = new ArrayDeque<>();
+    private Image image; private ByteBuffer input; private final ByteBuffer output = ByteBuffer.allocate(1 << 16); private long[] current;
+    private MediaCodec(String name, boolean encoder) { simName = name; simEncoder = encoder; SIM_CODECS.add(this); }
+    public static MediaCodec createEncoderByType(String mime) { return new MediaCodec("enc:" + mime, true); }
+    public int simAudioPeak; public long simAudioFrames;
+    public static boolean simReorder; public static int simDropEvery; public android.view.Surface simSurface; private int simSurfaceFrames;
+    public synchronized android.view.Surface createInputSurface() {
+        if (simFormat == null || started) throw new IllegalStateException("createInputSurface must follow configure");
+        simSurface = new android.view.Surface(this);
+        return simSurface;
+    }
+    public synchronized void simSurfaceFrame(long pts) {
+        if (!started || inputEos) throw new IllegalStateException("not accepting frames");
+        simSurfaceFrames++;
+        if (simDropEvery > 0 && simSurfaceFrames % simDropEvery == 0) return;
+        simInputPts.add(pts);
+        long[] frame = new long[] {pts, 200, 0};
+        if (simReorder && !pending.isEmpty() && simSurfaceFrames % 3 == 0) { long[] last = pending.pollLast(); pending.add(frame); pending.add(last); }
+        else pending.add(frame);
+    }
+    public synchronized void signalEndOfInputStream() { if (simSurface == null) throw new IllegalStateException("no input surface"); inputEos = true; pending.add(new long[] {0, 0, BUFFER_FLAG_END_OF_STREAM}); }
+    public static MediaCodec createDecoderByType(String mime) { return new MediaCodec("dec:" + mime, false); }
+    public static MediaCodec createByCodecName(String name) { return new MediaCodec(name, true); }
+    public synchronized void configure(MediaFormat format, Object surface, Object crypto, int flags) { if (MediaFormat.simRejectRich && format.containsKey(MediaFormat.KEY_OPERATING_RATE)) throw new IllegalArgumentException("unsupported operating rate"); simFormat = format; if (simEncoder != ((flags & CONFIGURE_FLAG_ENCODE) != 0)) throw new IllegalStateException("encode flag"); }
+    public synchronized void start() { if (simFormat == null) throw new IllegalStateException("not configured"); started = true; }
+    public synchronized void stop() { started = false; }
+    public synchronized void release() { released = true; }
+    private boolean video() { return String.valueOf(simFormat.getString(MediaFormat.KEY_MIME)).startsWith("video/"); }
+    public synchronized int dequeueInputBuffer(long timeout) { if (!started) throw new IllegalStateException("not started"); return inputEos || pending.size() > 2 ? -1 : 0; }
+    public synchronized ByteBuffer getInputBuffer(int index) { input = ByteBuffer.allocate(8192); return input; }
+    public synchronized Image getInputImage(int index) {
+        if (!video()) return null;
+        int w = simFormat.getInteger(MediaFormat.KEY_WIDTH), h = simFormat.getInteger(MediaFormat.KEY_HEIGHT), stride = simPlaneStride;
+        int cw = (w + 1) / 2, ch = (h + 1) / 2;
+        ByteBuffer y = ByteBuffer.allocateDirect(w * h);
+        if (stride == 2) { ByteBuffer uv = ByteBuffer.allocateDirect(cw * ch * 2); ByteBuffer u = uv.duplicate(); uv.position(1); ByteBuffer v = uv.slice(); image = new Image(new Image.Plane[] {new Image.Plane(y, w, 1), new Image.Plane(u, cw * 2, 2), new Image.Plane(v, cw * 2, 2)}); }
+        else image = new Image(new Image.Plane[] {new Image.Plane(y, w, 1), new Image.Plane(ByteBuffer.allocateDirect(cw * ch), cw, 1), new Image.Plane(ByteBuffer.allocateDirect(cw * ch), cw, 1)});
+        return image;
+    }
+    public synchronized void queueInputBuffer(int index, int offset, int size, long pts, int flags) {
+        if (!started) throw new IllegalStateException("not started");
+        if ((flags & BUFFER_FLAG_END_OF_STREAM) != 0) { inputEos = true; pending.add(new long[] {pts, 0, BUFFER_FLAG_END_OF_STREAM}); return; }
+        if (!simInputPts.isEmpty() && pts <= simInputPts.get(simInputPts.size() - 1)) throw new IllegalArgumentException("timestamps must increase");
+        if (!video() && input != null) { for (int i = 0; i + 1 < size && i + 1 < input.capacity(); i += 2) { int v = Math.abs((short) ((input.get(i) & 255) | (input.get(i + 1) << 8))); if (v > simAudioPeak) simAudioPeak = v; } simAudioFrames += size / 4; }
+        simInputPts.add(pts);
+        if (simEncoder && video() && image != null) { ByteBuffer y = image.getPlanes()[0].getBuffer(); long sum = 0; int n = y.capacity(); for (int i = 0; i < n; i += 97) { sum += y.get(i) & 255; simLumaCount++; } simLumaSum += sum; }
+        int out = simEncoder ? 200 : Math.max(2, size);
+        pending.add(new long[] {pts, out, 0});
+    }
+    public int dequeueOutputBuffer(BufferInfo info, long timeout) {
+        if (timeout > 0) { for (int i = 0; i < 20; i++) { synchronized (this) { if (!started || !pending.isEmpty()) break; } try { Thread.sleep(0, 200000); } catch (InterruptedException e) { break; } } }
+        synchronized (this) { return dequeueNow(info); }
+    }
+    private int dequeueNow(BufferInfo info) {
+        if (!started) throw new IllegalStateException("not started");
+        if (!formatSent && !pending.isEmpty()) { formatSent = true; return INFO_OUTPUT_FORMAT_CHANGED; }
+        current = pending.poll();
+        if (current == null) return INFO_TRY_AGAIN_LATER;
+        info.set(0, (int) current[1], current[0], (int) current[2]);
+        return 1;
+    }
+    public synchronized ByteBuffer getOutputBuffer(int index) {
+        output.clear();
+        if (!simEncoder && current != null && input != null) { for (int i = 0; i < current[1] && i < output.capacity(); i++) output.put(i, input.get(Math.min(i, input.capacity() - 1))); }
+        output.limit(output.capacity());
+        return output;
+    }
+    public synchronized MediaFormat getOutputFormat() {
+        if (simEncoder) { MediaFormat f = new MediaFormat(); f.simValues.putAll(simFormat.simValues); f.simValues.put("csd-0", true); return f; }
+        MediaFormat f = MediaFormat.createAudioFormat("audio/raw", 22050, 1); return f;
+    }
+    public synchronized void releaseOutputBuffer(int index, boolean render) {}
+}
+=== FILE: android/media/MediaCodecInfo.java
+package android.media;
+import android.util.Range;
+public final class MediaCodecInfo {
+    public static int SIM_MAX_WIDTH = 4096, SIM_MAX_HEIGHT = 2304, SIM_ALIGN = 16;
+    private final String name, type; private final boolean encoder;
+    public MediaCodecInfo(String name, String type, boolean encoder) { this.name = name; this.type = type; this.encoder = encoder; }
+    public String getName() { return name; }
+    public boolean isEncoder() { return encoder; }
+    public String[] getSupportedTypes() { return new String[] {type}; }
+    public CodecCapabilities getCapabilitiesForType(String mime) { if (!mime.equalsIgnoreCase(type)) throw new IllegalArgumentException("unsupported type"); return new CodecCapabilities(type.startsWith("video/") ? new VideoCapabilities() : null); }
+    public static final class CodecCapabilities {
+        public CodecProfileLevel[] profileLevels;
+        public static final int COLOR_FormatYUV420Flexible = 0x7F420888, COLOR_FormatSurface = 0x7F000789;
+        private final VideoCapabilities video;
+        CodecCapabilities(VideoCapabilities v) { video = v; CodecProfileLevel high = new CodecProfileLevel(); high.profile = CodecProfileLevel.AVCProfileHigh; high.level = CodecProfileLevel.AVCLevel52; CodecProfileLevel base = new CodecProfileLevel(); base.profile = CodecProfileLevel.AVCProfileBaseline; base.level = 0x200; profileLevels = v == null ? new CodecProfileLevel[0] : new CodecProfileLevel[] {base, high}; }
+        public VideoCapabilities getVideoCapabilities() { return video; }
+    }
+    public static final class VideoCapabilities {
+        public int getWidthAlignment() { return SIM_ALIGN; }
+        public int getHeightAlignment() { return SIM_ALIGN; }
+        public boolean isSizeSupported(int w, int h) { return w > 0 && h > 0 && w <= SIM_MAX_WIDTH && h <= SIM_MAX_HEIGHT && w % SIM_ALIGN == 0 && h % SIM_ALIGN == 0; }
+        public boolean areSizeAndRateSupported(int w, int h, double fps) { return isSizeSupported(w, h) && fps <= 60 && (long) w * h * fps <= 4096L * 2304 * 60; }
+        public Range<Integer> getBitrateRange() { return new Range<>(1, 120_000_000); }
+    }
+    public static final class CodecProfileLevel { public static final int AACObjectLC = 2, AVCProfileBaseline = 1, AVCProfileMain = 2, AVCProfileHigh = 8, AVCLevel52 = 0x10000; public int profile, level; }
+}
+=== FILE: android/media/MediaCodecList.java
+package android.media;
+public final class MediaCodecList {
+    public static final int REGULAR_CODECS = 0, ALL_CODECS = 1;
+    public static boolean simNoVideo;
+    public MediaCodecList(int kind) {}
+    public MediaCodecInfo[] getCodecInfos() {
+        if (simNoVideo) return new MediaCodecInfo[] {new MediaCodecInfo("c2.sim.aac.encoder", "audio/mp4a-latm", true)};
+        return new MediaCodecInfo[] {new MediaCodecInfo("c2.android.avc.encoder", "video/avc", true), new MediaCodecInfo("c2.sim.avc.decoder", "video/avc", false),
+                new MediaCodecInfo("c2.sim.avc.encoder", "video/avc", true), new MediaCodecInfo("c2.sim.aac.encoder", "audio/mp4a-latm", true)};
+    }
+}
+=== FILE: android/media/MediaExtractor.java
+package android.media;
+import java.nio.ByteBuffer;
+public class MediaExtractor {
+    private int samples; private long time;
+    public void setDataSource(java.io.FileDescriptor fd, long offset, long length) {}
+    public void setDataSource(String path) {}
+    public int getTrackCount() { return 1; }
+    public MediaFormat getTrackFormat(int index) { MediaFormat f = MediaFormat.createAudioFormat("audio/vorbis", 22050, 1); return f; }
+    public void selectTrack(int index) {}
+    public int readSampleData(ByteBuffer buffer, int offset) { if (samples >= 4) return -1; int n = Math.min(buffer.capacity() - offset, 2205 * 2); for (int i = 0; i < n / 2; i++) buffer.putShort(offset + i * 2, (short) (Math.sin((samples * 2205 + i) * 0.1) * 12000)); return n; }
+    public long getSampleTime() { return time; }
+    public boolean advance() { samples++; time += 100000; return samples < 4; }
+    public void release() {}
+}
+=== FILE: android/media/MediaFormat.java
+package android.media;
+import java.util.HashMap;
+import java.util.Map;
+public final class MediaFormat {
+    public static final String MIMETYPE_VIDEO_AVC = "video/avc", MIMETYPE_AUDIO_AAC = "audio/mp4a-latm";
+    public static final String KEY_MIME = "mime", KEY_WIDTH = "width", KEY_HEIGHT = "height", KEY_COLOR_FORMAT = "color-format", KEY_BIT_RATE = "bitrate",
+            KEY_FRAME_RATE = "frame-rate", KEY_I_FRAME_INTERVAL = "i-frame-interval", KEY_SAMPLE_RATE = "sample-rate", KEY_CHANNEL_COUNT = "channel-count",
+            KEY_AAC_PROFILE = "aac-profile", KEY_MAX_INPUT_SIZE = "max-input-size", KEY_PRIORITY = "priority", KEY_OPERATING_RATE = "operating-rate", KEY_PROFILE = "profile", KEY_LEVEL = "level", KEY_COLOR_STANDARD = "color-standard", KEY_COLOR_RANGE = "color-range", KEY_COLOR_TRANSFER = "color-transfer", KEY_PCM_ENCODING = "pcm-encoding";
+    public static final int COLOR_STANDARD_BT709 = 1, COLOR_STANDARD_BT601_PAL = 2, COLOR_STANDARD_BT601_NTSC = 4, COLOR_RANGE_FULL = 1, COLOR_RANGE_LIMITED = 2, COLOR_TRANSFER_SDR_VIDEO = 3;
+    public static boolean simRejectRich;
+    public final Map<String, Object> simValues = new HashMap<>();
+    public static MediaFormat createVideoFormat(String mime, int width, int height) { MediaFormat f = new MediaFormat(); f.simValues.put(KEY_MIME, mime); f.simValues.put(KEY_WIDTH, width); f.simValues.put(KEY_HEIGHT, height); return f; }
+    public static MediaFormat createAudioFormat(String mime, int rate, int channels) { MediaFormat f = new MediaFormat(); f.simValues.put(KEY_MIME, mime); f.simValues.put(KEY_SAMPLE_RATE, rate); f.simValues.put(KEY_CHANNEL_COUNT, channels); return f; }
+    public void setInteger(String key, int value) { simValues.put(key, value); }
+    public void setString(String key, String value) { simValues.put(key, value); }
+    public int getInteger(String key) { Object v = simValues.get(key); if (!(v instanceof Integer)) throw new NullPointerException("no " + key); return (Integer) v; }
+    public String getString(String key) { Object v = simValues.get(key); return v == null ? null : String.valueOf(v); }
+    public boolean containsKey(String key) { return simValues.containsKey(key); }
+}
+=== FILE: android/media/MediaMuxer.java
+package android.media;
+import java.nio.ByteBuffer;
+import java.util.ArrayList;
+import java.util.List;
+public final class MediaMuxer {
+    public static final class OutputFormat { public static final int MUXER_OUTPUT_MPEG_4 = 0; }
+    public static MediaMuxer simLast;
+    public final List<MediaFormat> simTracks = new ArrayList<>(); public final List<long[]> simSamples = new ArrayList<>();
+    public boolean simStarted, simStopped; public String simProblem;
+    private final String path; private final long[] lastPts = new long[4];
+    public MediaMuxer(String path, int format) throws java.io.IOException { this.path = path; simLast = this; java.util.Arrays.fill(lastPts, -1); new java.io.FileOutputStream(path).close(); }
+    public int addTrack(MediaFormat format) { if (simStarted) throw new IllegalStateException("addTrack after start"); simTracks.add(format); return simTracks.size() - 1; }
+    public void start() { if (simTracks.isEmpty()) throw new IllegalStateException("no tracks"); simStarted = true; }
+    public void writeSampleData(int track, ByteBuffer data, MediaCodec.BufferInfo info) {
+        if (!simStarted || simStopped) throw new IllegalStateException("not started");
+        if (track < 0 || track >= simTracks.size()) throw new IllegalArgumentException("bad track");
+        if (info.size <= 0 || data.remaining() < info.size) { simProblem = "bad sample size"; }
+        if (info.presentationTimeUs < lastPts[track]) simProblem = "time went backwards on track " + track;
+        lastPts[track] = info.presentationTimeUs;
+        simSamples.add(new long[] {track, info.presentationTimeUs, info.size});
+    }
+    public void stop() { if (!simStarted) throw new IllegalStateException("not started"); simStopped = true; try (java.io.FileOutputStream out = new java.io.FileOutputStream(path)) { out.write(new byte[] {0, 0, 0, 24, 'f', 't', 'y', 'p'}); } catch (java.io.IOException e) { throw new RuntimeException(e); } }
+    public void release() {}
+}
 === FILE: android/media/MediaPlayer.java
 package android.media;
 import android.content.Context;
@@ -587,6 +890,13 @@ public class MediaPlayer {
     public static float simLastVolume = -1f;
     public void setVolume(float l, float r) { live(); simLastVolume = l; }
     public void release() { if (playing) { playing = false; simPlaying--; } released = true; }
+}
+=== FILE: android/media/MediaScannerConnection.java
+package android.media;
+public class MediaScannerConnection {
+    public interface OnScanCompletedListener { void onScanCompleted(String path, android.net.Uri uri); }
+    public static int simScans;
+    public static void scanFile(android.content.Context c, String[] paths, String[] types, OnScanCompletedListener l) { simScans++; if (l != null) l.onScanCompleted(paths[0], android.net.Uri.parse("content://media/external/video/media/" + simScans)); }
 }
 === FILE: android/media/SoundPool.java
 package android.media;
@@ -619,6 +929,13 @@ public final class Bundle {
     public void putInt(String k, int v) { map.put(k, v); }
     public int getInt(String k, int d) { Object v = map.get(k); return v instanceof Integer ? (Integer) v : d; }
 }
+=== FILE: android/os/Environment.java
+package android.os;
+public class Environment {
+    public static final String DIRECTORY_MOVIES = "Movies";
+    public static java.io.File SIM_PUBLIC;
+    public static java.io.File getExternalStoragePublicDirectory(String type) { try { if (SIM_PUBLIC == null) SIM_PUBLIC = java.nio.file.Files.createTempDirectory("simpublic").toFile(); } catch (java.io.IOException e) { throw new RuntimeException(e); } return new java.io.File(SIM_PUBLIC, type); }
+}
 === FILE: android/os/IBinder.java
 package android.os;
 public interface IBinder {}
@@ -636,19 +953,42 @@ public final class SystemClock {
 package android.os;
 public abstract class VibrationEffect {
     public static final int DEFAULT_AMPLITUDE = -1;
-    public static VibrationEffect createWaveform(long[] timings, int repeat) { if (timings == null || timings.length == 0) throw new IllegalArgumentException(); return new VibrationEffect() {}; }
-    public static VibrationEffect createOneShot(long ms, int amplitude) { return new VibrationEffect() {}; }
+    public static final int EFFECT_CLICK = 0, EFFECT_DOUBLE_CLICK = 1, EFFECT_TICK = 2, EFFECT_HEAVY_CLICK = 5;
+    public String simKind = "";
+    static VibrationEffect sim(String kind) { VibrationEffect e = new VibrationEffect() {}; e.simKind = kind; return e; }
+    public static VibrationEffect createWaveform(long[] timings, int repeat) { if (timings == null || timings.length == 0) throw new IllegalArgumentException(); return sim("waveform"); }
+    public static VibrationEffect createOneShot(long ms, int amplitude) { return sim("oneshot"); }
+    public static VibrationEffect createPredefined(int id) { if (Build.VERSION.SDK_INT < 29) throw new NoSuchMethodError("createPredefined"); return sim("predefined:" + id); }
+    public static Composition startComposition() { if (Build.VERSION.SDK_INT < 30) throw new NoSuchMethodError("startComposition"); return new Composition(); }
+    public static final class Composition {
+        public static final int PRIMITIVE_CLICK = 1, PRIMITIVE_THUD = 2, PRIMITIVE_SPIN = 3, PRIMITIVE_QUICK_RISE = 4, PRIMITIVE_SLOW_RISE = 5, PRIMITIVE_QUICK_FALL = 6, PRIMITIVE_TICK = 7, PRIMITIVE_LOW_TICK = 8;
+        private final StringBuilder parts = new StringBuilder();
+        public Composition addPrimitive(int id) { return addPrimitive(id, 1f, 0); }
+        public Composition addPrimitive(int id, float scale) { return addPrimitive(id, scale, 0); }
+        public Composition addPrimitive(int id, float scale, int delay) { if (scale < 0f || scale > 1f || delay < 0) throw new IllegalArgumentException("bad primitive"); parts.append(id).append('@').append(scale).append('+').append(delay).append(';'); return this; }
+        public VibrationEffect compose() { if (parts.length() == 0) throw new IllegalStateException("empty"); return sim("composed:" + parts); }
+    }
 }
 === FILE: android/os/Vibrator.java
 package android.os;
 public class Vibrator {
-    public static boolean simDenyPermission; public static int simVibrations;
+    public static boolean simDenyPermission; public static int simVibrations; public static boolean simPrimitives = true;
+    public static final java.util.List<String> SIM_KINDS = new java.util.ArrayList<>();
     public boolean hasVibrator() { return true; }
     private void go() { if (simDenyPermission) throw new SecurityException("Requires VIBRATE permission"); simVibrations++; }
     public void vibrate(long ms) { go(); }
     public void vibrate(long[] pattern, int repeat) { go(); }
-    public void vibrate(VibrationEffect e) { if (e == null) throw new NullPointerException(); go(); }
+    public void vibrate(VibrationEffect e) { if (e == null) throw new NullPointerException(); go(); SIM_KINDS.add(e.simKind); }
+    public boolean areAllPrimitivesSupported(int... ids) { if (Build.VERSION.SDK_INT < 30) throw new NoSuchMethodError("areAllPrimitivesSupported"); return simPrimitives; }
     public void cancel() {}
+}
+=== FILE: android/provider/MediaStore.java
+package android.provider;
+import android.net.Uri;
+public final class MediaStore {
+    public static final String VOLUME_EXTERNAL_PRIMARY = "external_primary";
+    public interface MediaColumns { String DISPLAY_NAME = "_display_name"; String MIME_TYPE = "mime_type"; String RELATIVE_PATH = "relative_path"; String IS_PENDING = "is_pending"; }
+    public static final class Video { public static final class Media { public static Uri getContentUri(String volume) { return Uri.parse("content://media/" + volume + "/video/media"); } } }
 }
 === FILE: android/text/Editable.java
 package android.text;
@@ -672,6 +1012,18 @@ public class TextUtils { public enum TruncateAt { START, MIDDLE, END, MARQUEE } 
 === FILE: android/text/TextWatcher.java
 package android.text;
 public interface TextWatcher { void beforeTextChanged(CharSequence s, int start, int count, int after); void onTextChanged(CharSequence s, int start, int before, int count); void afterTextChanged(Editable s); }
+=== FILE: android/text/format/DateFormat.java
+package android.text.format;
+public class DateFormat {
+    public static java.text.DateFormat getTimeFormat(android.content.Context c) { return new java.text.SimpleDateFormat("h:mm a", java.util.Locale.US); }
+    public static java.text.DateFormat getMediumDateFormat(android.content.Context c) { return new java.text.SimpleDateFormat("MMM d, yyyy", java.util.Locale.US); }
+}
+=== FILE: android/text/format/DateUtils.java
+package android.text.format;
+public class DateUtils {
+    public static final long DAY_IN_MILLIS = 86400000L;
+    public static boolean isToday(long when) { java.util.Calendar a = java.util.Calendar.getInstance(), b = java.util.Calendar.getInstance(); b.setTimeInMillis(when); return a.get(java.util.Calendar.YEAR) == b.get(java.util.Calendar.YEAR) && a.get(java.util.Calendar.DAY_OF_YEAR) == b.get(java.util.Calendar.DAY_OF_YEAR); }
+}
 === FILE: android/transition/AutoTransition.java
 package android.transition;
 public class AutoTransition extends TransitionSet {}
@@ -713,6 +1065,14 @@ public final class Log {
     public static int e(String t, String m) { simErrors++; return 0; }
     public static int e(String t, String m, Throwable e) { simErrors++; return 0; }
     public static String getStackTraceString(Throwable e) { java.io.StringWriter w = new java.io.StringWriter(); e.printStackTrace(new java.io.PrintWriter(w)); return w.toString(); }
+}
+=== FILE: android/util/Range.java
+package android.util;
+public final class Range<T extends Comparable<? super T>> {
+    private final T lower, upper;
+    public Range(T lower, T upper) { this.lower = lower; this.upper = upper; }
+    public T getLower() { return lower; }
+    public T getUpper() { return upper; }
 }
 === FILE: android/util/TypedValue.java
 package android.util;
@@ -759,13 +1119,19 @@ package android.view;
 public class Gravity { public static final int CENTER = 17, CENTER_VERTICAL = 16, CENTER_HORIZONTAL = 1, START = 0x00800003, END = 0x00800005, TOP = 48, BOTTOM = 80, LEFT = 3, RIGHT = 5; }
 === FILE: android/view/HapticFeedbackConstants.java
 package android.view;
-public class HapticFeedbackConstants { public static final int LONG_PRESS = 0, VIRTUAL_KEY = 1, KEYBOARD_TAP = 3, CLOCK_TICK = 4; }
+public class HapticFeedbackConstants { public static final int LONG_PRESS = 0, VIRTUAL_KEY = 1, KEYBOARD_TAP = 3, CLOCK_TICK = 4, CONFIRM = 16, REJECT = 17; }
 === FILE: android/view/KeyEvent.java
 package android.view;
 public class KeyEvent {
     public static final int ACTION_DOWN = 0, ACTION_UP = 1;
     public static final int KEYCODE_UNKNOWN = 0, KEYCODE_SOFT_LEFT = 1, KEYCODE_SOFT_RIGHT = 2, KEYCODE_HOME = 3, KEYCODE_BACK = 4, KEYCODE_CALL = 5, KEYCODE_ENDCALL = 6, KEYCODE_0 = 7, KEYCODE_1 = 8, KEYCODE_2 = 9, KEYCODE_3 = 10, KEYCODE_4 = 11, KEYCODE_5 = 12, KEYCODE_6 = 13, KEYCODE_7 = 14, KEYCODE_8 = 15, KEYCODE_9 = 16, KEYCODE_STAR = 17, KEYCODE_POUND = 18, KEYCODE_DPAD_UP = 19, KEYCODE_DPAD_DOWN = 20, KEYCODE_DPAD_LEFT = 21, KEYCODE_DPAD_RIGHT = 22, KEYCODE_DPAD_CENTER = 23, KEYCODE_VOLUME_UP = 24, KEYCODE_VOLUME_DOWN = 25, KEYCODE_POWER = 26, KEYCODE_CAMERA = 27, KEYCODE_CLEAR = 28, KEYCODE_A = 29, KEYCODE_B = 30, KEYCODE_C = 31, KEYCODE_D = 32, KEYCODE_E = 33, KEYCODE_F = 34, KEYCODE_G = 35, KEYCODE_H = 36, KEYCODE_I = 37, KEYCODE_J = 38, KEYCODE_K = 39, KEYCODE_L = 40, KEYCODE_M = 41, KEYCODE_N = 42, KEYCODE_O = 43, KEYCODE_P = 44, KEYCODE_Q = 45, KEYCODE_R = 46, KEYCODE_S = 47, KEYCODE_T = 48, KEYCODE_U = 49, KEYCODE_V = 50, KEYCODE_W = 51, KEYCODE_X = 52, KEYCODE_Y = 53, KEYCODE_Z = 54, KEYCODE_COMMA = 55, KEYCODE_PERIOD = 56, KEYCODE_ALT_LEFT = 57, KEYCODE_ALT_RIGHT = 58, KEYCODE_SHIFT_LEFT = 59, KEYCODE_SHIFT_RIGHT = 60, KEYCODE_TAB = 61, KEYCODE_SPACE = 62, KEYCODE_SYM = 63, KEYCODE_EXPLORER = 64, KEYCODE_ENVELOPE = 65, KEYCODE_ENTER = 66, KEYCODE_DEL = 67, KEYCODE_GRAVE = 68, KEYCODE_MINUS = 69, KEYCODE_EQUALS = 70, KEYCODE_LEFT_BRACKET = 71, KEYCODE_RIGHT_BRACKET = 72, KEYCODE_BACKSLASH = 73, KEYCODE_SEMICOLON = 74, KEYCODE_APOSTROPHE = 75, KEYCODE_SLASH = 76, KEYCODE_AT = 77, KEYCODE_MENU = 82, KEYCODE_SEARCH = 84, KEYCODE_PAGE_UP = 92, KEYCODE_PAGE_DOWN = 93, KEYCODE_BUTTON_A = 96, KEYCODE_BUTTON_B = 97, KEYCODE_BUTTON_X = 99, KEYCODE_BUTTON_Y = 100, KEYCODE_BUTTON_START = 108, KEYCODE_ESCAPE = 111, KEYCODE_FORWARD_DEL = 112, KEYCODE_CTRL_LEFT = 113, KEYCODE_CTRL_RIGHT = 114, KEYCODE_CAPS_LOCK = 115, KEYCODE_MOVE_HOME = 122, KEYCODE_MOVE_END = 123, KEYCODE_INSERT = 124, KEYCODE_F1 = 131, KEYCODE_F2 = 132, KEYCODE_F3 = 133, KEYCODE_F4 = 134, KEYCODE_F5 = 135, KEYCODE_F6 = 136, KEYCODE_F7 = 137, KEYCODE_F8 = 138, KEYCODE_F9 = 139, KEYCODE_F10 = 140, KEYCODE_F11 = 141, KEYCODE_F12 = 142, KEYCODE_NUMPAD_0 = 144, KEYCODE_NUMPAD_ENTER = 160, KEYCODE_VOLUME_MUTE = 164, KEYCODE_APP_SWITCH = 187, KEYCODE_ASSIST = 219, KEYCODE_SLEEP = 223, KEYCODE_WAKEUP = 224, KEYCODE_VOICE_ASSIST = 231;
-    private final int action, code, repeat;
+    public static final int KEYCODE_MEDIA_PLAY_PAUSE = 85, KEYCODE_MEDIA_STOP = 86, KEYCODE_MEDIA_REWIND = 89, KEYCODE_MEDIA_FAST_FORWARD = 90, KEYCODE_MEDIA_PLAY = 126, KEYCODE_MEDIA_PAUSE = 127;
+    public static final int META_SHIFT_ON = 1, META_CTRL_ON = 0x1000;
+    private final int action, code, repeat; private int meta;
+    public KeyEvent(long down, long time, int action, int code, int repeat, int meta) { this(action, code, repeat); this.meta = meta; }
+    public boolean isShiftPressed() { return (meta & META_SHIFT_ON) != 0; }
+    public boolean isCtrlPressed() { return (meta & META_CTRL_ON) != 0; }
+    public int getMetaState() { return meta; }
     public KeyEvent(int action, int code) { this(action, code, 0); }
     public KeyEvent(int action, int code, int repeat) { this.action = action; this.code = code; this.repeat = repeat; }
     public int getAction() { return action; } public int getKeyCode() { return code; } public int getRepeatCount() { return repeat; }
@@ -869,6 +1235,30 @@ public final class SimInflater {
         return v;
     }
 }
+=== FILE: android/view/Surface.java
+package android.view;
+import android.graphics.Canvas;
+public class Surface {
+    public static boolean simNoHardwareCanvas; public static long simClockOffsetUs; public static int simLocks;
+    private final android.media.MediaCodec codec; private Canvas locked; private boolean released;
+    public Surface(android.media.MediaCodec codec) { this.codec = codec; }
+    public Canvas lockHardwareCanvas() {
+        if (released) throw new IllegalStateException("released");
+        if (simNoHardwareCanvas) throw new IllegalStateException("Surface was already locked");
+        if (locked != null) throw new IllegalStateException("already locked");
+        simLocks++;
+        locked = new Canvas();
+        return locked;
+    }
+    public void unlockCanvasAndPost(Canvas canvas) {
+        if (canvas != locked) throw new IllegalArgumentException("canvas object must be the same instance that was previously returned by lockCanvas");
+        if (canvas.saveDepth != 0) throw new IllegalStateException("unbalanced save/restore");
+        locked = null;
+        codec.simSurfaceFrame(System.nanoTime() / 1000L + simClockOffsetUs);
+    }
+    public boolean isValid() { return !released; }
+    public void release() { released = true; }
+}
 === FILE: android/view/View.java
 package android.view;
 import android.content.Context;
@@ -896,10 +1286,12 @@ public class View {
     public boolean post(Runnable r) { if (r == null) throw new NullPointerException(); simDelayed.add(r); return true; }
     public boolean postDelayed(Runnable r, long ms) { if (r == null) throw new NullPointerException(); simDelayed.add(r); return true; }
     public boolean removeCallbacks(Runnable r) { while (simDelayed.remove(r)) { } return true; }
-    public boolean performHapticFeedback(int c) { simHaptics++; return true; }
+    public static final java.util.List<Integer> SIM_HAPTIC_KINDS = new java.util.ArrayList<>();
+    public boolean performHapticFeedback(int c) { simHaptics++; SIM_HAPTIC_KINDS.add(c); return true; }
     public boolean performClick() { if (clickListener != null && enabled) { clickListener.onClick(this); return true; } return false; }
     public Display getDisplay() { return simAttached ? new Display() : null; }
     public final int getWidth() { return w; } public final int getHeight() { return h; }
+    public void getLocationInWindow(int[] out) { out[0] = 0; out[1] = 0; }
     public final int getLeft() { return 0; } public final int getTop() { return 0; } public final int getRight() { return w; } public final int getBottom() { return h; }
     public void setKeepScreenOn(boolean k) {}
     public void requestApplyInsets() {}
@@ -923,15 +1315,18 @@ public class View {
     public void setSelected(boolean s) { selected = s; } public boolean isSelected() { return selected; }
     public void setClickable(boolean c) { clickable = c; } public boolean isClickable() { return clickable; }
     public void setFocusable(boolean f) {} public void setFocusableInTouchMode(boolean f) {}
-    public boolean simFocused; public boolean requestFocus() { simFocused = true; return true; }
+    public boolean simFocused; public static View SIM_CURRENT_FOCUS; public boolean requestFocus() { if (SIM_CURRENT_FOCUS != null) SIM_CURRENT_FOCUS.simFocused = false; simFocused = true; SIM_CURRENT_FOCUS = this; return true; }
     public android.os.IBinder getWindowToken() { return null; }
     public PointerIcon simPointerIcon; public void setPointerIcon(PointerIcon p) { simPointerIcon = p; }
     public boolean onHoverEvent(MotionEvent e) { return false; }
     public void setMinimumHeight(int h) {} public void setSaveEnabled(boolean e) {}
+    public boolean simClipToOutline; public void setClipToOutline(boolean clip) { simClipToOutline = clip; }
+    public static final int IMPORTANT_FOR_ACCESSIBILITY_NO = 2; public int simImportance; public void setImportantForAccessibility(int mode) { simImportance = mode; } public void setMinimumWidth(int w) {}
     public void setBackground(Drawable d) { background = d; } public Drawable getBackground() { return background; }
     public void setBackgroundColor(int c) {} public void setBackgroundTintList(android.content.res.ColorStateList c) {}
     public void setOnClickListener(OnClickListener l) { clickListener = l; if (l != null) clickable = true; }
-    public void setOnLongClickListener(OnLongClickListener l) {}
+    private OnLongClickListener longClick; public void setOnLongClickListener(OnLongClickListener l) { longClick = l; }
+    public boolean performLongClick() { if (longClick != null && longClick.onLongClick(this)) { performHapticFeedback(0); return true; } return false; }
     public void setContentDescription(CharSequence c) { contentDescription = c; } public CharSequence getContentDescription() { return contentDescription; }
     public void setPadding(int l, int t, int r, int b) { padL = l; padT = t; padR = r; padB = b; }
     public int getPaddingLeft() { return padL; } public int getPaddingTop() { return padT; } public int getPaddingRight() { return padR; } public int getPaddingBottom() { return padB; }
@@ -955,6 +1350,12 @@ public class View {
     public void simAttach() { simAttached = true; onAttachedToWindow(); }
     public void simDetach() { onDetachedFromWindow(); simAttached = false; }
     public void simRunDelayed() { List<Runnable> copy = new ArrayList<>(simDelayed); simDelayed.clear(); for (Runnable r : copy) r.run(); }
+    public interface OnTouchListener { boolean onTouch(View v, MotionEvent event); }
+    public OnTouchListener simTouch; public float simPivotX, simPivotY;
+    public void setOnTouchListener(OnTouchListener l) { simTouch = l; }
+    public void setPivotX(float x) { simPivotX = x; }
+    public void setPivotY(float y) { simPivotY = y; }
+    public void layout(int l, int t, int r, int b) { simLayout(r - l, b - t); }
 }
 === FILE: android/view/ViewGroup.java
 package android.view;
@@ -981,6 +1382,9 @@ public abstract class ViewGroup extends View implements ViewParent {
     public View getChildAt(int i) { return i < 0 || i >= children.size() ? null : children.get(i); }
     @Override protected View simFind(int target) { if (getId() == target) return this; for (View c : children) { View f = c.simFind(target); if (f != null) return f; } return null; }
     @Override protected View simFindTag(Object t) { if (t.equals(getTag())) return this; for (View c : children) { View f = c.simFindTag(t); if (f != null) return f; } return null; }
+    public boolean simClipToPadding = true; public void setClipToPadding(boolean clip) { simClipToPadding = clip; }
+    public void removeAllViews() { while (getChildCount() > 0) removeView(getChildAt(getChildCount() - 1)); }
+    public void setClipChildren(boolean clip) {}
 }
 === FILE: android/view/ViewParent.java
 package android.view;
@@ -1013,7 +1417,7 @@ public class Window {
     public View getDecorView() { return decor; }
     public WindowManager.LayoutParams getAttributes() { return attrs; }
     public void setAttributes(WindowManager.LayoutParams a) { if (a == null) throw new NullPointerException(); attrs = a; }
-    public void addFlags(int f) {} public void clearFlags(int f) {}
+    public int simFlags; public void addFlags(int f) { simFlags |= f; } public void clearFlags(int f) { simFlags &= ~f; }
     public int simSoftInputMode; public void setSoftInputMode(int m) { simSoftInputMode = m; }
 }
 === FILE: android/view/WindowManager.java
@@ -1035,6 +1439,9 @@ public class DecelerateInterpolator implements android.animation.TimeInterpolato
 === FILE: android/view/animation/OvershootInterpolator.java
 package android.view.animation;
 public class OvershootInterpolator implements android.animation.TimeInterpolator { public OvershootInterpolator() {} public OvershootInterpolator(float t) {} public float getInterpolation(float i) { return i; } }
+=== FILE: android/view/animation/PathInterpolator.java
+package android.view.animation;
+public class PathInterpolator implements android.animation.TimeInterpolator { public PathInterpolator(float x1, float y1, float x2, float y2) {} public float getInterpolation(float t) { return t; } }
 === FILE: android/view/inputmethod/EditorInfo.java
 package android.view.inputmethod;
 public class EditorInfo { public static final int IME_ACTION_SEARCH = 3, IME_ACTION_DONE = 6, IME_FLAG_NO_EXTRACT_UI = 0x10000000; }
@@ -1105,6 +1512,7 @@ public class ImageView extends View {
     public void setImageDrawable(Drawable d) { simDrawable = d; }
     public enum ScaleType { CENTER, FIT_CENTER, CENTER_CROP, CENTER_INSIDE }
     public void setScaleType(ScaleType t) {}
+    public android.graphics.Bitmap simBitmap; public void setImageBitmap(android.graphics.Bitmap b) { simBitmap = b; }
 }
 === FILE: android/widget/LinearLayout.java
 package android.widget;
@@ -1141,6 +1549,9 @@ public class RelativeLayout extends ViewGroup {
     public RelativeLayout(Context c) { super(c); }
     @Override public ViewGroup.LayoutParams simDefaultParams() { return new LayoutParams(-2, -2); }
 }
+=== FILE: android/widget/ScrollView.java
+package android.widget;
+public class ScrollView extends FrameLayout { public ScrollView(android.content.Context c) { super(c); } }
 === FILE: android/widget/TextView.java
 package android.widget;
 import android.content.Context;
@@ -1177,6 +1588,8 @@ public class TextView extends View {
     private android.graphics.Typeface face; public void setTypeface(android.graphics.Typeface t) { face = t; } public android.graphics.Typeface getTypeface() { return face; }
     public void setLetterSpacing(float f) {} public void setAllCaps(boolean c) {} public void setMaxLines(int m) {} public void setMinWidth(int w) {} public void setMaxWidth(int w) {}
     public void setEllipsize(android.text.TextUtils.TruncateAt t) {}
+    public void setMinHeight(int h) {}
+    public void setLineSpacing(float add, float mult) {}
 }
 === FILE: android/widget/Toast.java
 package android.widget;
@@ -1264,6 +1677,8 @@ package androidx.core.content;
 import android.content.Context;
 public class ContextCompat {
     public static <T> T getSystemService(Context c, Class<T> cls) { if (cls == android.os.Vibrator.class) return cls.cast(c.getSystemService(Context.VIBRATOR_SERVICE)); return null; }
+    public static int simPermission = 0;
+    public static int checkSelfPermission(android.content.Context c, String permission) { return simPermission; }
 }
 === FILE: androidx/core/content/res/ResourcesCompat.java
 package androidx.core.content.res;
@@ -1348,12 +1763,22 @@ public class NestedScrollView extends FrameLayout {
 package com.google.android.material.button;
 import android.content.Context;
 import android.widget.Button;
-public class MaterialButton extends Button { public MaterialButton(Context c) { super(c); } public void setRippleColor(android.content.res.ColorStateList c) {} }
+public class MaterialButton extends Button { public MaterialButton(Context c) { super(c); } public void setRippleColor(android.content.res.ColorStateList c) {}
+    public int simCorner, simInsetTop, simInsetBottom;
+    public void setCornerRadius(int r) { simCorner = r; }
+    public void setInsetTop(int v) { simInsetTop = v; }
+    public void setInsetBottom(int v) { simInsetBottom = v; }
+}
 === FILE: com/google/android/material/card/MaterialCardView.java
 package com.google.android.material.card;
 import android.content.Context;
 import android.widget.FrameLayout;
-public class MaterialCardView extends FrameLayout { public MaterialCardView(Context c) { super(c); } }
+public class MaterialCardView extends FrameLayout { public MaterialCardView(Context c) { super(c); }
+    public void setCardBackgroundColor(int c) {}
+    public void setRadius(float r) {}
+    public void setCardElevation(float e) {}
+    public void setStrokeWidth(int w) {}
+}
 === FILE: com/google/android/material/dialog/MaterialAlertDialogBuilder.java
 package com.google.android.material.dialog;
 import android.content.Context;
@@ -2352,11 +2777,24 @@ public final class Verifier {
     static final String SCOPES = "https://www.googleapis.com/auth/firebase.database https://www.googleapis.com/auth/userinfo.email";
     static final long TIME_BUDGET_MS = 240000L;
     static final int TIMEOUT_MS = 30000;
+    static final long DAY_MS = 86400000L;
+    static final long MAINTAIN_EVERY_MS = 6L * 3600000L;
+    static final long INACTIVE_MS = 14L * DAY_MS;
+    static final long VERDICT_KEEP_MS = 7L * DAY_MS;
+    static final long SEED_KEEP_MS = 30L * DAY_MS;
+    static final int PROTECTED_TOP = 100;
+    static final int BATCH = 400;
+    static final long STRIKE_WINDOW_MS = 7L * DAY_MS;
+    static final int STRIKES_TO_BAN = 3;
+    static final long AUTO_BAN_MS = 14L * DAY_MS;
+    static final long CLAIM_GRACE_MS = DAY_MS;
+    static final String BANNED_WHY = "this player is banned";
 
     static String database;
     static String accessToken;
     static int verified, rejected, skipped, waiting;
     static final List<String> report = new ArrayList<>();
+    static final List<Object[]> verifiedChanges = new ArrayList<>();
 
     static final class Reply {
         int code;
@@ -2389,7 +2827,14 @@ public final class Verifier {
             System.exit(1);
         }
         accessToken = signIn(key);
-        int code = run(System.currentTimeMillis() + TIME_BUDGET_MS);
+        long deadline = System.currentTimeMillis() + TIME_BUDGET_MS;
+        int code = run(deadline);
+        try {
+            maintain(System.currentTimeMillis(), deadline + 60000L, false);
+            refreshCounts(System.currentTimeMillis());
+        } catch (IOException | RuntimeException e) {
+            report.add("Cleanup will try again next time: " + e.getMessage());
+        }
         for (String line : report) System.out.println(line);
         System.out.println("Verified " + verified + ", rejected " + rejected + ", skipped " + skipped + ", still waiting " + waiting + ".");
         System.out.flush();
@@ -2433,6 +2878,10 @@ public final class Verifier {
         }
     }
 
+    static boolean userKey(String key) {
+        return key != null && key.matches("[A-Za-z0-9_-]{1,128}");
+    }
+
     static boolean safeKey(String key) {
         return key != null && key.matches("^-?[0-9]{1,20}$");
     }
@@ -2465,7 +2914,7 @@ public final class Verifier {
             why = "the upload was incomplete";
         } else if (exists("/banned/" + enc(user) + ".json")) {
             outcome = Replayer.REJECTED;
-            why = "this player is banned";
+            why = BANNED_WHY;
         } else if (!(owner = seedOwner(seed)).isEmpty()) {
             if (owner.equals(user)) {
                 call("DELETE", place + ".json", null, false, reply.etag);
@@ -2510,7 +2959,14 @@ public final class Verifier {
         now.put(".sv", "timestamp");
         verdict.put("t", now);
         update.put("verdicts/" + user, verdict);
-        if (outcome != Replayer.SKIPPED && safeKey(seed) && owner.isEmpty()) update.put("seeds/" + seed, user);
+        if (outcome != Replayer.SKIPPED && safeKey(seed) && owner.isEmpty()) {
+            Map<String, Object> claim = new LinkedHashMap<>();
+            claim.put("u", user);
+            Map<String, Object> stamp = new LinkedHashMap<>();
+            stamp.put(".sv", "timestamp");
+            claim.put("t", stamp);
+            update.put("seeds/" + seed, claim);
+        }
         String name = "";
         if (outcome == Replayer.OK) {
             Map<String, Object> scores = Json.object(Json.parse(call("GET", "/scores/" + enc(user) + ".json", null, false, null).body));
@@ -2530,8 +2986,14 @@ public final class Verifier {
                 verdict.put("why", why);
                 update.remove("seeds/" + seed);
             } else {
-                publish(update, user, name, score, classic, sent, (int) week, result, scores);
+                String version = Json.string(entry, "vn");
+                if (!version.matches("[0-9][0-9A-Za-z._-]{0,15}")) version = "";
+                publish(update, user, name, score, classic, sent, (int) week, result, scores, version);
             }
+        }
+        if (outcome == Replayer.REJECTED && !BANNED_WHY.equals(why)) {
+            lowerClaim(update, user, score, week);
+            strike(update, user, why, sent > 0 ? sent : System.currentTimeMillis());
         }
         call("PATCH", "/.json", Json.write(update), false, null);
         Reply removed = call("DELETE", place + ".json", null, false, reply.etag);
@@ -2549,13 +3011,446 @@ public final class Verifier {
         }
     }
 
+    static void lowerClaim(Map<String, Object> update, String user, int score, long week) throws IOException {
+        Map<String, Object> claimed = getMap("/scores/" + enc(user) + ".json");
+        if (Json.number(claimed, "s") == score && Json.number(claimed, "vs") != score) {
+            lowerAllTime(update, user, getMap("/vscores/" + enc(user) + ".json"));
+        }
+        Map<String, Object> weekly = getMap("/weekly/" + enc(user) + ".json");
+        if (week != Long.MIN_VALUE && Json.number(weekly, "k") == week * SettingsActivity.Leaderboard.WEEK_KEY + score && Json.number(weekly, "vs") != score) {
+            lowerWeekly(update, user, weekly, getMap("/vweekly/" + enc(user) + ".json"));
+        }
+    }
+
+    static long lowerAllTime(Map<String, Object> update, String user, Map<String, Object> verified) {
+        long best = Math.max(0L, Json.number(verified, "s"));
+        update.put("scores/" + user + "/s", (double) best);
+        update.put("scores/" + user + "/vs", best > 0 ? (Object) (double) best : null);
+        if (best > 0) {
+            update.put("scores/" + user + "/c", Boolean.TRUE.equals(verified.get("c")));
+            long seconds = Json.number(verified, "d");
+            if (seconds >= 0) update.put("scores/" + user + "/d", (double) seconds);
+        }
+        return best;
+    }
+
+    static long lowerWeekly(Map<String, Object> update, String user, Map<String, Object> claimed, Map<String, Object> verified) throws IOException {
+        long week = Json.number(claimed, "w");
+        long best = Json.number(verified, "w") == week ? Math.max(0L, Json.number(verified, "s")) : 0L;
+        if (best <= 0) {
+            remove(update, "weekly/" + user);
+            return 0L;
+        }
+        update.put("weekly/" + user + "/s", (double) best);
+        update.put("weekly/" + user + "/k", (double) (week * SettingsActivity.Leaderboard.WEEK_KEY + best));
+        update.put("weekly/" + user + "/vs", (double) best);
+        update.put("weekly/" + user + "/c", Boolean.TRUE.equals(verified.get("c")));
+        long seconds = Json.number(verified, "d");
+        if (seconds >= 0) update.put("weekly/" + user + "/d", (double) seconds);
+        return best;
+    }
+
+    static void strike(Map<String, Object> update, String user, String why, long now) throws IOException {
+        Map<String, Object> record = getMap("/meta/strikes/" + enc(user) + ".json");
+        long first = Json.number(record, "t");
+        long count = Json.number(record, "n");
+        if (first == Long.MIN_VALUE || count < 0 || now - first > STRIKE_WINDOW_MS || now < first) {
+            first = now;
+            count = 0;
+        }
+        count++;
+        if (count >= STRIKES_TO_BAN) {
+            Map<String, Object> ban = new LinkedHashMap<>();
+            ban.put("auto", true);
+            ban.put("t", (double) now);
+            ban.put("why", why == null ? "" : why.length() > 200 ? why.substring(0, 200) : why);
+            update.put("banned/" + user, ban);
+            update.put("meta/strikes/" + user, null);
+            report.add("Banned " + shortId(user) + " for " + (AUTO_BAN_MS / DAY_MS) + " days after " + count + " rejected runs in a week.");
+        } else {
+            Map<String, Object> next = new LinkedHashMap<>();
+            next.put("n", (double) count);
+            next.put("t", (double) first);
+            update.put("meta/strikes/" + user, next);
+        }
+    }
+
+    static int lowerStaleClaims(Map<String, Object> scores, Map<String, Object> vscores, Map<String, Object> weekly,
+            Map<String, Object> vweekly, long now, long from, Map<String, Object> update) throws IOException {
+        Map<String, Object> waitingRuns = getMap("/replays.json?shallow=true");
+        int lowered = 0;
+        for (String user : new ArrayList<>(scores.keySet())) {
+            Map<String, Object> entry = Json.object(scores.get(user));
+            if (!userKey(user) || entry == null || waitingRuns.containsKey(user)) continue;
+            long score = Json.number(entry, "s");
+            long sent = Json.number(entry, "t");
+            if (score <= 0 || Json.number(entry, "vs") == score || sent < from || now - sent < CLAIM_GRACE_MS) continue;
+            Map<String, Object> verified = Json.object(vscores.get(user));
+            if (score <= Math.max(0L, Json.number(verified, "s"))) continue;
+            long best = lowerAllTime(update, user, verified == null ? new LinkedHashMap<String, Object>() : verified);
+            entry.put("s", (double) best);
+            lowered++;
+            if (update.size() >= BATCH) flush(update);
+        }
+        for (String user : new ArrayList<>(weekly.keySet())) {
+            Map<String, Object> entry = Json.object(weekly.get(user));
+            if (!userKey(user) || entry == null || waitingRuns.containsKey(user)) continue;
+            long score = Json.number(entry, "s");
+            long sent = Json.number(entry, "t");
+            if (score <= 0 || Json.number(entry, "vs") == score || sent < from || now - sent < CLAIM_GRACE_MS) continue;
+            Map<String, Object> verified = Json.object(vweekly.get(user));
+            long week = Json.number(entry, "w");
+            if (verified != null && Json.number(verified, "w") == week && score <= Json.number(verified, "s")) continue;
+            long best = lowerWeekly(update, user, entry, verified == null ? new LinkedHashMap<String, Object>() : verified);
+            if (best <= 0) {
+                weekly.remove(user);
+            } else {
+                entry.put("s", (double) best);
+                entry.put("k", (double) (week * SettingsActivity.Leaderboard.WEEK_KEY + best));
+            }
+            lowered++;
+            if (update.size() >= BATCH) flush(update);
+        }
+        return lowered;
+    }
+
+    static int expireBans(long now, Map<String, Object> update) throws IOException {
+        int lifted = 0;
+        Map<String, Object> bans = getMap("/banned.json");
+        for (Map.Entry<String, Object> ban : bans.entrySet()) {
+            Map<String, Object> details = Json.object(ban.getValue());
+            if (details == null || !Boolean.TRUE.equals(details.get("auto"))) continue;
+            long since = Json.number(details, "t");
+            if (since == Long.MIN_VALUE || now - since >= AUTO_BAN_MS) {
+                remove(update, "banned/" + ban.getKey());
+                lifted++;
+            }
+        }
+        Map<String, Object> strikes = getMap("/meta/strikes.json");
+        for (Map.Entry<String, Object> record : strikes.entrySet()) {
+            long first = Json.number(Json.object(record.getValue()), "t");
+            if (first == Long.MIN_VALUE || now - first > STRIKE_WINDOW_MS) remove(update, "meta/strikes/" + record.getKey());
+        }
+        return lifted;
+    }
+
+    static Map<String, Object> getMap(String path) throws IOException {
+        Map<String, Object> value = Json.object(Json.parse(orNull(call("GET", path, null, false, null).body)));
+        return value == null ? new LinkedHashMap<>() : value;
+    }
+
+    static void flush(Map<String, Object> update) throws IOException {
+        if (update.isEmpty()) return;
+        call("PATCH", "/.json", Json.write(update), false, null);
+        update.clear();
+    }
+
+    static void remove(Map<String, Object> update, String path) throws IOException {
+        update.put(path, null);
+        if (update.size() >= BATCH) flush(update);
+    }
+
+    static List<String> top(Map<String, Object> branch, int count) {
+        List<Map.Entry<String, Object>> entries = new ArrayList<>(branch.entrySet());
+        entries.removeIf(e -> !(e.getValue() instanceof Map) || Json.number(Json.object(e.getValue()), "s") <= 0);
+        entries.sort((a, b) -> {
+            Map<String, Object> x = Json.object(a.getValue()), y = Json.object(b.getValue());
+            int byScore = Long.compare(Json.number(y, "s"), Json.number(x, "s"));
+            return byScore != 0 ? byScore : Long.compare(Json.number(x, "t"), Json.number(y, "t"));
+        });
+        List<String> out = new ArrayList<>();
+        for (int i = 0; i < entries.size() && i < count; i++) out.add(entries.get(i).getKey());
+        return out;
+    }
+
+    static Map<String, Object> scoresOf(Map<String, Object> branch) {
+        Map<String, Object> out = new LinkedHashMap<>();
+        for (Map.Entry<String, Object> e : branch.entrySet()) {
+            long score = Json.number(Json.object(e.getValue()), "s");
+            if (score > 0 && score <= SettingsActivity.Leaderboard.MAX_SCORE) out.put(e.getKey(), (double) score);
+        }
+        return out;
+    }
+
+    static long newest(Map<String, Object> branch) {
+        long newest = 0L;
+        for (Object raw : branch.values()) newest = Math.max(newest, Json.number(Json.object(raw), "t"));
+        return newest;
+    }
+
+    static void refreshCounts(long now) throws IOException {
+        Map<String, Object> upTo = getMap("/meta/countedUpTo.json");
+        if (upTo.isEmpty()) {
+            verifiedChanges.clear();
+            return;
+        }
+        int thisWeek = SettingsActivity.Leaderboard.week(now);
+        Map<String, Map<String, Long>> changes = new LinkedHashMap<>();
+        Map<String, Object> reached = new LinkedHashMap<>();
+        for (String branch : new String[] {"scores", "weekly"}) {
+            long since = Math.max(0L, Json.number(upTo, branch));
+            Map<String, Object> changed = getMap("/" + branch + ".json?orderBy=%22t%22&startAt=" + since);
+            long newest = since;
+            Map<String, Long> scores = new LinkedHashMap<>();
+            for (Map.Entry<String, Object> e : changed.entrySet()) {
+                Map<String, Object> entry = Json.object(e.getValue());
+                newest = Math.max(newest, Json.number(entry, "t"));
+                long score = Json.number(entry, "s");
+                if (score <= 0 || score > SettingsActivity.Leaderboard.MAX_SCORE) continue;
+                if (branch.equals("weekly") && Json.number(entry, "w") != thisWeek) continue;
+                scores.put(e.getKey(), score);
+            }
+            changes.put(branch, scores);
+            reached.put(branch, (double) newest);
+        }
+        for (Object[] change : verifiedChanges) {
+            String branch = (String) change[0];
+            if (branch.equals("vweekly") && (Integer) change[1] != thisWeek) continue;
+            changes.computeIfAbsent(branch, b -> new LinkedHashMap<>()).put((String) change[2], (Long) change[3]);
+        }
+        verifiedChanges.clear();
+        int moved = 0;
+        for (Map.Entry<String, Map<String, Long>> branch : changes.entrySet()) {
+            if (branch.getValue().isEmpty()) continue;
+            boolean weekly = branch.getKey().endsWith("weekly");
+            String place = branch.getKey() + (weekly ? "/" + thisWeek : "");
+            Map<String, Object> counts = getMap("/counts/" + place + ".json");
+            Map<String, Object> mirror = new LinkedHashMap<>();
+            for (Map.Entry<String, Long> change : branch.getValue().entrySet()) {
+                if (!userKey(change.getKey())) continue;
+                Object before = Json.parse(orNull(call("GET", "/meta/counted/" + place + "/" + enc(change.getKey()) + ".json", null, false, null).body));
+                long old = before instanceof Double ? ((Double) before).longValue() : 0L;
+                long score = change.getValue();
+                if (old == score) continue;
+                if (old > 0) {
+                    String key = SettingsActivity.Leaderboard.countKey((int) old);
+                    long left = Math.max(0L, Json.number(counts, key)) - 1L;
+                    if (left > 0) counts.put(key, (double) left);
+                    else counts.remove(key);
+                }
+                String key = SettingsActivity.Leaderboard.countKey((int) score);
+                counts.put(key, (double) (Math.max(0L, Json.number(counts, key)) + 1L));
+                mirror.put(change.getKey(), (double) score);
+                moved++;
+            }
+            if (mirror.isEmpty()) continue;
+            counts.put(SettingsActivity.Leaderboard.COUNTS_DONE, (double) now);
+            call("PUT", "/counts/" + place + ".json?print=silent", Json.write(counts), false, null);
+            call("PATCH", "/meta/counted/" + place + ".json?print=silent", Json.write(mirror), false, null);
+        }
+        call("PATCH", "/meta/countedUpTo.json?print=silent", Json.write(reached), false, null);
+        if (moved > 0) report.add("Ranks: " + moved + " new score" + (moved == 1 ? "" : "s") + " counted.");
+    }
+
+    static Map<String, Object> histogram(Map<String, Object> branch, long now) {
+        Map<String, Object> counts = new java.util.TreeMap<>();
+        for (Object raw : branch.values()) {
+            long score = Json.number(Json.object(raw), "s");
+            if (score <= 0 || score > SettingsActivity.Leaderboard.MAX_SCORE) continue;
+            String key = SettingsActivity.Leaderboard.countKey((int) score);
+            Object seen = counts.get(key);
+            counts.put(key, (double) ((seen instanceof Double ? ((Double) seen).longValue() : 0L) + 1L));
+        }
+        counts.put(SettingsActivity.Leaderboard.COUNTS_DONE, (double) now);
+        return counts;
+    }
+
+    static Map<String, Long> lastPlayed(List<String> users, long deadline) {
+        Map<String, Long> out = new java.util.concurrent.ConcurrentHashMap<>();
+        if (users.isEmpty()) return out;
+        java.util.concurrent.ExecutorService pool = java.util.concurrent.Executors.newFixedThreadPool(8);
+        try {
+            List<java.util.concurrent.Future<?>> jobs = new ArrayList<>();
+            for (String user : users) {
+                jobs.add(pool.submit(() -> {
+                    if (System.currentTimeMillis() > deadline) return;
+                    try {
+                        Object played = Json.parse(orNull(call("GET", "/sessions/" + enc(user) + "/t.json", null, false, null).body));
+                        out.put(user, played instanceof Double ? ((Double) played).longValue() : 0L);
+                    } catch (IOException | RuntimeException ignored) {
+                    }
+                }));
+            }
+            for (java.util.concurrent.Future<?> job : jobs) {
+                try {
+                    job.get();
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    break;
+                } catch (java.util.concurrent.ExecutionException ignored) {
+                }
+            }
+        } finally {
+            pool.shutdownNow();
+        }
+        return out;
+    }
+
+    static void maintain(long now, long deadline, boolean force) throws IOException {
+        Object stamp = Json.parse(orNull(call("GET", "/meta/maint.json", null, false, null).body));
+        long last = stamp instanceof Double ? ((Double) stamp).longValue() : 0L;
+        if (!force && last > 0 && now - last >= 0 && now - last < MAINTAIN_EVERY_MS) return;
+        int thisWeek = SettingsActivity.Leaderboard.week(now);
+        long weekFloor = thisWeek * SettingsActivity.Leaderboard.WEEK_KEY;
+        Map<String, Object> update = new LinkedHashMap<>();
+        int oldWeeks = 0, inactive = 0, names = 0, sessions = 0, verdicts = 0, seeds = 0;
+
+        for (String branch : new String[] {"weekly", "vweekly"}) {
+            Map<String, Object> old = getMap("/" + branch + ".json?orderBy=%22k%22&endAt=" + weekFloor);
+            for (String user : old.keySet()) {
+                remove(update, branch + "/" + user);
+                oldWeeks++;
+            }
+        }
+        flush(update);
+
+        Map<String, Object> scores = getMap("/scores.json");
+        Map<String, Object> vscores = getMap("/vscores.json");
+        String range = "?orderBy=%22k%22&startAt=" + (weekFloor + 1) + "&endAt=" + (weekFloor + SettingsActivity.Leaderboard.MAX_SCORE);
+        Map<String, Object> weekly = getMap("/weekly.json" + range);
+        Map<String, Object> vweekly = getMap("/vweekly.json" + range);
+        Object sweepStamp = Json.parse(orNull(call("GET", "/meta/sweepFrom.json", null, false, null).body));
+        int lowered = 0;
+        if (sweepStamp instanceof Double) {
+            lowered = lowerStaleClaims(scores, vscores, weekly, vweekly, now, ((Double) sweepStamp).longValue(), update);
+        } else {
+            update.put("meta/sweepFrom", (double) now);
+        }
+        int lifted = expireBans(now, update);
+        flush(update);
+        java.util.Set<String> keep = new java.util.HashSet<>(top(scores, PROTECTED_TOP));
+        keep.addAll(top(vscores, PROTECTED_TOP));
+        keep.addAll(weekly.keySet());
+        keep.addAll(vweekly.keySet());
+        java.util.Set<String> players = new java.util.TreeSet<>(scores.keySet());
+        players.addAll(vscores.keySet());
+        Map<String, Object> claims = getMap("/names.json");
+        Map<String, String> nameOf = new LinkedHashMap<>();
+        for (Map.Entry<String, Object> claim : claims.entrySet()) {
+            if (claim.getValue() instanceof String) nameOf.put((String) claim.getValue(), claim.getKey());
+        }
+        long cutoff = now - INACTIVE_MS;
+        List<String> candidates = new ArrayList<>();
+        for (String user : players) {
+            if (keep.contains(user) || !userKey(user)) continue;
+            long seen = Math.max(Json.number(Json.object(scores.get(user)), "t"), Json.number(Json.object(vscores.get(user)), "t"));
+            if (seen < cutoff) candidates.add(user);
+        }
+        Map<String, Long> lastPlayed = lastPlayed(candidates, deadline);
+        for (String user : candidates) {
+            Long played = lastPlayed.get(user);
+            if (played == null || played >= cutoff) continue;
+            for (String branch : new String[] {"scores", "vscores", "weekly", "vweekly", "sessions", "verdicts", "replays"}) {
+                remove(update, branch + "/" + user);
+            }
+            String key = nameOf.get(user);
+            if (key != null && user.equals(claims.get(key))) {
+                remove(update, "names/" + key);
+                claims.remove(key);
+            }
+            scores.remove(user);
+            vscores.remove(user);
+            inactive++;
+        }
+        flush(update);
+
+        Map<String, Object> orphans = getMap("/meta/orphans.json");
+        Map<String, Object> stillOrphans = new LinkedHashMap<>();
+        for (Map.Entry<String, Object> claim : claims.entrySet()) {
+            String key = claim.getKey();
+            Object owner = claim.getValue();
+            if (owner instanceof String && (scores.containsKey(owner) || vscores.containsKey(owner))) continue;
+            long first = Json.number(orphans, key);
+            if (first <= 0) first = now;
+            if (now - first >= INACTIVE_MS && System.currentTimeMillis() <= deadline) {
+                Object played = owner instanceof String && userKey((String) owner)
+                        ? Json.parse(orNull(call("GET", "/sessions/" + enc((String) owner) + "/t.json", null, false, null).body)) : null;
+                if (!(played instanceof Double) || ((Double) played).longValue() < cutoff) {
+                    remove(update, "names/" + key);
+                    names++;
+                    continue;
+                }
+                first = now;
+            }
+            stillOrphans.put(key, (double) first);
+        }
+        flush(update);
+
+        Map<String, Object> staleSessions = getMap("/sessions.json?orderBy=%22t%22&endAt=" + cutoff);
+        for (String user : staleSessions.keySet()) {
+            remove(update, "sessions/" + user);
+            sessions++;
+        }
+        Map<String, Object> oldVerdicts = getMap("/verdicts.json?orderBy=%22t%22&endAt=" + (now - VERDICT_KEEP_MS));
+        for (String user : oldVerdicts.keySet()) {
+            remove(update, "verdicts/" + user);
+            verdicts++;
+        }
+        if (!Boolean.TRUE.equals(Json.parse(orNull(call("GET", "/meta/seedsTimed.json", null, false, null).body)))) {
+            Map<String, Object> all = getMap("/seeds.json");
+            for (Map.Entry<String, Object> seed : all.entrySet()) {
+                if (seed.getValue() instanceof String) {
+                    Map<String, Object> claim = new LinkedHashMap<>();
+                    claim.put("u", seed.getValue());
+                    claim.put("t", (double) now);
+                    update.put("seeds/" + seed.getKey(), claim);
+                    if (update.size() >= BATCH) flush(update);
+                }
+            }
+            update.put("meta/seedsTimed", true);
+        } else {
+            Map<String, Object> oldSeeds = getMap("/seeds.json?orderBy=%22t%22&endAt=" + (now - SEED_KEEP_MS));
+            for (String seed : oldSeeds.keySet()) {
+                remove(update, "seeds/" + seed);
+                seeds++;
+            }
+        }
+        flush(update);
+
+        Map<String, Object> counts = new LinkedHashMap<>();
+        counts.put("scores", histogram(scores, now));
+        counts.put("vscores", histogram(vscores, now));
+        Map<String, Object> weeklyCounts = new LinkedHashMap<>();
+        weeklyCounts.put(String.valueOf(thisWeek), histogram(weekly, now));
+        counts.put("weekly", weeklyCounts);
+        Map<String, Object> verifiedWeekCounts = new LinkedHashMap<>();
+        verifiedWeekCounts.put(String.valueOf(thisWeek), histogram(vweekly, now));
+        counts.put("vweekly", verifiedWeekCounts);
+        call("PUT", "/counts.json?print=silent", Json.write(counts), false, null);
+        Map<String, Object> mirror = new LinkedHashMap<>();
+        mirror.put("scores", scoresOf(scores));
+        mirror.put("vscores", scoresOf(vscores));
+        Map<String, Object> weeklyMirror = new LinkedHashMap<>();
+        weeklyMirror.put(String.valueOf(thisWeek), scoresOf(weekly));
+        mirror.put("weekly", weeklyMirror);
+        Map<String, Object> verifiedWeekMirror = new LinkedHashMap<>();
+        verifiedWeekMirror.put(String.valueOf(thisWeek), scoresOf(vweekly));
+        mirror.put("vweekly", verifiedWeekMirror);
+        call("PUT", "/meta/counted.json?print=silent", Json.write(mirror), false, null);
+        Map<String, Object> upTo = new LinkedHashMap<>();
+        upTo.put("scores", (double) newest(scores));
+        upTo.put("weekly", (double) newest(weekly));
+        call("PUT", "/meta/countedUpTo.json?print=silent", Json.write(upTo), false, null);
+        verifiedChanges.clear();
+
+        Map<String, Object> done = new LinkedHashMap<>();
+        done.put("meta/maint", (double) now);
+        done.put("meta/orphans", stillOrphans.isEmpty() ? null : stillOrphans);
+        call("PATCH", "/.json?print=silent", Json.write(done), false, null);
+        report.add("Cleanup: removed " + oldWeeks + " old weekly entries, " + inactive + " inactive players, " + names + " unused names, "
+                + sessions + " old rounds, " + verdicts + " old results and " + seeds + " old seeds. Ranks updated for "
+                + scores.size() + " players.");
+        if (lowered > 0) report.add("Took down " + lowered + " unverified score" + (lowered == 1 ? "" : "s") + " that had no run sent within a day.");
+        if (lifted > 0) report.add("Lifted " + lifted + " automatic ban" + (lifted == 1 ? "" : "s") + " after " + (AUTO_BAN_MS / DAY_MS) + " days.");
+    }
+
     static String orNull(String body) {
         String trimmed = body == null ? "" : body.trim();
         return trimmed.isEmpty() ? "null" : trimmed;
     }
 
     static void publish(Map<String, Object> update, String user, String name, int score, boolean classic, long sent, int week,
-            Replayer.Result result, Map<String, Object> scores) throws IOException {
+            Replayer.Result result, Map<String, Object> scores, String version) throws IOException {
         double seconds = Math.ceil(result.seconds);
         Map<String, Object> best = Json.object(Json.parse(call("GET", "/vscores/" + enc(user) + ".json", null, false, null).body));
         if (best == null || Json.number(best, "s") < score) {
@@ -2565,7 +3460,9 @@ public final class Verifier {
             entry.put("c", classic);
             entry.put("t", (double) sent);
             entry.put("d", seconds);
+            if (!version.isEmpty()) entry.put("vn", version);
             update.put("vscores/" + user, entry);
+            verifiedChanges.add(new Object[] {"vscores", -1, user, (long) score});
         }
         if (week == SettingsActivity.Leaderboard.week(sent)) {
             Map<String, Object> weekly = Json.object(Json.parse(call("GET", "/vweekly/" + enc(user) + ".json", null, false, null).body));
@@ -2579,7 +3476,9 @@ public final class Verifier {
                 entry.put("d", seconds);
                 entry.put("w", (double) week);
                 entry.put("k", (double) (week * SettingsActivity.Leaderboard.WEEK_KEY + score));
+                if (!version.isEmpty()) entry.put("vn", version);
                 update.put("vweekly/" + user, entry);
+                verifiedChanges.add(new Object[] {"vweekly", week, user, (long) score});
             }
         }
         if (Json.number(scores, "s") == score) update.put("scores/" + user + "/vs", (double) score);
@@ -2589,6 +3488,7 @@ public final class Verifier {
 
     static String seedOwner(String seed) throws IOException {
         Object value = Json.parse(orNull(call("GET", "/seeds/" + enc(seed) + ".json", null, false, null).body));
+        if (value instanceof Map) return Json.string(Json.object(value), "u");
         return value instanceof String ? (String) value : "";
     }
 
