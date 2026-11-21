@@ -40,18 +40,6 @@ The game is written from scratch in Java and is modeled on version 1.3 of the or
 
 ---
 
-## What's new in v1.5.4
-
-- **Replays:** every round is quietly recorded so you can watch it again or save it as a video with sound
-- **Livelier leaderboard:** scores count up, players slide to their new places, and it buzzes with light haptic ticks while numbers change
-- **Faster leaderboard:** it opens instantly using what you saw last time, and verified scores show up within seconds
-- **Stronger anti-cheat and anti-spam:** rejected runs are taken down right away, and repeat cheaters are banned automatically
-- **Score minimum:** scores below 5 are no longer posted
-
-See the [Releases page](../../releases) for the full changelog.
-
----
-
 ## Features
 
 ### Gameplay
