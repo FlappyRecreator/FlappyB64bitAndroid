@@ -9,6 +9,7 @@ import android.graphics.BitmapFactory;
 import android.graphics.BlurMaskFilter;
 import android.graphics.Canvas;
 import android.graphics.Color;
+import android.graphics.PaintFlagsDrawFilter;
 import android.graphics.ColorFilter;
 import android.graphics.ColorMatrix;
 import android.graphics.ColorMatrixColorFilter;
@@ -72,11 +73,19 @@ import androidx.core.view.WindowCompat;
 import androidx.core.view.WindowInsetsCompat;
 import androidx.core.view.WindowInsetsControllerCompat;
 
+import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
+import java.io.DataInputStream;
 import java.io.DataOutputStream;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
 import java.io.IOException;
+import java.util.zip.DeflaterOutputStream;
+import java.util.zip.InflaterInputStream;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -304,6 +313,11 @@ class GameView extends View implements Choreographer.FrameCallback {
     private static final int STATUS_PILL = 0xCC0D1321;
     private static final String BOARD_OFFLINE_NOTE = "No internet connection";
     private static final float BOARD_RETRY_SEC = 5f;
+    private static final int BOARD_PINNED_ROW = Integer.MAX_VALUE;
+    private static final long DOUBLE_TAP_MS = 350L;
+    private static final float BUBBLE_FADE_IN_SEC = 0.15f;
+    private static final float BUBBLE_HOLD_SEC = 2.2f;
+    private static final float BUBBLE_FADE_SEC = 0.35f;
     private static final float STATUS_FADE_IN_SEC = 0.18f;
     private static final float STATUS_HOLD_SEC = 2f;
     private static final float STATUS_FADE_OUT_SEC = 0.4f;
@@ -329,6 +343,32 @@ class GameView extends View implements Choreographer.FrameCallback {
     private static final float CHAMPION_PULSE_SEC = 2f;
     private static final String BOARD_SHOW_ALL_KEY = "boardShowUnverified";
     private static final int BOARD_DIM = 0x99000000;
+    static final int BOARD_MIN_SCORE = 5;
+    private static final long BOARD_VERIFY_FRESH_MS = 8000L;
+    private static final float BOARD_VERIFY_POLL_SEC = 8f;
+    private static final long BOARD_VERIFY_WATCH_MS = 300000L;
+    private static final String BOARD_MEMORY_FILE = "board_seen.bin";
+    private static final Object BOARD_MEMORY_LOCK = new Object();
+    private static final float BOARD_MOTION_DELAY = 0.12f;
+    private static final float BOARD_MOTION_START = 0.85f;
+    private static final float BOARD_SLIDE_SEC = 0.62f;
+    private static final float BOARD_COUNT_DELAY = 0.06f;
+    private static final float BOARD_COUNT_MIN_SEC = 0.42f;
+    private static final float BOARD_COUNT_MAX_SEC = 1.15f;
+    private static final float BOARD_POP_SEC = 0.3f;
+    private static final float BOARD_GLOW_FADE_SEC = 0.7f;
+    private static final float BOARD_GAIN_SEC = 1.3f;
+    private static final float BOARD_ARROW_SEC = 2.2f;
+    private static final float BOARD_ENTER_SEC = 0.3f;
+    private static final float BOARD_ENTER_STAGGER = 0.035f;
+    private static final long BOARD_TICK_MS = 38L;
+    private static final int BOARD_GAIN = 0xFF34A853;
+    private static final int BOARD_DROP = 0xFFD9534A;
+    private static final int BOARD_LIFT_SHADOW = 0x40543847;
+    private static final int HAPTIC_TICK = 0;
+    private static final int HAPTIC_LAND = 1;
+    private static final int HAPTIC_RISE = 2;
+    private static BoardMemory boardMemory;
 
     private static final String TAG = "GameView";
 
@@ -477,7 +517,7 @@ class GameView extends View implements Choreographer.FrameCallback {
 
     private enum GameState { HOME, TRANSITION_TO_WAITING, WAITING, PLAYING, GAME_OVER, PANEL_SLIDING }
 
-    private final Choreographer choreographer = Choreographer.getInstance();
+    private Choreographer choreographer;
     private GameState gameState = GameState.HOME;
     private boolean hostResumed = false;
     private boolean isRunning = false;
@@ -677,6 +717,21 @@ class GameView extends View implements Choreographer.FrameCallback {
     static final float HEARTBEAT_SEC = 3f;
     static final int REPLAY_FLAP = 0xFFFFFFFF;
     static final int REPLAY_MAX_EVENTS = 4000000;
+    static final int MARK_HOLD_ON = 5;
+    static final int MARK_HOLD_OFF = 6;
+    static final int MARK_START = 7;
+    static final int FILM_FORMAT = 1;
+    static final String FILM_DIR = "replays";
+    static final String FILM_SUFFIX = ".fbr";
+    static final String FILM_PREFIX = "film_";
+    static final String BEST_PREFIX = "best_";
+    static final String FILM_PREFS = "FlappyReplayPlayback";
+    static final float FILM_LEAD_SEC = 0.6f;
+    static final float FILM_TAIL_MAX_SEC = 8f;
+    static final float FILM_TAIL_STEP_SEC = 1f / 120f;
+    static final float FILM_AFTER_PANEL_SEC = 1.6f;
+    private static ExecutorService filmSaver;
+    private final Pipe.Kit pipeKit = new Pipe.Kit();
     private final Random seedSource = new Random();
     private long replaySeed;
     private boolean replayLive;
@@ -733,6 +788,19 @@ class GameView extends View implements Choreographer.FrameCallback {
     private boolean settingsOpening;
     private Paint spinPaint;
     private boolean boardOpen, boardClosing, boardLoading;
+    private int boardLoadingMask;
+    private int boardStaleMask = 0xF;
+    private int boardSizeLoaded = -1;
+    private String boardUidLoaded = "";
+    private int boardDataVersion;
+    private int boardTapIndex = -1;
+    private long boardTapTime;
+    private int boardBubbleIndex = -1;
+    private Leaderboard.Entry boardBubbleEntry;
+    private String boardBubbleText;
+    private float boardBubbleAge = 99f;
+    private final RectF boardBubbleShape = new RectF();
+    private Leaderboard.Entry boardPinned;
     private float boardAnim, boardAlpha = 1f;
     private int boardTab;
     private String boardNote = "";
@@ -747,6 +815,20 @@ class GameView extends View implements Choreographer.FrameCallback {
     private float boardDragStartY, boardDragLastY;
     private long boardDragLastTime;
     private List<Leaderboard.Entry> boardIndexed;
+    private final BoardMotion[] boardMotions = new BoardMotion[4];
+    private long boardVerifyUntil, boardVerifySince;
+    private boolean boardVerifyArmed;
+    private float boardVerifyPoll;
+    private boolean boardMemoryDirty;
+    private int boardHapticMode = -1;
+    private boolean boardHapticRise;
+    private VibrationEffect[] boardHapticEffects;
+    private long boardTickAt;
+    private int boardRowShown = -1;
+    private int boardRowArrow;
+    private int boardRowGain;
+    private float boardRowGlow, boardRowPop, boardRowLift, boardRowArrowAlpha, boardRowHot;
+    private float boardRowGainAge = -1f;
     private int boardMineIndex = -1;
     private final Rect boardCloseRect = new Rect();
     private final Rect boardJoinRect = new Rect();
@@ -791,6 +873,44 @@ class GameView extends View implements Choreographer.FrameCallback {
 
     private final SharedPreferences prefs;
     private final Random random = new Random();
+    private final Random fxRandom = new Random();
+    private final Random drawRandom = new Random();
+    final boolean filmMode;
+    private final boolean filmSounds;
+    private long roundRandomSeed;
+    private boolean replayForBoard;
+    private boolean filmRecording;
+    private boolean recordedHold;
+    private byte[] filmExtras;
+    private int filmBestBefore;
+    private boolean settingReplayEnabled = DEFAULT_REPLAY_ENABLED;
+    private int settingReplayKeep = DEFAULT_REPLAY_KEEP;
+    private boolean settingReplayBest;
+    private Film film;
+    private int filmIndex;
+    private int filmLastBits;
+    private float filmLeadLeft;
+    private float filmTail;
+    private float filmDieIn = -1f;
+    private double filmTime;
+    private boolean filmAudible;
+    private boolean filmFeel;
+    private final FastBytes headerBytes = new FastBytes(4096);
+    private final DataOutputStream headerOut = new DataOutputStream(headerBytes);
+    private final FastBytes extrasBytes = new FastBytes(16384);
+    private final DataOutputStream extrasOut = new DataOutputStream(extrasBytes);
+    private Map<String, Object> packedPrefs;
+    private byte[] packedPrefsBytes;
+    private static final java.util.concurrent.ConcurrentLinkedQueue<int[]> SPARE_EVENTS = new java.util.concurrent.ConcurrentLinkedQueue<>();
+    private static final int SPARE_EVENT_BUFFERS = 2;
+    private static final int SPARE_EVENT_MAX = 1 << 20;
+    private FilmSink filmSink;
+
+    interface FilmSink {
+        void sound(int rawId, double atSec, float volume);
+
+        void loop(int rawId, boolean playing, double atSec, float volume);
+    }
     private int settingBirdColor, settingBackground, settingPipeColor, settingGameOverOpacity;
     private int settingPipeMoveTier1, settingPipeMoveTier2, settingScoreMultiplier;
     private int settingWeatherEffect, settingGoldenPipeChance, settingGoldenPipeBonus;
@@ -826,23 +946,46 @@ class GameView extends View implements Choreographer.FrameCallback {
     private int settingMegaStrikeScore = DEFAULT_MEGA_STRIKE_SCORE;
 
     public GameView(Context context) {
+        this(context, null, true);
+    }
+
+    GameView(Context context, SharedPreferences playback, boolean withSounds) {
         super(context);
-        prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
+        filmMode = playback != null;
+        filmSounds = withSounds;
+        prefs = filmMode ? playback : context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
         highScore = intPref(prefs.getAll(), PREF_HIGH_SCORE, 0);
-        adoptOldHighScore(prefs);
-        vibrator = ContextCompat.getSystemService(context, Vibrator.class);
-        weatherSystem = new WeatherSystem(random);
+        if (!filmMode) adoptOldHighScore(prefs);
+        vibrator = filmMode && !withSounds ? null : ContextCompat.getSystemService(context, Vibrator.class);
+        weatherSystem = new WeatherSystem(fxRandom);
 
         loadSettings();
-        SettingsActivity.ActivityLog.add(context, "GAME", "Game opened on " + SettingsActivity.deviceSummary(context)
-                + " (high score " + highScore + ", best earned by playing " + earnedHighScore(prefs) + ")");
+        if (!filmMode) {
+            SettingsActivity.ActivityLog.add(context, "GAME", "Game opened on " + SettingsActivity.deviceSummary(context)
+                    + " (high score " + highScore + ", best earned by playing " + earnedHighScore(prefs) + ")");
+            preloadBoardMemory();
+        }
         createPaints();
         createParticlePools();
         extractBitmapsFromAtlas();
         sparkleBitmap = createSparkleBitmap();
         smokeBitmap = createSmokeBitmap();
-        loadSounds();
-        listenForWindowInsets();
+        if (filmSounds) {
+            loadSounds();
+        } else if (filmMode) {
+            soundWing = 1;
+            soundPoint = 2;
+            soundHit = 3;
+            soundDie = 4;
+            soundSwooshing = 5;
+            soundThunder = 6;
+        }
+        if (!filmMode) listenForWindowInsets();
+    }
+
+    private Choreographer choreographer() {
+        if (choreographer == null) choreographer = Choreographer.getInstance();
+        return choreographer;
     }
 
     private static Paint newPixelPaint() {
@@ -1090,6 +1233,9 @@ class GameView extends View implements Choreographer.FrameCallback {
         settingBoardOpenOnBest = flagPref(stored, PREF_BOARD_OPEN_ON_BEST, DEFAULT_BOARD_OPEN_ON_BEST);
         settingBoardTab = intPref(stored, PREF_BOARD_TAB, DEFAULT_BOARD_TAB) == 1 ? 1 : 0;
         settingBoardSize = Leaderboard.boardSize(intPref(stored, PREF_BOARD_SIZE, DEFAULT_BOARD_SIZE));
+        settingReplayEnabled = flagPref(stored, PREF_REPLAY_ENABLED, DEFAULT_REPLAY_ENABLED);
+        settingReplayKeep = replayKeep(intPref(stored, PREF_REPLAY_KEEP, DEFAULT_REPLAY_KEEP));
+        settingReplayBest = intPref(stored, PREF_REPLAY_MODE, DEFAULT_REPLAY_MODE) == REPLAY_MODE_BEST;
         sealSettings();
         if (gameState == GameState.PLAYING) {
             noteAssists();
@@ -1138,6 +1284,7 @@ class GameView extends View implements Choreographer.FrameCallback {
     }
 
     private void logProblem(String message) {
+        if (filmMode) return;
         SettingsActivity.ActivityLog.add(getContext(), "WARNING", message);
     }
 
@@ -1326,7 +1473,7 @@ class GameView extends View implements Choreographer.FrameCallback {
     @Override
     protected void onAttachedToWindow() {
         super.onAttachedToWindow();
-        if (soundPool == null) loadSounds();
+        if (soundPool == null && filmSounds) loadSounds();
         ViewCompat.requestApplyInsets(this);
     }
 
@@ -1349,7 +1496,7 @@ class GameView extends View implements Choreographer.FrameCallback {
         screenWidth = w;
         screenHeight = h;
         applyLayout();
-        if (w > 0 && h > 0 && (w != loggedWidth || h != loggedHeight)) {
+        if (!filmMode && w > 0 && h > 0 && (w != loggedWidth || h != loggedHeight)) {
             loggedWidth = w;
             loggedHeight = h;
             SettingsActivity.ActivityLog.add(getContext(), "SCREEN", "Game size " + w + " x " + h
@@ -1413,7 +1560,7 @@ class GameView extends View implements Choreographer.FrameCallback {
         if (scale != bitmapScale || screenHeight != bitmapScreenHeight) scaleAllBitmaps();
         groundHeight = groundBitmap.getHeight();
         maxPipeMoveRange = playableHeight * PIPE_MOVE_RANGE_PERCENT;
-        Pipe.initHitboxDimensions(scale);
+        pipeKit.size(scale);
 
         float reference = referenceWidth();
         uiMargin = Math.min(screenWidth, reference) * UI_MARGIN_HORIZONTAL_PERCENT;
@@ -1634,7 +1781,7 @@ class GameView extends View implements Choreographer.FrameCallback {
 
     private void spawnPipes(long seed) {
         replaySeed = seed;
-        Pipe.reseed(seed);
+        pipeKit.random.setSeed(seed);
         motionValid = false;
         pipes.clear();
         float direction = settingReversePipesEnabled ? -1 : 1;
@@ -1660,7 +1807,7 @@ class GameView extends View implements Choreographer.FrameCallback {
     }
 
     private Pipe createPipe(float x) {
-        Pipe pipe = new Pipe(x, pipeUpBitmap.getWidth(), pipeUpBitmap.getHeight());
+        Pipe pipe = new Pipe(pipeKit, x, pipeUpBitmap.getWidth(), pipeUpBitmap.getHeight());
         randomizePipe(pipe);
         return pipe;
     }
@@ -1675,9 +1822,14 @@ class GameView extends View implements Choreographer.FrameCallback {
         pipe.isScored = false;
 
         int color = settingRandomPipeColorsEnabled ? random.nextInt(PIPE_COLOR_COUNT) : settingPipeColor;
-        pipe.setColorFilter(color >= 0 && color < PIPE_COLOR_COUNT ? pipeColorFilters[color] : null);
+        paintPipe(pipe, color);
 
         pipe.isGolden = settingGoldenPipeEnabled && random.nextInt(100) < settingGoldenPipeChance;
+    }
+
+    private void paintPipe(Pipe pipe, int color) {
+        pipe.colorIndex = color;
+        pipe.setColorFilter(color >= 0 && color < PIPE_COLOR_COUNT ? pipeColorFilters[color] : null);
     }
 
     private void update(float realDeltaTime) {
@@ -1913,7 +2065,7 @@ class GameView extends View implements Choreographer.FrameCallback {
                 burntSparkEmission += BURNT_SPARKS_PER_SEC * realDeltaTime;
                 while (burntSparkEmission >= 1f) {
                     burntSparkEmission -= 1f;
-                    spawnSpark(birdX, birdY, random.nextBoolean() ? SparkParticle.TYPE_CRACKLE : SparkParticle.TYPE_FALLING);
+                    spawnSpark(birdX, birdY, fxRandom.nextBoolean() ? SparkParticle.TYPE_CRACKLE : SparkParticle.TYPE_FALLING);
                 }
             }
         }
@@ -1922,7 +2074,7 @@ class GameView extends View implements Choreographer.FrameCallback {
             apocalypseSparkEmission += APOCALYPSE_SPARKS_PER_SEC * realDeltaTime;
             while (apocalypseSparkEmission >= 1f) {
                 apocalypseSparkEmission -= 1f;
-                spawnSpark(random.nextFloat() * screenWidth, -50 * fxScale, SparkParticle.TYPE_FALLING);
+                spawnSpark(fxRandom.nextFloat() * screenWidth, -50 * fxScale, SparkParticle.TYPE_FALLING);
             }
         }
 
@@ -1948,11 +2100,11 @@ class GameView extends View implements Choreographer.FrameCallback {
     }
 
     private void spawnSmoke(float x, float y) {
-        if (smokeCount < MAX_SMOKE_PARTICLES) smokeParticles[smokeCount++].init(x, y, scale, random);
+        if (smokeCount < MAX_SMOKE_PARTICLES) smokeParticles[smokeCount++].init(x, y, scale, fxRandom);
     }
 
     private void spawnSpark(float x, float y, int type) {
-        if (sparkCount < MAX_SPARK_PARTICLES) sparkParticles[sparkCount++].init(x, y, scale, type, random);
+        if (sparkCount < MAX_SPARK_PARTICLES) sparkParticles[sparkCount++].init(x, y, scale, type, fxRandom);
     }
 
     private void updateParticles(float dt) {
@@ -2155,7 +2307,7 @@ class GameView extends View implements Choreographer.FrameCallback {
 
     private void updateStorm(float realDeltaTime) {
         float strikesPerSec = score >= APOCALYPSE_SCORE ? LIGHTNING_PER_SEC_APOCALYPSE : LIGHTNING_PER_SEC;
-        if (random.nextFloat() < strikesPerSec * realDeltaTime) triggerLightning();
+        if (fxRandom.nextFloat() < strikesPerSec * realDeltaTime) triggerLightning();
 
         if (score == lastStormCheckedScore) return;
         lastStormCheckedScore = score;
@@ -2304,8 +2456,8 @@ class GameView extends View implements Choreographer.FrameCallback {
             if (sparkleTimer >= SPARKLE_INTERVAL) {
                 isSparkleAnimating = true;
                 sparkleTimer = 0;
-                sparkleXOffset = 0.2f + random.nextFloat() * 0.6f;
-                sparkleYOffset = 0.2f + random.nextFloat() * 0.6f;
+                sparkleXOffset = 0.2f + fxRandom.nextFloat() * 0.6f;
+                sparkleYOffset = 0.2f + fxRandom.nextFloat() * 0.6f;
             }
             return;
         }
@@ -2657,15 +2809,19 @@ class GameView extends View implements Choreographer.FrameCallback {
         stopWeatherSounds();
         playSound(soundHit);
         triggerShake(5.0f, 0.4f);
-        postDelayed(playDieSound, 300);
+        if (filmMode) filmDieIn = 0.3f;
+        else postDelayed(playDieSound, 300);
 
         previousBest = highScore;
         isNewBest = score > highScore;
         if (isNewBest) {
             highScore = score;
-            prefs.edit().putInt(PREF_HIGH_SCORE, highScore).apply();
+            if (!filmMode) prefs.edit().putInt(PREF_HIGH_SCORE, highScore).apply();
         }
-        recordRound();
+        if (!filmMode) {
+            saveFilm();
+            recordRound();
+        }
 
         if (score >= settingMedalPlatinum) currentMedal = MEDAL_PLATINUM;
         else if (score >= settingMedalGold) currentMedal = MEDAL_GOLD;
@@ -2785,6 +2941,10 @@ class GameView extends View implements Choreographer.FrameCallback {
 
     private void startRoundChecks() {
         roundFairMode = currentFairMode;
+        if (filmMode) {
+            startReplay();
+            return;
+        }
         roundTampered = false;
         roundPipes = 0;
         pipesCheck = scoreKey;
@@ -2845,10 +3005,19 @@ class GameView extends View implements Choreographer.FrameCallback {
         replayCount = 0;
         replayLastBits = 0;
         replayPrefs = null;
-        if (roundFairMode == FAIR_NONE || !settingBoardAutoPost || !Leaderboard.configured()) return;
+        replayForBoard = false;
+        filmRecording = false;
+        recordedHold = false;
+        filmExtras = null;
+        roundRandomSeed = filmMode && film != null ? film.randomSeed : seedSource.nextLong() ^ System.nanoTime();
+        random.setSeed(roundRandomSeed);
+        fxRandom.setSeed(roundRandomSeed ^ 0x2545F4914F6CDD1DL);
+        if (filmMode) return;
+        boolean forBoard = roundFairMode != FAIR_NONE && settingBoardAutoPost && Leaderboard.configured();
+        if (!forBoard && !settingReplayEnabled) return;
         try {
-            ByteArrayOutputStream bytes = new ByteArrayOutputStream(4096);
-            DataOutputStream out = new DataOutputStream(bytes);
+            headerBytes.reset();
+            DataOutputStream out = headerOut;
             out.writeInt(REPLAY_FORMAT);
             out.writeInt(REPLAY_RULES);
             out.writeInt(roundFairMode);
@@ -2887,13 +3056,31 @@ class GameView extends View implements Choreographer.FrameCallback {
                 out.writeBoolean(pipe.isScored);
                 out.writeBoolean(pipe.isGolden);
             }
-            replayPrefs = replayPrefs(prefs.getAll());
-            writePrefs(out, replayPrefs);
+            Map<String, Object> current = replayPrefs(prefs.getAll());
+            if (packedPrefsBytes == null || !current.equals(packedPrefs)) {
+                FastBytes packed = new FastBytes(2048);
+                DataOutputStream packer = new DataOutputStream(packed);
+                writePrefs(packer, current);
+                packer.flush();
+                packedPrefs = current;
+                packedPrefsBytes = packed.toByteArray();
+            }
+            replayPrefs = packedPrefs;
+            out.write(packedPrefsBytes);
             out.flush();
-            replayHeader = bytes.toByteArray();
-            if (replayDigest == null) replayDigest = MessageDigest.getInstance("SHA-256");
-            chainStart(replayDigest, replayHeader, replayChain);
-            replayEvents = new int[16384];
+            replayHeader = headerBytes.toByteArray();
+            if (forBoard) {
+                if (replayDigest == null) replayDigest = MessageDigest.getInstance("SHA-256");
+                chainStart(replayDigest, replayHeader, replayChain);
+            }
+            if (settingReplayEnabled) {
+                filmExtras = filmExtras();
+                filmBestBefore = highScore;
+            }
+            int[] spare = SPARE_EVENTS.poll();
+            replayEvents = spare != null ? spare : new int[16384];
+            replayForBoard = forBoard;
+            filmRecording = settingReplayEnabled;
             replayLive = true;
         } catch (IOException | NoSuchAlgorithmException | RuntimeException e) {
             replayLive = false;
@@ -2909,14 +3096,19 @@ class GameView extends View implements Choreographer.FrameCallback {
     static String chainNext(MessageDigest digest, byte[] chain, int[] events, int from, int to) {
         digest.reset();
         digest.update(chain);
-        byte[] word = new byte[4];
-        for (int i = from; i < to; i++) {
-            int value = events[i];
-            word[0] = (byte) (value >>> 24);
-            word[1] = (byte) (value >>> 16);
-            word[2] = (byte) (value >>> 8);
-            word[3] = (byte) value;
-            digest.update(word);
+        byte[] words = new byte[Math.min(4096, Math.max(0, to - from)) * 4];
+        for (int i = from; i < to; ) {
+            int n = Math.min(words.length / 4, to - i);
+            for (int k = 0; k < n; k++) {
+                int value = events[i + k];
+                int at = k * 4;
+                words[at] = (byte) (value >>> 24);
+                words[at + 1] = (byte) (value >>> 16);
+                words[at + 2] = (byte) (value >>> 8);
+                words[at + 3] = (byte) value;
+            }
+            digest.update(words, 0, n * 4);
+            i += n;
         }
         byte[] next = digest.digest();
         System.arraycopy(next, 0, chain, 0, 32);
@@ -2928,7 +3120,7 @@ class GameView extends View implements Choreographer.FrameCallback {
     }
 
     private void commitMark(int kind) {
-        if (!replayLive || replayDigest == null) return;
+        if (!replayLive || !replayForBoard || replayDigest == null) return;
         if (kind == MARK_PLAY && Leaderboard.heartbeatBusy()) return;
         heartbeatTimer = 0f;
         recordEvent(REPLAY_MARK | kind);
@@ -2957,7 +3149,13 @@ class GameView extends View implements Choreographer.FrameCallback {
     }
 
     private void step(float dt) {
-        if (replayLive && gameState == GameState.PLAYING && !isPaused) recordStep(dt);
+        if (replayLive && gameState == GameState.PLAYING && !isPaused) {
+            if (!replayForBoard && settingJetpackModeEnabled && isScreenPressed != recordedHold) {
+                recordedHold = isScreenPressed;
+                recordEvent(REPLAY_MARK | (recordedHold ? MARK_HOLD_ON : MARK_HOLD_OFF));
+            }
+            if (replayLive) recordStep(dt);
+        }
         update(dt);
     }
 
@@ -3027,8 +3225,1087 @@ class GameView extends View implements Choreographer.FrameCallback {
         }
     }
 
+    private byte[] filmExtras() throws IOException {
+        extrasBytes.reset();
+        DataOutputStream out = extrasOut;
+        out.writeLong(roundRandomSeed);
+        out.writeInt(currentBirdColor);
+        out.writeBoolean(nightBackground);
+        out.writeFloat(dayNightCycleProgress);
+        out.writeFloat(rainbowHue);
+        out.writeFloat(drunkModePhase);
+        out.writeInt(livesLeft);
+        out.writeFloat(pipeAnimationCounter);
+        out.writeInt(pipes.size());
+        for (int i = 0; i < pipes.size(); i++) out.writeInt(pipes.get(i).colorIndex);
+        out.writeFloat(goldenShineOffset);
+        out.writeInt(trailCount);
+        for (int i = 0; i < trailCount; i++) birdTrail[(trailStart + i) % MAX_TRAIL_PARTICLES].save(out);
+        weatherSystem.save(out);
+        out.flush();
+        return extrasBytes.toByteArray();
+    }
+
+    private void saveFilm() {
+        if (!filmRecording || !replayLive || replayHeader == null || replayEvents == null || replayCount == 0 || filmExtras == null) return;
+        if (replayPrefs == null || !replayPrefs.equals(replayPrefs(prefs.getAll()))) return;
+        final byte[] header = replayHeader;
+        final byte[] extras = filmExtras;
+        final int count = replayCount;
+        final boolean handOff = !replayForBoard;
+        final int[] events = handOff ? replayEvents : Arrays.copyOf(replayEvents, replayCount);
+        if (handOff) {
+            replayEvents = null;
+            replayLive = false;
+        }
+        final int keep = settingReplayKeep;
+        final boolean best = settingReplayBest;
+        final int finalScore = Math.max(0, score);
+        final int bestBefore = filmBestBefore;
+        final int flaps = roundFlaps;
+        final float seconds = (float) Math.max(0.0, clock - roundStartClock);
+        final int mode = roundFairMode;
+        final Context app = getContext().getApplicationContext() != null ? getContext().getApplicationContext() : getContext();
+        final long savedAt = System.currentTimeMillis();
+        filmSaver().execute(() -> {
+            try {
+                File dir = new File(app.getFilesDir(), FILM_DIR);
+                String version = Leaderboard.versionName(app);
+                if (best) writeBestFilm(dir, savedAt, finalScore, bestBefore, flaps, seconds, mode, version, header, extras, events, count);
+                else writeFilm(dir, FILM_PREFIX, savedAt, finalScore, bestBefore, flaps, seconds, mode, version, header, extras, events, count, keep);
+            } catch (IOException | RuntimeException e) {
+                Log.w(TAG, "Replay could not be saved", e);
+            } finally {
+                if (handOff) recycleEvents(events);
+            }
+        });
+    }
+
+    static void recycleEvents(int[] events) {
+        if (events == null || events.length > SPARE_EVENT_MAX || SPARE_EVENTS.size() >= SPARE_EVENT_BUFFERS) return;
+        SPARE_EVENTS.offer(events);
+    }
+
+    private static synchronized ExecutorService filmSaver() {
+        if (filmSaver == null) {
+            filmSaver = Executors.newSingleThreadExecutor(task -> {
+                Thread thread = new Thread(task, "ReplaySaver");
+                thread.setDaemon(true);
+                thread.setPriority(Thread.MIN_PRIORITY);
+                return thread;
+            });
+        }
+        return filmSaver;
+    }
+
+    static boolean writeBestFilm(File dir, long savedAt, int score, int bestBefore, int flaps, float seconds, int mode, String version,
+            byte[] header, byte[] extras, int[] events) throws IOException {
+        return writeBestFilm(dir, savedAt, score, bestBefore, flaps, seconds, mode, version, header, extras, events, events.length);
+    }
+
+    static boolean writeBestFilm(File dir, long savedAt, int score, int bestBefore, int flaps, float seconds, int mode, String version,
+            byte[] header, byte[] extras, int[] events, int count) throws IOException {
+        List<File> previous = films(dir, BEST_PREFIX);
+        for (File file : previous) {
+            try {
+                if (Film.read(file).score >= score) return false;
+            } catch (IOException e) {
+                file.delete();
+            }
+        }
+        File saved = writeFilm(dir, BEST_PREFIX, savedAt, score, bestBefore, flaps, seconds, mode, version, header, extras, events, count, Integer.MAX_VALUE);
+        for (File file : previous) {
+            if (!file.equals(saved)) file.delete();
+        }
+        pruneTemp(dir);
+        return true;
+    }
+
+    static File writeFilm(File dir, String prefix, long savedAt, int score, int bestBefore, int flaps, float seconds, int mode, String version,
+            byte[] header, byte[] extras, int[] events, int keep) throws IOException {
+        return writeFilm(dir, prefix, savedAt, score, bestBefore, flaps, seconds, mode, version, header, extras, events, events.length, keep);
+    }
+
+    static File writeFilm(File dir, String prefix, long savedAt, int score, int bestBefore, int flaps, float seconds, int mode, String version,
+            byte[] header, byte[] extras, int[] events, int count, int keep) throws IOException {
+        if (!dir.isDirectory() && !dir.mkdirs()) throw new IOException("No replay folder");
+        while (new File(dir, FILM_PREFIX + savedAt + FILM_SUFFIX).exists() || new File(dir, BEST_PREFIX + savedAt + FILM_SUFFIX).exists()) savedAt++;
+        File temp = new File(dir, prefix + savedAt + ".tmp");
+        try (DataOutputStream out = new DataOutputStream(new java.io.BufferedOutputStream(new DeflaterOutputStream(new FileOutputStream(temp)), 16384))) {
+            out.writeInt(FILM_FORMAT);
+            out.writeLong(savedAt);
+            out.writeInt(score);
+            out.writeInt(bestBefore);
+            out.writeInt(flaps);
+            out.writeFloat(seconds);
+            out.writeInt(mode);
+            out.writeUTF(version == null ? "" : version);
+            out.writeInt(header.length);
+            out.write(header);
+            out.writeInt(extras.length);
+            out.write(extras);
+            out.writeInt(count);
+            java.nio.ByteBuffer packed = java.nio.ByteBuffer.allocate(4 * Math.min(count, 16384));
+            for (int from = 0; from < count; from += 16384) {
+                int to = Math.min(count, from + 16384);
+                packed.clear();
+                packed.asIntBuffer().put(events, from, to - from);
+                out.write(packed.array(), 0, (to - from) * 4);
+            }
+        }
+        File done = new File(dir, prefix + savedAt + FILM_SUFFIX);
+        if (!temp.renameTo(done)) {
+            temp.delete();
+            throw new IOException("Replay could not be stored");
+        }
+        if (FILM_PREFIX.equals(prefix)) pruneFilms(dir, keep);
+        return done;
+    }
+
+    static List<File> films(File dir) {
+        return films(dir, FILM_PREFIX);
+    }
+
+    static List<File> films(File dir, String prefix) {
+        List<File> found = new ArrayList<>();
+        File[] files = dir.listFiles();
+        if (files == null) return found;
+        for (File file : files) {
+            if (file.getName().startsWith(prefix) && file.getName().endsWith(FILM_SUFFIX)) found.add(file);
+        }
+        java.util.Collections.sort(found, (a, b) -> Long.compare(filmTime(b), filmTime(a)));
+        return found;
+    }
+
+    static long filmTime(File file) {
+        String name = file.getName();
+        try {
+            return Long.parseLong(name.substring(name.indexOf('_') + 1, name.length() - FILM_SUFFIX.length()));
+        } catch (RuntimeException e) {
+            return file.lastModified();
+        }
+    }
+
+    static void pruneFilms(File dir, int keep) {
+        List<File> all = films(dir);
+        for (int i = Math.max(0, keep); i < all.size(); i++) all.get(i).delete();
+        pruneTemp(dir);
+    }
+
+    static void pruneTemp(File dir) {
+        File[] files = dir.listFiles();
+        if (files == null) return;
+        for (File file : files) {
+            if (file.getName().endsWith(".tmp") && System.currentTimeMillis() - file.lastModified() > 60000L) file.delete();
+        }
+    }
+
+    static final int SNAPSHOT_WIDTH = 320;
+    static final String SNAPSHOT_DIR = "replay_thumbs";
+
+    static double filmDeathTime(Film film) {
+        double total = FILM_LEAD_SEC;
+        int last = 0;
+        for (int value : film.events) {
+            if (value == REPLAY_FLAP || (value & REPLAY_MARK) != 0) continue;
+            int bits = value ^ last;
+            last = bits;
+            float dt = Float.intBitsToFloat(bits);
+            if (dt > 0f && dt <= 1f) total += dt;
+        }
+        return total;
+    }
+
+    static String snapshotKey(File film) {
+        return film.getName() + "_" + film.length() + "_" + SNAPSHOT_WIDTH;
+    }
+
+    static File snapshotFolder(Context context) {
+        return new File(context.getCacheDir(), SNAPSHOT_DIR);
+    }
+
+    static Bitmap loadSnapshot(Context context, File film) {
+        File cached = new File(snapshotFolder(context), snapshotKey(film) + ".jpg");
+        if (!cached.isFile()) return null;
+        try {
+            return BitmapFactory.decodeFile(cached.getPath());
+        } catch (RuntimeException | OutOfMemoryError e) {
+            return null;
+        }
+    }
+
+    static double storedLength(Context context, File film) {
+        File stored = new File(snapshotFolder(context), snapshotKey(film) + ".len");
+        if (!stored.isFile()) return -1.0;
+        try (DataInputStream in = new DataInputStream(new FileInputStream(stored))) {
+            double value = in.readDouble();
+            return value > 0.0 && value < 86400.0 ? value : -1.0;
+        } catch (IOException | RuntimeException e) {
+            return -1.0;
+        }
+    }
+
+    static void storeLength(Context context, File film, double length) {
+        File folder = snapshotFolder(context);
+        if (!folder.isDirectory() && !folder.mkdirs()) return;
+        File temp = new File(folder, snapshotKey(film) + ".len.tmp");
+        try (DataOutputStream out = new DataOutputStream(new FileOutputStream(temp))) {
+            out.writeDouble(length);
+        } catch (IOException | RuntimeException e) {
+            temp.delete();
+            return;
+        }
+        if (!temp.renameTo(new File(folder, snapshotKey(film) + ".len"))) temp.delete();
+    }
+
+    static Bitmap renderSnapshot(Context context, File file, Film film) {
+        Bitmap big = null;
+        try {
+            if (!film.complete) film = Film.read(file);
+            GameView view = new GameView(context, new MemoryPrefs(filmPlaybackPrefs(film, false, false)), false);
+            view.measure(MeasureSpec.makeMeasureSpec(film.width, MeasureSpec.EXACTLY), MeasureSpec.makeMeasureSpec(film.height, MeasureSpec.EXACTLY));
+            view.layout(0, 0, film.width, film.height);
+            view.filmLoad(film);
+            if (!view.filmReady()) return null;
+            view.filmSeek(Math.max(FILM_LEAD_SEC + 0.05, filmDeathTime(film) - 0.4));
+            int width = SNAPSHOT_WIDTH, height = Math.max(1, Math.round(SNAPSHOT_WIDTH * film.height / (float) film.width));
+            big = Bitmap.createBitmap(width * 2, height * 2, Bitmap.Config.ARGB_8888);
+            big.setDensity(Bitmap.DENSITY_NONE);
+            Canvas canvas = new Canvas(big);
+            canvas.setDensity(Bitmap.DENSITY_NONE);
+            canvas.setDrawFilter(new PaintFlagsDrawFilter(0, Paint.FILTER_BITMAP_FLAG));
+            canvas.drawColor(Color.BLACK);
+            canvas.scale(width * 2f / film.width, height * 2f / film.height);
+            view.filmDraw(canvas);
+            Bitmap small = Bitmap.createScaledBitmap(big, width, height, true);
+            if (small != big) big.recycle();
+            big = null;
+            File folder = snapshotFolder(context);
+            if (folder.isDirectory() || folder.mkdirs()) {
+                File temp = new File(folder, snapshotKey(file) + ".jpg.tmp");
+                try (FileOutputStream out = new FileOutputStream(temp)) {
+                    small.compress(Bitmap.CompressFormat.JPEG, 90, out);
+                } catch (IOException | RuntimeException e) {
+                    temp.delete();
+                }
+                if (temp.isFile() && !temp.renameTo(new File(folder, snapshotKey(file) + ".jpg"))) temp.delete();
+            }
+            if (storedLength(context, file) < 0.0) storeLength(context, file, view.filmLength());
+            return small;
+        } catch (IOException | RuntimeException | OutOfMemoryError e) {
+            if (big != null) big.recycle();
+            return null;
+        }
+    }
+
+    static Bitmap snapshot(Context context, File file) {
+        Bitmap cached = loadSnapshot(context, file);
+        if (cached != null) return cached;
+        try {
+            return renderSnapshot(context, file, Film.read(file));
+        } catch (IOException e) {
+            return null;
+        }
+    }
+
+    static void forgetSnapshots(Context context, java.util.Collection<File> keep) {
+        java.util.Set<String> wanted = new java.util.HashSet<>();
+        for (File film : keep) wanted.add(snapshotKey(film));
+        File[] all = snapshotFolder(context).listFiles();
+        if (all == null) return;
+        for (File file : all) {
+            String name = file.getName();
+            boolean keepIt = false;
+            for (String key : wanted) {
+                if (name.startsWith(key + ".")) {
+                    keepIt = true;
+                    break;
+                }
+            }
+            if (!keepIt) file.delete();
+        }
+    }
+
+    static List<File> newestFilms(File dir, int recentKeep) {
+        List<File> all = new ArrayList<>();
+        List<File> recent = films(dir, FILM_PREFIX);
+        all.addAll(recent.size() > recentKeep ? recent.subList(0, recentKeep) : recent);
+        List<File> best = films(dir, BEST_PREFIX);
+        if (!best.isEmpty()) all.add(best.get(0));
+        java.util.Collections.sort(all, (a, b) -> Long.compare(filmTime(b), filmTime(a)));
+        return all;
+    }
+
+    static final class BoardMemory {
+        static final int MAGIC = 0x46425345;
+        static final int MAX_ROWS = 1000;
+        final Object[] lists = new Object[4];
+        final Leaderboard.Entry[] mine = new Leaderboard.Entry[4];
+        final int[] rank = new int[4];
+        String url = "";
+        String uid = "";
+        int week;
+
+        @SuppressWarnings("unchecked")
+        List<Leaderboard.Entry> list(int view) {
+            return (List<Leaderboard.Entry>) lists[view];
+        }
+
+        void forget(int view) {
+            lists[view] = null;
+            mine[view] = null;
+            rank[view] = 0;
+        }
+
+        byte[] bytes() throws IOException {
+            ByteArrayOutputStream raw = new ByteArrayOutputStream(4096);
+            DataOutputStream out = new DataOutputStream(raw);
+            out.writeInt(MAGIC);
+            out.writeUTF(clip(url));
+            out.writeUTF(clip(uid));
+            out.writeInt(week);
+            for (int view = 0; view < 4; view++) {
+                List<Leaderboard.Entry> list = list(view);
+                int count = list == null ? -1 : Math.min(MAX_ROWS, list.size());
+                out.writeInt(count);
+                for (int i = 0; i < count; i++) writeEntry(out, list.get(i));
+                out.writeBoolean(mine[view] != null);
+                if (mine[view] != null) writeEntry(out, mine[view]);
+                out.writeInt(rank[view]);
+            }
+            out.flush();
+            return raw.toByteArray();
+        }
+
+        static BoardMemory parse(byte[] data) {
+            BoardMemory memory = new BoardMemory();
+            if (data == null || data.length < 8) return memory;
+            try {
+                DataInputStream in = new DataInputStream(new ByteArrayInputStream(data));
+                if (in.readInt() != MAGIC) return memory;
+                BoardMemory loaded = new BoardMemory();
+                loaded.url = in.readUTF();
+                loaded.uid = in.readUTF();
+                loaded.week = in.readInt();
+                for (int view = 0; view < 4; view++) {
+                    int count = in.readInt();
+                    if (count > MAX_ROWS) return memory;
+                    if (count >= 0) {
+                        List<Leaderboard.Entry> list = new ArrayList<>(count);
+                        for (int i = 0; i < count; i++) list.add(readEntry(in));
+                        loaded.lists[view] = list;
+                    }
+                    if (in.readBoolean()) loaded.mine[view] = readEntry(in);
+                    loaded.rank[view] = in.readInt();
+                }
+                return loaded;
+            } catch (IOException | RuntimeException e) {
+                return memory;
+            }
+        }
+
+        static BoardMemory read(File file) {
+            if (file == null || !file.isFile() || file.length() > (1 << 20)) return new BoardMemory();
+            try (FileInputStream in = new FileInputStream(file)) {
+                ByteArrayOutputStream raw = new ByteArrayOutputStream((int) Math.max(64L, file.length()));
+                byte[] buffer = new byte[8192];
+                int read;
+                while ((read = in.read(buffer)) > 0) raw.write(buffer, 0, read);
+                return parse(raw.toByteArray());
+            } catch (IOException | RuntimeException e) {
+                return new BoardMemory();
+            }
+        }
+
+        static void write(File file, byte[] bytes) {
+            File temp = new File(file.getPath() + ".tmp");
+            try (FileOutputStream out = new FileOutputStream(temp)) {
+                out.write(bytes);
+            } catch (IOException | RuntimeException e) {
+                temp.delete();
+                return;
+            }
+            if (!temp.renameTo(file)) {
+                file.delete();
+                if (!temp.renameTo(file)) temp.delete();
+            }
+        }
+
+        private static String clip(String text) {
+            if (text == null) return "";
+            return text.length() > 200 ? text.substring(0, 200) : text;
+        }
+
+        private static void writeEntry(DataOutputStream out, Leaderboard.Entry entry) throws IOException {
+            out.writeUTF(clip(entry.uid));
+            out.writeUTF(clip(entry.name));
+            out.writeInt(entry.score);
+            out.writeByte((entry.classic ? 1 : 0) | (entry.verified ? 2 : 0));
+            out.writeLong(entry.time);
+            out.writeUTF(clip(entry.version));
+        }
+
+        private static Leaderboard.Entry readEntry(DataInputStream in) throws IOException {
+            Leaderboard.Entry entry = new Leaderboard.Entry();
+            entry.uid = in.readUTF();
+            entry.name = in.readUTF();
+            entry.score = in.readInt();
+            int flags = in.readByte();
+            entry.classic = (flags & 1) != 0;
+            entry.verified = (flags & 2) != 0;
+            entry.time = in.readLong();
+            entry.version = in.readUTF();
+            return entry;
+        }
+    }
+
+    static final class BoardMotion {
+        final List<Leaderboard.Entry> list;
+        final float[] from;
+        final int[] fromScore;
+        final float[] countSec;
+        final float[] enterAt;
+        final boolean[] newcomer;
+        final boolean entrance;
+        int mineFromScore = -1;
+        int mineScore;
+        int mineFromRank;
+        int mineToRank;
+        float mineCountSec;
+        int ownRow = -1;
+        boolean ownClimbed;
+        float age = -BOARD_MOTION_DELAY;
+        float length;
+        long tickSum = Long.MIN_VALUE;
+        boolean rose;
+        boolean landed;
+        boolean felt;
+
+        BoardMotion(List<Leaderboard.Entry> list, boolean entrance) {
+            this.list = list;
+            this.entrance = entrance;
+            int count = list.size();
+            from = new float[count];
+            fromScore = new int[count];
+            countSec = new float[count];
+            enterAt = new float[count];
+            newcomer = new boolean[count];
+            Arrays.fill(from, Float.NaN);
+            Arrays.fill(fromScore, -1);
+            Arrays.fill(enterAt, -1f);
+        }
+
+        static BoardMotion plan(List<Leaderboard.Entry> before, Leaderboard.Entry mineBefore, int rankBefore,
+                List<Leaderboard.Entry> after, Leaderboard.Entry mineAfter, int rankAfter, boolean entrance, String own) {
+            if (after == null) return null;
+            int count = after.size();
+            BoardMotion motion = new BoardMotion(after, entrance);
+            if (entrance) {
+                for (int i = 0; i < count; i++) motion.enterAt[i] = Math.min(i, BOARD_ROWS + 2) * BOARD_ENTER_STAGGER;
+                motion.measure();
+                return motion.length > 0f ? motion : null;
+            }
+            if (before == null) return null;
+            HashMap<String, Integer> where = new HashMap<>(before.size() * 2 + 1);
+            for (int i = 0; i < before.size(); i++) {
+                String uid = before.get(i).uid;
+                if (uid != null && !uid.isEmpty() && !where.containsKey(uid)) where.put(uid, i);
+            }
+            int reach = BOARD_ROWS + 1;
+            for (int i = 0; i < count; i++) {
+                Leaderboard.Entry entry = after.get(i);
+                boolean ownEntry = own != null && !own.isEmpty() && own.equals(entry.uid);
+                if (ownEntry) motion.ownRow = i;
+                Integer was = entry.uid == null ? null : where.get(entry.uid);
+                int oldScore = -1;
+                float oldRow = Float.NaN;
+                if (was != null) {
+                    oldRow = was;
+                    oldScore = before.get(was).score;
+                } else if (ownEntry && mineBefore != null && own.equals(mineBefore.uid)) {
+                    oldRow = i + reach;
+                    oldScore = mineBefore.score;
+                } else if (i < before.size()) {
+                    motion.newcomer[i] = true;
+                    motion.enterAt[i] = 0f;
+                }
+                if (!Float.isNaN(oldRow) && oldRow != i) {
+                    motion.from[i] = Math.max(i - reach, Math.min(i + reach, oldRow));
+                    if (ownEntry && oldRow > i) motion.ownClimbed = true;
+                }
+                if (oldScore >= 0 && entry.score > oldScore) {
+                    motion.fromScore[i] = oldScore;
+                    motion.countSec[i] = countSeconds(entry.score - oldScore);
+                }
+            }
+            if (mineAfter != null && mineBefore != null && own != null && own.equals(mineAfter.uid) && own.equals(mineBefore.uid)) {
+                motion.mineScore = mineAfter.score;
+                if (mineAfter.score > mineBefore.score) {
+                    motion.mineFromScore = mineBefore.score;
+                    motion.mineCountSec = countSeconds(mineAfter.score - mineBefore.score);
+                }
+                if (rankBefore > 0 && rankAfter > 0 && rankBefore != rankAfter) {
+                    motion.mineFromRank = rankBefore;
+                    motion.mineToRank = rankAfter;
+                    if (rankAfter < rankBefore) motion.ownClimbed = true;
+                }
+            }
+            motion.measure();
+            return motion.length > 0f ? motion : null;
+        }
+
+        static float countSeconds(int gain) {
+            float sec = BOARD_COUNT_MIN_SEC + 0.11f * (float) Math.log(1.0 + Math.max(0, gain));
+            return Math.min(BOARD_COUNT_MAX_SEC, sec);
+        }
+
+        void measure() {
+            float end = 0f;
+            for (int i = 0; i < from.length; i++) {
+                if (!Float.isNaN(from[i])) end = Math.max(end, Math.max(BOARD_SLIDE_SEC, BOARD_ARROW_SEC));
+                if (fromScore[i] >= 0) {
+                    end = Math.max(end, BOARD_COUNT_DELAY + countSec[i] + Math.max(BOARD_POP_SEC, BOARD_GLOW_FADE_SEC));
+                    end = Math.max(end, BOARD_COUNT_DELAY + BOARD_GAIN_SEC);
+                }
+                if (enterAt[i] >= 0f) end = Math.max(end, enterAt[i] + BOARD_ENTER_SEC + (newcomer[i] ? BOARD_GLOW_FADE_SEC + 0.3f : 0f));
+            }
+            if (mineFromScore >= 0) {
+                end = Math.max(end, BOARD_COUNT_DELAY + mineCountSec + Math.max(BOARD_POP_SEC, BOARD_GLOW_FADE_SEC));
+                end = Math.max(end, BOARD_COUNT_DELAY + BOARD_GAIN_SEC);
+            }
+            if (mineFromRank > 0) end = Math.max(end, Math.max(BOARD_SLIDE_SEC * 1.3f, BOARD_ARROW_SEC));
+            length = end;
+        }
+
+        boolean exciting() {
+            for (int i = 0; i < from.length; i++) if (!Float.isNaN(from[i]) || fromScore[i] >= 0 || newcomer[i]) return true;
+            return mineFromScore >= 0 || mineFromRank > 0;
+        }
+
+        static float clamp(float value) {
+            return Math.max(0f, Math.min(1f, value));
+        }
+
+        static float backOut(float t) {
+            float s = 1.25f;
+            float x = t - 1f;
+            return 1f + (s + 1f) * x * x * x + s * x * x;
+        }
+
+        float slide(int row) {
+            return Float.isNaN(from[row]) ? 1f : clamp(age / BOARD_SLIDE_SEC);
+        }
+
+        float rowAt(int row) {
+            if (Float.isNaN(from[row])) return row;
+            float p = slide(row);
+            if (p >= 1f) return row;
+            return from[row] + (row - from[row]) * backOut(p);
+        }
+
+        boolean moving(int row) {
+            return !Float.isNaN(from[row]) && slide(row) < 1f;
+        }
+
+        int layer(int row) {
+            if (moving(row)) return from[row] > row ? 2 : 1;
+            return enterAt[row] >= 0f && age < enterAt[row] + BOARD_ENTER_SEC ? 1 : 0;
+        }
+
+        float lift(int row) {
+            if (!moving(row)) return 0f;
+            return (float) Math.sin(Math.PI * Math.min(1f, slide(row) * 1.15f));
+        }
+
+        static int counted(int start, int end, float age, float seconds) {
+            if (start < 0 || end <= start) return end;
+            float t = clamp((age - BOARD_COUNT_DELAY) / Math.max(0.01f, seconds));
+            if (t >= 1f) return end;
+            float eased = 1f - (1f - t) * (1f - t) * (1f - t) * (1f - t);
+            return start + (int) Math.floor((end - start) * eased);
+        }
+
+        int scoreAt(int row) {
+            return counted(fromScore[row], list.get(row).score, age, countSec[row]);
+        }
+
+        int mineScoreAt() {
+            return counted(mineFromScore, mineScore, age, mineCountSec);
+        }
+
+        int mineRankAt() {
+            if (mineFromRank <= 0) return 0;
+            float t = clamp(age / (BOARD_SLIDE_SEC * 1.3f));
+            float eased = 1f - (1f - t) * (1f - t) * (1f - t);
+            return Math.round(mineFromRank + (mineToRank - mineFromRank) * eased);
+        }
+
+        boolean counting(int row) {
+            return fromScore[row] >= 0 && age < BOARD_COUNT_DELAY + countSec[row];
+        }
+
+        static float popAt(float age, float end) {
+            float q = (age - end) / BOARD_POP_SEC;
+            return q <= 0f || q >= 1f ? 0f : (float) Math.sin(Math.PI * q);
+        }
+
+        static float glowAt(float age, float start, float hold) {
+            if (age < start) return 0f;
+            float rise = clamp((age - start) / 0.12f);
+            float fall = clamp((age - hold) / BOARD_GLOW_FADE_SEC);
+            return rise * (1f - fall * fall);
+        }
+
+        float pop(int row) {
+            return fromScore[row] < 0 ? 0f : popAt(age, BOARD_COUNT_DELAY + countSec[row]);
+        }
+
+        float glow(int row) {
+            if (fromScore[row] >= 0) return glowAt(age, 0f, BOARD_COUNT_DELAY + countSec[row]);
+            if (newcomer[row]) return glowAt(age, enterAt[row], enterAt[row] + BOARD_ENTER_SEC + 0.3f);
+            return 0f;
+        }
+
+        float hot(int row) {
+            if (fromScore[row] < 0) return 0f;
+            float end = BOARD_COUNT_DELAY + countSec[row];
+            if (age < end) return age >= 0f ? 1f : 0f;
+            return 1f - clamp((age - end) / 0.45f);
+        }
+
+        float gainAge(int row) {
+            if (fromScore[row] < 0 || age < BOARD_COUNT_DELAY) return -1f;
+            float t = (age - BOARD_COUNT_DELAY) / BOARD_GAIN_SEC;
+            return t >= 1f ? -1f : t;
+        }
+
+        int arrow(int row) {
+            if (Float.isNaN(from[row])) return 0;
+            return from[row] > row ? 1 : -1;
+        }
+
+        float arrowAlpha(boolean present) {
+            if (!present || age <= 0f) return 0f;
+            float in = clamp(age / 0.15f);
+            float out = clamp((BOARD_ARROW_SEC - age) / 0.5f);
+            return in * out;
+        }
+
+        float enter(int row) {
+            if (enterAt[row] < 0f) return 1f;
+            float t = clamp((age - enterAt[row]) / BOARD_ENTER_SEC);
+            return 1f - (1f - t) * (1f - t) * (1f - t);
+        }
+
+        long tickSum() {
+            long sum = 0L;
+            for (int i = 0; i < from.length; i++) {
+                if (fromScore[i] >= 0) sum = sum * 31L + scoreAt(i);
+                if (!Float.isNaN(from[i])) sum = sum * 31L + Math.round(rowAt(i));
+            }
+            if (mineFromScore >= 0) sum = sum * 31L + mineScoreAt();
+            if (mineFromRank > 0) sum = sum * 31L + mineRankAt();
+            return sum;
+        }
+
+        float progress() {
+            float longest = 0f;
+            for (int i = 0; i < countSec.length; i++) if (fromScore[i] >= 0) longest = Math.max(longest, countSec[i]);
+            if (mineFromScore >= 0) longest = Math.max(longest, mineCountSec);
+            if (longest <= 0f) return clamp(age / BOARD_SLIDE_SEC);
+            return clamp((age - BOARD_COUNT_DELAY) / longest);
+        }
+
+        boolean settledAll() {
+            for (int i = 0; i < from.length; i++) {
+                if (counting(i) || moving(i)) return false;
+            }
+            return !(mineFromScore >= 0 && age < BOARD_COUNT_DELAY + mineCountSec) && !(mineFromRank > 0 && age < BOARD_SLIDE_SEC * 1.3f);
+        }
+    }
+
+    static final class Film {
+        long savedAt;
+        int score, bestBefore, flaps, mode;
+        float seconds;
+        String version = "";
+        int format, rules, fairMode, width, height, insetTop, insetBottom, insetLeft, insetRight, pipeGap, pipeSpacing, birdFrame;
+        long seed, randomSeed;
+        float scale, pipeSpeed, gravity, flapVelocity, birdX, baseBirdX, birdY, birdVelocityY, birdRotation, birdTiltVelocity;
+        float speedVariation, backgroundX, groundX, dayNight, rainbowHue, drunkPhase, pipeAnimation;
+        double clock, lastFlapTime;
+        float[] pipeX = new float[0];
+        int[] pipeTop = new int[0], pipeWidth = new int[0], pipeHeight = new int[0], pipeColor = new int[0];
+        boolean[] pipeScored = new boolean[0], pipeGolden = new boolean[0];
+        boolean night;
+        int birdColor, lives;
+        byte[] visuals = new byte[0];
+        Map<String, Object> prefs = new TreeMap<>();
+        int[] events = new int[0];
+
+        boolean complete;
+
+        static Film read(File file) throws IOException {
+            return read(file, true);
+        }
+
+        static Film readInfo(File file) throws IOException {
+            return read(file, false);
+        }
+
+        static Film read(File file, boolean withEvents) throws IOException {
+            try (DataInputStream in = new DataInputStream(new java.io.BufferedInputStream(new InflaterInputStream(new FileInputStream(file)), 16384))) {
+                Film film = new Film();
+                if (in.readInt() != FILM_FORMAT) throw new IOException("Unknown replay format");
+                film.savedAt = in.readLong();
+                film.score = in.readInt();
+                film.bestBefore = in.readInt();
+                film.flaps = in.readInt();
+                film.seconds = in.readFloat();
+                film.mode = in.readInt();
+                film.version = in.readUTF();
+                byte[] header = new byte[checkedLength(in.readInt(), 1 << 20)];
+                in.readFully(header);
+                byte[] extras = new byte[checkedLength(in.readInt(), 1 << 16)];
+                in.readFully(extras);
+                int count = checkedLength(in.readInt(), REPLAY_MAX_EVENTS);
+                if (withEvents) {
+                    film.events = new int[count];
+                    byte[] block = new byte[4 * Math.min(count, 16384)];
+                    for (int from = 0; from < count; from += 16384) {
+                        int n = Math.min(16384, count - from);
+                        in.readFully(block, 0, n * 4);
+                        java.nio.ByteBuffer.wrap(block, 0, n * 4).asIntBuffer().get(film.events, from, n);
+                    }
+                    film.complete = true;
+                }
+                film.readHeader(header);
+                film.readExtras(extras);
+                return film;
+            } catch (RuntimeException e) {
+                throw new IOException("Replay is damaged", e);
+            }
+        }
+
+        private static int checkedLength(int length, int max) throws IOException {
+            if (length < 0 || length > max) throw new IOException("Replay is damaged");
+            return length;
+        }
+
+        private void readHeader(byte[] header) throws IOException {
+            DataInputStream in = new DataInputStream(new ByteArrayInputStream(header));
+            format = in.readInt();
+            rules = in.readInt();
+            fairMode = in.readInt();
+            seed = in.readLong();
+            width = in.readInt();
+            height = in.readInt();
+            insetTop = in.readInt();
+            insetBottom = in.readInt();
+            insetLeft = in.readInt();
+            insetRight = in.readInt();
+            scale = in.readFloat();
+            pipeGap = in.readInt();
+            pipeSpacing = in.readInt();
+            pipeSpeed = in.readFloat();
+            gravity = in.readFloat();
+            flapVelocity = in.readFloat();
+            clock = in.readDouble();
+            lastFlapTime = in.readDouble();
+            birdX = in.readFloat();
+            baseBirdX = in.readFloat();
+            birdY = in.readFloat();
+            birdVelocityY = in.readFloat();
+            birdRotation = in.readFloat();
+            birdTiltVelocity = in.readFloat();
+            speedVariation = in.readFloat();
+            backgroundX = in.readFloat();
+            groundX = in.readFloat();
+            birdFrame = in.readInt();
+            int count = checkedLength(in.readInt(), 64);
+            pipeX = new float[count];
+            pipeTop = new int[count];
+            pipeWidth = new int[count];
+            pipeHeight = new int[count];
+            pipeScored = new boolean[count];
+            pipeGolden = new boolean[count];
+            for (int i = 0; i < count; i++) {
+                pipeX[i] = in.readFloat();
+                pipeTop[i] = in.readInt();
+                pipeWidth[i] = in.readInt();
+                pipeHeight[i] = in.readInt();
+                pipeScored[i] = in.readBoolean();
+                pipeGolden[i] = in.readBoolean();
+            }
+            int prefCount = checkedLength(in.readInt(), 4096);
+            for (int i = 0; i < prefCount; i++) {
+                String key = in.readUTF();
+                int type = in.readByte();
+                if (type == 'I') prefs.put(key, in.readInt());
+                else if (type == 'F') prefs.put(key, in.readFloat());
+                else if (type == 'Z') prefs.put(key, in.readBoolean());
+                else if (type == 'J') prefs.put(key, in.readLong());
+                else prefs.put(key, in.readUTF());
+            }
+            if (width <= 0 || height <= 0 || width > 20000 || height > 20000) throw new IOException("Replay is damaged");
+        }
+
+        private void readExtras(byte[] extras) throws IOException {
+            DataInputStream in = new DataInputStream(new ByteArrayInputStream(extras));
+            randomSeed = in.readLong();
+            birdColor = in.readInt();
+            night = in.readBoolean();
+            dayNight = in.readFloat();
+            rainbowHue = in.readFloat();
+            drunkPhase = in.readFloat();
+            lives = in.readInt();
+            pipeAnimation = in.readFloat();
+            int count = checkedLength(in.readInt(), 64);
+            pipeColor = new int[count];
+            for (int i = 0; i < count; i++) pipeColor[i] = in.readInt();
+            visuals = new byte[in.available()];
+            in.readFully(visuals);
+        }
+
+        boolean classic() {
+            return mode == FAIR_CLASSIC;
+        }
+    }
+
+    static Map<String, Object> filmPlaybackPrefs(Film film, boolean sound, boolean feel) {
+        Map<String, Object> values = new TreeMap<>(film.prefs);
+        values.put(PREF_BOARD_AUTO_POST, false);
+        values.put(PREF_ACTIVITY_LOG_ENABLED, false);
+        values.put(PREF_SHOW_FPS, false);
+        values.put(PREF_HAPTIC_FEEDBACK_ENABLED, feel);
+        values.put(PREF_REPLAY_ENABLED, false);
+        values.put(PREF_SOUND_ENABLED, sound);
+        values.put(PREF_HIGH_SCORE, film.bestBefore);
+        return values;
+    }
+
+    void filmLoad(Film loaded) {
+        film = loaded;
+        windowInsetTop = loaded.insetTop;
+        windowInsetBottom = loaded.insetBottom;
+        windowInsetLeft = loaded.insetLeft;
+        windowInsetRight = loaded.insetRight;
+        if (screenWidth == loaded.width && screenHeight == loaded.height) applyLayout();
+        filmRestart();
+    }
+
+    boolean filmReady() {
+        return film != null && isReady && screenWidth == film.width && screenHeight == film.height;
+    }
+
+    void filmRestart() {
+        Film f = film;
+        if (f == null || !isReady) return;
+        resetGame();
+        removeCallbacks(playDieSound);
+        gameState = GameState.WAITING;
+        isFadingOut = false;
+        transitionAlpha = 0;
+        isPaused = false;
+        clock = f.clock;
+        gameOverTime = 0;
+        lastFlapTime = f.lastFlapTime;
+        speedVariation = f.speedVariation;
+        applyTuning();
+        birdX = f.birdX;
+        baseBirdX = f.baseBirdX;
+        birdY = f.birdY;
+        birdVelocityY = f.birdVelocityY;
+        birdRotation = f.birdRotation;
+        birdTiltVelocity = f.birdTiltVelocity;
+        backgroundX = f.backgroundX;
+        groundX = f.groundX;
+        birdFrame = Math.max(0, Math.min(2, f.birdFrame));
+        spawnPipes(f.seed);
+        while (pipes.size() > f.pipeX.length && !pipes.isEmpty()) pipes.remove(pipes.size() - 1);
+        while (pipes.size() < f.pipeX.length) pipes.add(createPipe(0f));
+        for (int i = 0; i < f.pipeX.length; i++) {
+            Pipe pipe = pipes.get(i);
+            pipe.x = f.pipeX[i];
+            pipe.topPipeY = f.pipeTop[i];
+            pipe.width = f.pipeWidth[i];
+            pipe.height = f.pipeHeight[i];
+            pipe.isScored = f.pipeScored[i];
+            pipe.isGolden = f.pipeGolden[i];
+            paintPipe(pipe, i < f.pipeColor.length ? f.pipeColor[i] : settingPipeColor);
+        }
+        currentBirdColor = Math.max(0, Math.min(2, f.birdColor));
+        assignBirdBitmaps();
+        nightBackground = f.night;
+        dayNightCycleProgress = f.dayNight;
+        rainbowHue = f.rainbowHue;
+        drunkModePhase = f.drunkPhase;
+        livesLeft = f.lives;
+        pipeAnimationCounter = f.pipeAnimation;
+        highScore = f.bestBefore;
+        restoreVisuals(f.visuals);
+        isScreenPressed = false;
+        touchHeld = false;
+        flapKeyHeld = false;
+        flapAltKeyHeld = false;
+        stepAccumulator = 0f;
+        motionValid = false;
+        shakeTimer = 0f;
+        flashAlpha = 0f;
+        filmIndex = 0;
+        filmLastBits = 0;
+        filmLeadLeft = FILM_LEAD_SEC;
+        filmTail = 0f;
+        filmDieIn = -1f;
+        filmTime = 0.0;
+        updateWeatherSounds();
+        invalidate();
+    }
+
+    private void restoreVisuals(byte[] visuals) {
+        trailStart = 0;
+        trailCount = 0;
+        if (visuals == null || visuals.length == 0) return;
+        try {
+            DataInputStream in = new DataInputStream(new ByteArrayInputStream(visuals));
+            goldenShineOffset = in.readFloat();
+            int count = Math.max(0, Math.min(MAX_TRAIL_PARTICLES, in.readInt()));
+            for (int i = 0; i < count; i++) birdTrail[i].load(in);
+            trailCount = count;
+            weatherSystem.load(in);
+        } catch (IOException | RuntimeException ignored) {
+        }
+    }
+
+    void filmRelease() {
+        removeCallbacks(playDieSound);
+        releaseSounds();
+    }
+
+    void filmSetFeel(boolean feel) {
+        filmFeel = feel;
+    }
+
+    void filmSetAudible(boolean audible) {
+        filmAudible = audible;
+        if (!audible) {
+            try {
+                setLoopPlaying(rainSoundPlayer, false);
+                setLoopPlaying(stormSoundPlayer, false);
+            } catch (IllegalStateException ignored) {
+            }
+        }
+        updateWeatherSounds();
+    }
+
+    void filmSetSink(FilmSink sink) {
+        filmSink = sink;
+    }
+
+    double filmTime() {
+        return filmTime;
+    }
+
+    int filmScore() {
+        return score;
+    }
+
+    float filmStep() {
+        Film f = film;
+        if (f == null || !isReady) return 0f;
+        if (filmLeadLeft > 0f) {
+            float dt = Math.min(FILM_TAIL_STEP_SEC, filmLeadLeft);
+            filmLeadLeft -= dt;
+            filmTime += dt;
+            return dt;
+        }
+        int[] events = f.events;
+        while (filmIndex < events.length) {
+            int value = events[filmIndex++];
+            if (value == REPLAY_FLAP) {
+                handleGameplayTap();
+                continue;
+            }
+            if ((value & REPLAY_MARK) != 0) {
+                int kind = value & ~REPLAY_MARK;
+                if (kind == MARK_HOLD_ON) isScreenPressed = true;
+                else if (kind == MARK_HOLD_OFF) isScreenPressed = false;
+                else if (kind == MARK_START) handleGameplayTap();
+                continue;
+            }
+            int bits = value ^ filmLastBits;
+            filmLastBits = bits;
+            float dt = Float.intBitsToFloat(bits);
+            if (!(dt > 0f) || dt > 1f) continue;
+            filmAdvance(dt);
+            return dt;
+        }
+        if (filmFinished()) return 0f;
+        filmTail += FILM_TAIL_STEP_SEC;
+        filmAdvance(FILM_TAIL_STEP_SEC);
+        return FILM_TAIL_STEP_SEC;
+    }
+
+    private void filmAdvance(float dt) {
+        update(dt);
+        filmTime += dt;
+        if (filmDieIn >= 0f) {
+            filmDieIn -= dt;
+            if (filmDieIn < 0f) playSound(soundDie);
+        }
+    }
+
+    private boolean filmFinished() {
+        if (film == null || filmIndex < film.events.length) return false;
+        if (filmTail >= FILM_TAIL_MAX_SEC) return true;
+        return gameState == GameState.PANEL_SLIDING && panelFinishedSlidingTime >= 0 && clock - panelFinishedSlidingTime >= FILM_AFTER_PANEL_SEC;
+    }
+
+    boolean filmEnded() {
+        return film != null && filmIndex >= film.events.length && filmFinished();
+    }
+
+    double filmSeek(double target) {
+        FilmSink sink = filmSink;
+        boolean audible = filmAudible;
+        boolean feel = filmFeel;
+        filmSink = null;
+        filmAudible = false;
+        filmFeel = false;
+        try {
+            if (target < filmTime) filmRestart();
+            while (filmTime < target) {
+                if (filmStep() <= 0f) break;
+            }
+        } finally {
+            filmSink = sink;
+            filmAudible = audible;
+            filmFeel = feel;
+        }
+        updateWeatherSounds();
+        invalidate();
+        return filmTime;
+    }
+
+    double filmLength() {
+        double length = filmSeek(Double.MAX_VALUE);
+        FilmSink sink = filmSink;
+        filmSink = null;
+        try {
+            filmRestart();
+        } finally {
+            filmSink = sink;
+        }
+        return length;
+    }
+
+    void filmDraw(Canvas canvas) {
+        if (!isReady) return;
+        drawFrame(canvas);
+    }
+
     private Leaderboard.Replay takeReplay() {
-        boolean usable = replayLive && replayHeader != null && replayEvents != null && replayCount > 0
+        boolean usable = replayLive && replayForBoard && replayHeader != null && replayEvents != null && replayCount > 0
                 && replayPrefs != null && replayPrefs.equals(replayPrefs(prefs.getAll()));
         Leaderboard.Replay replay = usable ? new Leaderboard.Replay(replayHeader, replayEvents, replayCount, replaySeed, REPLAY_RULES, replayMarks) : null;
         replayLive = false;
@@ -3110,6 +4387,9 @@ class GameView extends View implements Choreographer.FrameCallback {
             boardStatusText = "Posting is off";
         } else if (Leaderboard.name(prefs).isEmpty() || Leaderboard.nameTaken(prefs)) {
             boardStatusText = "Choose a leaderboard name to post scores";
+        } else if (score < BOARD_MIN_SCORE) {
+            boardStatusText = "Not posted: score below " + BOARD_MIN_SCORE;
+            return "below the leaderboard minimum of " + BOARD_MIN_SCORE;
         } else if (score > 0 && (score > Leaderboard.posted(prefs) || score > Leaderboard.weekPosted(prefs)
                 || (replay != null && Leaderboard.wantsReplay(prefs, score)))) {
             final boolean allTime = score > Leaderboard.posted(prefs);
@@ -3117,11 +4397,14 @@ class GameView extends View implements Choreographer.FrameCallback {
             boardStatusText = newBest ? "Posting..." : "Sending for verification...";
             Leaderboard.submit(getContext(), score, classic, whole, roundFlaps, paused, replay, this::post, (status, error) -> {
                 if (Leaderboard.VERIFYING.equals(status)) {
+                    watchVerdict();
                     boardStatusText = newBest ? "Posted! Verifying your run..." : "Verifying your run...";
+                    boardStaleMask = 0xF;
                     if (boardOpen) refreshBoard();
                     else if (settingBoardOpenOnBest && newBest) postDelayed(this::openBoardAfterBest, 900);
                 } else if (Leaderboard.POSTED.equals(status)) {
                     boardStatusText = allTime ? "Posted! New all-time best" : "Posted! New weekly best";
+                    boardStaleMask = 0xF;
                     if (boardOpen) refreshBoard();
                     else if (settingBoardOpenOnBest) postDelayed(this::openBoardAfterBest, 900);
                 } else if (error != null) {
@@ -3352,14 +4635,51 @@ class GameView extends View implements Choreographer.FrameCallback {
         resetBoardScroll();
         boardOffline = false;
         boardRetrySec = 0f;
+        boardVerifyPoll = 0f;
         boardTab = settingBoardTab;
         boardShowAll = Boolean.TRUE.equals(prefs.getAll().get(BOARD_SHOW_ALL_KEY));
         boardOpen = true;
         boardClosing = false;
         boardAnim = 0f;
         boardPressed = null;
+        hideBoardBubble();
         if (boardHost != null) boardHost.boardVisible(true);
-        refreshBoard();
+        showBoardView(false);
+    }
+
+    private int boardView() {
+        return boardTab + (boardShowAll ? 0 : 2);
+    }
+
+    private void syncBoardLoading() {
+        boardLoading = (boardLoadingMask & (1 << boardView())) != 0;
+    }
+
+    private void showBoardView(boolean force) {
+        int view = boardView();
+        String who = Leaderboard.uid(prefs);
+        if (boardSizeLoaded != settingBoardSize || !who.equals(boardUidLoaded)) {
+            boardSizeLoaded = settingBoardSize;
+            boardUidLoaded = who;
+            boardStaleMask = 0xF;
+        }
+        boolean stale = (boardStaleMask & (1 << view)) != 0;
+        seedBoardView(view);
+        syncBoardLoading();
+        long now = SystemClock.uptimeMillis();
+        boolean waited = awaitingVerdict() && now - boardData.loadedAt[view] >= BOARD_VERIFY_FRESH_MS;
+        if (force || stale || waited || !boardData.fresh(view, now)) {
+            loadBoardView(view);
+        } else if (!boardLoading) {
+            boardNote = boardHint();
+        }
+    }
+
+    private void hideBoardBubble() {
+        boardBubbleAge = 99f;
+        boardBubbleIndex = -1;
+        boardBubbleEntry = null;
+        boardTapIndex = -1;
     }
 
     private void closeBoard() {
@@ -3369,6 +4689,11 @@ class GameView extends View implements Choreographer.FrameCallback {
     }
 
     private void finishClosingBoard() {
+        int view = boardView();
+        BoardMotion motion = boardMotions[view];
+        if (motion != null && motion.age > 0f) settleBoardMotion(view);
+        else if (motion == null) rememberBoardView(view);
+        saveBoardMemory();
         boardOpen = false;
         boardClosing = false;
         boardAnim = 0f;
@@ -3389,11 +4714,19 @@ class GameView extends View implements Choreographer.FrameCallback {
         if (boardOpen && boardOffline && !boardLoading && !boardClosing && !nameOverlayOpen) {
             boardRetrySec += step;
             if (boardRetrySec >= BOARD_RETRY_SEC) refreshBoard();
+        } else if (boardOpen && !boardLoading && !boardClosing && !nameOverlayOpen && awaitingVerdict()) {
+            boardVerifyPoll += step;
+            if (boardVerifyPoll >= BOARD_VERIFY_POLL_SEC) {
+                boardVerifyPoll = 0f;
+                refreshBoard();
+            }
         }
         if (boardRefreshPending && !nameOverlayOpen && nameSpring[0] < 0.02f) {
             boardRefreshPending = false;
+            boardStaleMask = 0xF;
             if (boardOpen) refreshBoard();
         }
+        if (boardBubbleAge < BUBBLE_HOLD_SEC + BUBBLE_FADE_SEC) boardBubbleAge += step;
         if (boardOpen || nameOverlayOpen || dimSpring[0] > 0f) layoutBoard();
         if (!boardOpen) return;
         if (!boardDragging) {
@@ -3410,11 +4743,339 @@ class GameView extends View implements Choreographer.FrameCallback {
             }
             boardScroll = Math.max(0f, Math.min(boardScrollMax, boardScroll));
         }
+        animateBoardMotion(step);
         if (boardClosing) {
             boardAnim -= step / BOARD_CLOSE_SEC;
             if (boardAnim <= 0f) finishClosingBoard();
         } else if (boardAnim < 1f) {
             boardAnim = Math.min(1f, boardAnim + step / BOARD_OPEN_SEC);
+        }
+    }
+
+    private static File boardMemoryFile(Context context) {
+        Context app = context.getApplicationContext() != null ? context.getApplicationContext() : context;
+        return new File(app.getFilesDir(), BOARD_MEMORY_FILE);
+    }
+
+    private void preloadBoardMemory() {
+        synchronized (BOARD_MEMORY_LOCK) {
+            if (boardMemory != null) return;
+        }
+        final File file;
+        try {
+            file = boardMemoryFile(getContext());
+        } catch (RuntimeException e) {
+            return;
+        }
+        filmSaver().execute(() -> {
+            BoardMemory loaded = BoardMemory.read(file);
+            synchronized (BOARD_MEMORY_LOCK) {
+                if (boardMemory == null) boardMemory = loaded;
+            }
+        });
+    }
+
+    private BoardMemory boardMemory() {
+        BoardMemory memory;
+        synchronized (BOARD_MEMORY_LOCK) {
+            if (boardMemory == null) {
+                BoardMemory loaded;
+                try {
+                    loaded = BoardMemory.read(boardMemoryFile(getContext()));
+                } catch (RuntimeException e) {
+                    loaded = new BoardMemory();
+                }
+                boardMemory = loaded;
+            }
+            memory = boardMemory;
+        }
+        String url = String.valueOf(Leaderboard.DATABASE_URL);
+        String uid = Leaderboard.uid(prefs);
+        int week = Leaderboard.week(Leaderboard.now());
+        if (!url.equals(memory.url)) {
+            for (int view = 0; view < 4; view++) memory.forget(view);
+            memory.url = url;
+            memory.uid = uid;
+            memory.week = week;
+            boardMemoryDirty = true;
+        }
+        if (!uid.equals(memory.uid)) {
+            for (int view = 0; view < 4; view++) {
+                memory.mine[view] = null;
+                memory.rank[view] = 0;
+            }
+            memory.uid = uid;
+            boardMemoryDirty = true;
+        }
+        if (week != memory.week) {
+            memory.forget(Leaderboard.VIEW_WEEKLY);
+            memory.forget(Leaderboard.VIEW_VERIFIED_WEEKLY);
+            memory.week = week;
+            boardMemoryDirty = true;
+        }
+        return memory;
+    }
+
+    private void saveBoardMemory() {
+        if (!boardMemoryDirty || filmMode) return;
+        boardMemoryDirty = false;
+        final byte[] bytes;
+        final File file;
+        try {
+            bytes = boardMemory().bytes();
+            file = boardMemoryFile(getContext());
+        } catch (IOException | RuntimeException e) {
+            return;
+        }
+        filmSaver().execute(() -> BoardMemory.write(file, bytes));
+    }
+
+    private static List<Leaderboard.Entry> boardList(Leaderboard.Board board, int view) {
+        switch (view) {
+            case Leaderboard.VIEW_ALL_TIME: return board.allTime;
+            case Leaderboard.VIEW_WEEKLY: return board.weekly;
+            case Leaderboard.VIEW_VERIFIED_ALL_TIME: return board.verifiedAllTime;
+            default: return board.verifiedWeekly;
+        }
+    }
+
+    private static Leaderboard.Entry boardMineOf(Leaderboard.Board board, int view) {
+        switch (view) {
+            case Leaderboard.VIEW_ALL_TIME: return board.mineAllTime;
+            case Leaderboard.VIEW_WEEKLY: return board.mineWeekly;
+            case Leaderboard.VIEW_VERIFIED_ALL_TIME: return board.mineVerifiedAllTime;
+            default: return board.mineVerifiedWeekly;
+        }
+    }
+
+    private static int boardRankOf(Leaderboard.Board board, int view) {
+        switch (view) {
+            case Leaderboard.VIEW_ALL_TIME: return board.rankAllTime;
+            case Leaderboard.VIEW_WEEKLY: return board.rankWeekly;
+            case Leaderboard.VIEW_VERIFIED_ALL_TIME: return board.rankVerifiedAllTime;
+            default: return board.rankVerifiedWeekly;
+        }
+    }
+
+    private void seedBoardView(int view) {
+        if (boardData.loaded[view] || !boardList(boardData, view).isEmpty()) return;
+        BoardMemory memory = boardMemory();
+        List<Leaderboard.Entry> list = memory.list(view);
+        if (list == null || list.isEmpty()) return;
+        int limit = settingBoardSize;
+        if (limit > 0 && list.size() > limit) {
+            list = new ArrayList<>(list.subList(0, limit));
+            memory.lists[view] = list;
+        }
+        Leaderboard.Entry mine = memory.mine[view];
+        int rank = memory.rank[view];
+        switch (view) {
+            case Leaderboard.VIEW_ALL_TIME:
+                boardData.allTime = list;
+                boardData.mineAllTime = mine;
+                boardData.rankAllTime = rank;
+                break;
+            case Leaderboard.VIEW_WEEKLY:
+                boardData.weekly = list;
+                boardData.mineWeekly = mine;
+                boardData.rankWeekly = rank;
+                break;
+            case Leaderboard.VIEW_VERIFIED_ALL_TIME:
+                boardData.verifiedAllTime = list;
+                boardData.mineVerifiedAllTime = mine;
+                boardData.rankVerifiedAllTime = rank;
+                break;
+            default:
+                boardData.verifiedWeekly = list;
+                boardData.mineVerifiedWeekly = mine;
+                boardData.rankVerifiedWeekly = rank;
+                break;
+        }
+        boardDataVersion++;
+    }
+
+    private void planBoardMotion(Leaderboard.Board board, int view) {
+        List<Leaderboard.Entry> fresh = boardList(board, view);
+        BoardMemory memory = boardMemory();
+        BoardMotion old = boardMotions[view];
+        if (old != null && old.age > 0f && old.list == boardList(boardData, view)) settleBoardMotion(view);
+        boolean shownEmpty = boardList(boardData, view).isEmpty();
+        boolean entrance = boardOpen && !boardClosing && view == boardView() && shownEmpty && !boardData.loaded[view];
+        BoardMotion motion = entrance
+                ? BoardMotion.plan(null, null, 0, fresh, null, 0, true, null)
+                : BoardMotion.plan(memory.list(view), memory.mine[view], memory.rank[view], fresh, boardMineOf(board, view),
+                        boardRankOf(board, view), false, Leaderboard.uid(prefs));
+        boardMotions[view] = motion;
+    }
+
+    private void settleBoardMotion(int view) {
+        BoardMotion motion = boardMotions[view];
+        boardMotions[view] = null;
+        if (motion == null || motion.list != boardList(boardData, view)) return;
+        rememberBoardView(view);
+    }
+
+    private void rememberBoardView(int view) {
+        if (!boardData.loaded[view]) return;
+        List<Leaderboard.Entry> list = boardList(boardData, view);
+        Leaderboard.Entry mine = boardMineOf(boardData, view);
+        int rank = boardRankOf(boardData, view);
+        BoardMemory known = boardMemory;
+        if (known != null && known.list(view) == list && known.mine[view] == mine && known.rank[view] == rank) return;
+        BoardMemory memory = boardMemory();
+        if (memory.list(view) == list && memory.mine[view] == mine && memory.rank[view] == rank) return;
+        memory.lists[view] = list;
+        memory.mine[view] = mine;
+        memory.rank[view] = rank;
+        boardMemoryDirty = true;
+    }
+
+    private BoardMotion currentBoardMotion() {
+        int view = boardView();
+        BoardMotion motion = boardMotions[view];
+        if (motion != null && motion.list != boardList(boardData, view)) {
+            boardMotions[view] = null;
+            return null;
+        }
+        return motion;
+    }
+
+    private void animateBoardMotion(float step) {
+        if (!boardOpen) return;
+        int view = boardView();
+        BoardMotion motion = currentBoardMotion();
+        if (motion == null) {
+            if (!boardClosing && boardData.loaded[view] && boardMemory != null) rememberBoardView(view);
+            return;
+        }
+        if (boardClosing || boardAnim < BOARD_MOTION_START) return;
+        float before = motion.age;
+        motion.age += step;
+        if (!motion.entrance) feelBoardMotion(motion, before);
+        if (motion.age >= motion.length) settleBoardMotion(view);
+    }
+
+    private void feelBoardMotion(BoardMotion motion, float before) {
+        if (motion.age <= 0f) return;
+        if (!motion.rose && before <= 0f) {
+            motion.rose = true;
+            if (motion.ownClimbed) boardHaptic(HAPTIC_RISE, 1f);
+        }
+        long sum = motion.tickSum();
+        if (motion.tickSum == Long.MIN_VALUE) motion.tickSum = sum;
+        long now = SystemClock.uptimeMillis();
+        if (sum != motion.tickSum && now - boardTickAt >= BOARD_TICK_MS) {
+            motion.tickSum = sum;
+            boardTickAt = now;
+            boardHaptic(HAPTIC_TICK, motion.progress());
+            motion.felt = true;
+        }
+        if (!motion.landed && motion.settledAll()) {
+            motion.landed = true;
+            if (motion.felt || motion.exciting()) {
+                boardTickAt = now;
+                boardHaptic(HAPTIC_LAND, 1f);
+            }
+        }
+    }
+
+    private void boardHaptic(int kind, float strength) {
+        if (!settingHapticFeedbackEnabled || filmMode) return;
+        if (boardHapticMode < 0) boardHapticMode = pickBoardHaptics();
+        if (boardHapticMode == 2 || (boardHapticMode == 1 && kind != HAPTIC_TICK)) {
+            try {
+                int level = Math.max(0, Math.min(3, (int) (strength * 4f)));
+                vibrator.vibrate(boardEffect(kind, level));
+                return;
+            } catch (RuntimeException e) {
+                boardHapticMode = 0;
+            }
+        }
+        int feedback;
+        if (kind == HAPTIC_TICK) {
+            feedback = HapticFeedbackConstants.CLOCK_TICK;
+        } else if (kind == HAPTIC_LAND && Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            feedback = HapticFeedbackConstants.CONFIRM;
+        } else {
+            feedback = HapticFeedbackConstants.VIRTUAL_KEY;
+        }
+        performHapticFeedback(feedback);
+    }
+
+    private int pickBoardHaptics() {
+        if (vibrator == null) return 0;
+        try {
+            if (!vibrator.hasVibrator()) return 0;
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                if (vibrator.areAllPrimitivesSupported(VibrationEffect.Composition.PRIMITIVE_TICK, VibrationEffect.Composition.PRIMITIVE_CLICK)) {
+                    boardHapticRise = vibrator.areAllPrimitivesSupported(VibrationEffect.Composition.PRIMITIVE_QUICK_RISE);
+                    return 2;
+                }
+            }
+            return Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q ? 1 : 0;
+        } catch (RuntimeException e) {
+            return 0;
+        }
+    }
+
+    private VibrationEffect boardEffect(int kind, int level) {
+        if (boardHapticEffects == null) boardHapticEffects = new VibrationEffect[6];
+        int slot = kind == HAPTIC_TICK ? level : 3 + kind;
+        VibrationEffect effect = boardHapticEffects[slot];
+        if (effect == null) {
+            effect = boardHapticMode == 2 ? composedBoardEffect(kind, level, boardHapticRise) : predefinedBoardEffect(kind);
+            boardHapticEffects[slot] = effect;
+        }
+        return effect;
+    }
+
+    private static VibrationEffect composedBoardEffect(int kind, int level, boolean rise) {
+        if (kind == HAPTIC_TICK) {
+            return VibrationEffect.startComposition()
+                    .addPrimitive(VibrationEffect.Composition.PRIMITIVE_TICK, 0.38f + 0.16f * level)
+                    .compose();
+        }
+        if (kind == HAPTIC_LAND) {
+            return VibrationEffect.startComposition()
+                    .addPrimitive(VibrationEffect.Composition.PRIMITIVE_CLICK, 0.9f)
+                    .compose();
+        }
+        if (rise) {
+            return VibrationEffect.startComposition()
+                    .addPrimitive(VibrationEffect.Composition.PRIMITIVE_QUICK_RISE, 0.6f)
+                    .addPrimitive(VibrationEffect.Composition.PRIMITIVE_CLICK, 1f, 25)
+                    .compose();
+        }
+        return VibrationEffect.startComposition()
+                .addPrimitive(VibrationEffect.Composition.PRIMITIVE_CLICK, 0.6f)
+                .addPrimitive(VibrationEffect.Composition.PRIMITIVE_CLICK, 1f, 70)
+                .compose();
+    }
+
+    private static VibrationEffect predefinedBoardEffect(int kind) {
+        if (kind == HAPTIC_TICK) return VibrationEffect.createPredefined(VibrationEffect.EFFECT_TICK);
+        if (kind == HAPTIC_LAND) return VibrationEffect.createPredefined(VibrationEffect.EFFECT_HEAVY_CLICK);
+        return VibrationEffect.createPredefined(VibrationEffect.EFFECT_DOUBLE_CLICK);
+    }
+
+    private void watchVerdict() {
+        boardVerifyArmed = true;
+        boardVerifySince = Leaderboard.now() - 5000L;
+        boardVerifyUntil = SystemClock.uptimeMillis() + BOARD_VERIFY_WATCH_MS;
+        boardVerifyPoll = 0f;
+    }
+
+    private boolean awaitingVerdict() {
+        return boardVerifyUntil != 0L && SystemClock.uptimeMillis() < boardVerifyUntil;
+    }
+
+    private void followVerdict(Leaderboard.Board board) {
+        if (!board.verdictKnown) return;
+        boolean judged = !boardData.verifying && boardData.verdictTime >= boardVerifySince;
+        if (boardVerifyUntil != 0L && judged) {
+            boardVerifyUntil = 0L;
+        } else if (boardData.verifying && boardVerifyUntil == 0L && !boardVerifyArmed) {
+            watchVerdict();
         }
     }
 
@@ -3456,23 +5117,39 @@ class GameView extends View implements Choreographer.FrameCallback {
     }
 
     private void refreshBoard() {
+        loadBoardView(boardView());
+    }
+
+    private void loadBoardView(final int view) {
         if (!Leaderboard.configured()) {
             boardLoading = false;
             boardNote = "The leaderboard is not set up in this build";
             return;
         }
-        boardLoading = true;
-        boardNote = boardOffline ? BOARD_OFFLINE_NOTE : "Loading...";
-        Leaderboard.fetch(getContext(), settingBoardSize, this::post, (board, error) -> {
-            boardLoading = false;
-            boardRetrySec = 0f;
+        final int bit = 1 << view;
+        if ((boardLoadingMask & bit) != 0) return;
+        boardLoadingMask |= bit;
+        syncBoardLoading();
+        if (view == boardView()) boardNote = boardOffline ? BOARD_OFFLINE_NOTE : boardEntries().isEmpty() ? "Loading..." : "Updating...";
+        Leaderboard.fetch(getContext(), settingBoardSize, view, this::post, (board, error) -> {
+            boardLoadingMask &= ~bit;
+            boolean current = view == boardView();
             if (board != null) {
                 boardOffline = false;
-                boardData = board;
-                boardNote = boardHint();
-            } else {
+                board.loadedAt[view] = SystemClock.uptimeMillis();
+                planBoardMotion(board, view);
+                boardData.absorb(board, view);
+                boardStaleMask &= ~bit;
+                boardDataVersion++;
+                followVerdict(board);
+            } else if (current) {
                 boardOffline = error == null || Leaderboard.NO_CONNECTION.equals(error);
-                boardNote = boardOffline ? BOARD_OFFLINE_NOTE : error;
+            }
+            syncBoardLoading();
+            if (current) boardRetrySec = 0f;
+            if (!boardLoading) {
+                if (board == null && current) boardNote = boardOffline ? BOARD_OFFLINE_NOTE : error;
+                else if (current || boardData.loaded[boardView()]) boardNote = boardHint();
             }
         });
     }
@@ -3525,6 +5202,11 @@ class GameView extends View implements Choreographer.FrameCallback {
                 return true;
             }
             boardFling = 0f;
+            if (ready && boardRowsRect.contains(x, y) && (pressed == null || pressed == boardYouRect)) {
+                boardRowTapped(y);
+            } else if (ready && pressed == boardYouRect && boardYouRect.contains(x, y)) {
+                boardRowTapped(-1);
+            }
             if (ready && pressed != null && pressed.contains(x, y)) {
                 playSound(soundSwooshing);
                 if (pressed == boardCloseRect) closeBoard();
@@ -3533,13 +5215,17 @@ class GameView extends View implements Choreographer.FrameCallback {
                 else if (pressed == boardToggleRect) {
                     boardShowAll = !boardShowAll;
                     resetBoardScroll();
+                    hideBoardBubble();
                     prefs.edit().putBoolean(BOARD_SHOW_ALL_KEY, boardShowAll).apply();
-                    if (!boardLoading && boardData != null) boardNote = boardHint();
+                    showBoardView(false);
                 } else {
                     int tab = pressed == boardTabAllRect ? 0 : 1;
-                    if (tab != boardTab) resetBoardScroll();
+                    if (tab != boardTab) {
+                        resetBoardScroll();
+                        hideBoardBubble();
+                    }
                     boardTab = tab;
-                    if (!boardLoading && boardData != null) boardNote = boardHint();
+                    showBoardView(false);
                 }
             }
         } else if (action == MotionEvent.ACTION_CANCEL) {
@@ -3549,6 +5235,67 @@ class GameView extends View implements Choreographer.FrameCallback {
             boardFling = 0f;
         }
         return true;
+    }
+
+    private void boardRowTapped(int y) {
+        List<Leaderboard.Entry> entries = boardEntries();
+        int index;
+        if (y < 0) {
+            index = BOARD_PINNED_ROW;
+        } else {
+            index = boardRowStep > 0f ? (int) Math.floor((y - boardRowsRect.top + boardScroll) / boardRowStep) : -1;
+            if (index < 0 || index >= entries.size()) {
+                boardTapIndex = -1;
+                return;
+            }
+        }
+        long now = SystemClock.uptimeMillis();
+        if (index == boardTapIndex && now - boardTapTime <= DOUBLE_TAP_MS) {
+            Leaderboard.Entry entry = index == BOARD_PINNED_ROW ? boardPinned : entries.get(index);
+            boardTapIndex = -1;
+            if (entry == null) return;
+            boardBubbleIndex = index;
+            boardBubbleEntry = entry;
+            boardBubbleText = entry.name + "  \u00B7  " + entry.versionLabel();
+            boardBubbleAge = 0f;
+            playSound(soundSwooshing);
+            return;
+        }
+        boardTapIndex = index;
+        boardTapTime = now;
+    }
+
+    private void drawBoardBubble(Canvas canvas, float left, float width, float rowsTop, float rowsHeight, float youTop, float unit) {
+        if (boardBubbleEntry == null || boardBubbleAge >= BUBBLE_HOLD_SEC + BUBBLE_FADE_SEC || boardBubbleText == null) return;
+        float rowTop;
+        if (boardBubbleIndex == BOARD_PINNED_ROW) {
+            if (boardPinned != boardBubbleEntry) return;
+            rowTop = youTop + 2f * unit;
+        } else {
+            List<Leaderboard.Entry> entries = boardEntries();
+            if (boardBubbleIndex < 0 || boardBubbleIndex >= entries.size() || entries.get(boardBubbleIndex) != boardBubbleEntry) return;
+            rowTop = rowsTop + boardBubbleIndex * boardRowStep - boardScroll;
+            if (rowTop < rowsTop - boardRowStep * 0.5f || rowTop > rowsTop + rowsHeight - boardRowStep * 0.5f) return;
+        }
+        float rise = Math.min(1f, boardBubbleAge / BUBBLE_FADE_IN_SEC);
+        float fall = Math.max(0f, Math.min(1f, (boardBubbleAge - BUBBLE_HOLD_SEC) / BUBBLE_FADE_SEC));
+        float alpha = rise * rise * (3f - 2f * rise) * (1f - fall * fall * (3f - 2f * fall));
+        if (alpha <= 0f) return;
+        float size = 8f * unit;
+        float pad = 6f * unit;
+        boardTextPaint.setTextSize(size);
+        boardTextPaint.setTextAlign(Paint.Align.CENTER);
+        float textWidth = Math.min(boardTextPaint.measureText(boardBubbleText), width - 30f * unit);
+        float height = size * 2.1f;
+        float centerX = left + width / 2f;
+        boolean above = rowTop - height - 2f * unit >= rowsTop - 6f * unit;
+        float centerY = above ? rowTop - height / 2f - unit + (1f - alpha) * 2f * unit
+                : rowTop + boardRowStep + height / 2f + unit - (1f - alpha) * 2f * unit;
+        boardBubbleShape.set(centerX - textWidth / 2f - pad, centerY - height / 2f, centerX + textWidth / 2f + pad, centerY + height / 2f);
+        boardPaint.setColor(faded((Math.round(Color.alpha(STATUS_PILL) * alpha) << 24) | (STATUS_PILL & 0x00FFFFFF)));
+        canvas.drawRoundRect(boardBubbleShape, height / 2f, height / 2f, boardPaint);
+        boardText(canvas, boardBubbleText, centerX, centerY + size * 0.37f, size,
+                (Math.round(255f * alpha) << 24) | 0x00FFFFFF, Paint.Align.CENTER, width - 30f * unit);
     }
 
     private void scrollBoardToMine() {
@@ -3611,11 +5358,26 @@ class GameView extends View implements Choreographer.FrameCallback {
     private void boardRow(Canvas canvas, Leaderboard.Entry entry, String rank, float left, float width, float rowTop, float unit, boolean mine) {
         float rowHeight = BOARD_ROW_HEIGHT * unit;
         float baseline = rowTop + 13.5f * unit;
+        if (boardRowLift > 0f) {
+            boardPaint.setColor(faded(scaleAlpha(BOARD_LIFT_SHADOW, boardRowLift)));
+            boardShape.set(left + 6f * unit, rowTop + 1.5f * unit + 1.6f * unit * boardRowLift, left + width - 9f * unit,
+                    rowTop + rowHeight + 1.6f * unit * boardRowLift);
+            canvas.drawRoundRect(boardShape, unit * 3f, unit * 3f, boardPaint);
+            boardPaint.setColor(faded(mixColor(BOARD_PANEL, BOARD_PANEL_EDGE, Math.min(1f, boardRowLift * 1.2f))));
+            boardShape.set(left + 6f * unit, rowTop + 0.5f * unit, left + width - 9f * unit, rowTop + rowHeight - 0.5f * unit);
+            canvas.drawRoundRect(boardShape, unit * 3f, unit * 3f, boardPaint);
+        }
+        if (boardRowGlow > 0f) {
+            boardPaint.setColor(faded(scaleAlpha(0x66FFD45C, boardRowGlow)));
+            boardShape.set(left + 6f * unit, rowTop + 0.5f * unit, left + width - 9f * unit, rowTop + rowHeight - 0.5f * unit);
+            canvas.drawRoundRect(boardShape, unit * 3f, unit * 3f, boardPaint);
+        }
         if (mine) {
             boardPaint.setColor(faded(BOARD_OWN_ROW));
             boardShape.set(left + 7f * unit, rowTop + unit, left + width - 7f * unit, rowTop + rowHeight - unit);
             canvas.drawRoundRect(boardShape, unit * 2f, unit * 2f, boardPaint);
         }
+        if (boardRowArrow != 0 && boardRowArrowAlpha > 0f) boardArrow(canvas, left + 9.5f * unit, rowTop + 9.5f * unit, unit, boardRowArrow, boardRowArrowAlpha);
         int medal = medalFor(rank);
         if (medal > 0) {
             medal(canvas, medal, left + 23f * unit, rowTop + 9f * unit, unit);
@@ -3623,8 +5385,20 @@ class GameView extends View implements Choreographer.FrameCallback {
             boardText(canvas, rank, left + 32f * unit, baseline, 10f * unit, BOARD_ORANGE, Paint.Align.RIGHT, 26f * unit);
         }
         String score = String.valueOf(entry.score);
-        boardText(canvas, score, left + width - 13f * unit, baseline, 11f * unit, BOARD_DARK, Paint.Align.RIGHT, 0f);
+        String shown = boardRowShown >= 0 && boardRowShown != entry.score ? String.valueOf(boardRowShown) : score;
+        float scoreRight = left + width - 13f * unit;
+        boardTextPaint.setTextSize(11f * unit);
         float scoreWidth = boardTextPaint.measureText(score);
+        int scoreColor = boardRowHot > 0f ? mixColor(BOARD_DARK, BOARD_ORANGE, boardRowHot) : BOARD_DARK;
+        if (boardRowPop > 0f) {
+            float grow = 1f + 0.3f * boardRowPop;
+            canvas.save();
+            canvas.scale(grow, grow, scoreRight - scoreWidth / 2f, baseline - 4f * unit);
+            boardText(canvas, shown, scoreRight, baseline, 11f * unit, scoreColor, Paint.Align.RIGHT, 0f);
+            canvas.restore();
+        } else {
+            boardText(canvas, shown, scoreRight, baseline, 11f * unit, scoreColor, Paint.Align.RIGHT, 0f);
+        }
         float badgeRoom = 0f;
         if (entry.verified) {
             badgeRoom = 13f * unit;
@@ -3645,6 +5419,149 @@ class GameView extends View implements Choreographer.FrameCallback {
             canvas.drawRoundRect(boardShape, unit * 2f, unit * 2f, boardPaint);
             boardText(canvas, "CLASSIC", tagLeft + 18f * unit, rowTop + 12f * unit, 6.5f * unit, Color.WHITE, Paint.Align.CENTER, 32f * unit);
         }
+        if (boardRowGainAge >= 0f && boardRowGain > 0) {
+            float t = boardRowGainAge;
+            float fade = Math.min(1f, t / 0.12f) * (1f - Math.max(0f, (t - 0.55f) / 0.45f));
+            float rise = 1f - (1f - t) * (1f - t);
+            fade = Math.max(0f, Math.min(1f, fade));
+            String gain = "+" + boardRowGain;
+            float gainRight = scoreRight - scoreWidth - 4f * unit - badgeRoom;
+            float gainBase = baseline - 1.5f * unit - 5f * unit * rise;
+            boardTextPaint.setTextSize(7.5f * unit);
+            float gainWidth = boardTextPaint.measureText(gain);
+            boardPaint.setColor(faded(scaleAlpha(BOARD_PANEL_EDGE, fade * 0.92f)));
+            boardShape.set(gainRight - gainWidth - 2.5f * unit, gainBase - 6.8f * unit, gainRight + 2.5f * unit, gainBase + 2f * unit);
+            canvas.drawRoundRect(boardShape, 4.4f * unit, 4.4f * unit, boardPaint);
+            boardText(canvas, gain, gainRight, gainBase, 7.5f * unit, scaleAlpha(BOARD_GAIN, fade), Paint.Align.RIGHT, 0f);
+        }
+    }
+
+    private void boardArrow(Canvas canvas, float x, float y, float unit, int direction, float alpha) {
+        int color = scaleAlpha(direction > 0 ? BOARD_GAIN : BOARD_DROP, alpha);
+        boardPaint.setColor(faded(color));
+        medalPath.reset();
+        float half = 2.6f * unit;
+        float tall = 2.4f * unit;
+        float bob = (1f - alpha) * 1.5f * unit * direction;
+        if (direction > 0) {
+            medalPath.moveTo(x, y - tall + bob);
+            medalPath.lineTo(x + half, y + tall * 0.6f + bob);
+            medalPath.lineTo(x - half, y + tall * 0.6f + bob);
+        } else {
+            medalPath.moveTo(x, y + tall + bob);
+            medalPath.lineTo(x + half, y - tall * 0.6f + bob);
+            medalPath.lineTo(x - half, y - tall * 0.6f + bob);
+        }
+        medalPath.close();
+        canvas.drawPath(medalPath, boardPaint);
+    }
+
+    private static int scaleAlpha(int color, float amount) {
+        int alpha = Math.round(Color.alpha(color) * Math.max(0f, Math.min(1f, amount)));
+        return (color & 0x00FFFFFF) | (alpha << 24);
+    }
+
+    private static int mixColor(int from, int to, float t) {
+        float k = Math.max(0f, Math.min(1f, t));
+        int a = Math.round(Color.alpha(from) + (Color.alpha(to) - Color.alpha(from)) * k);
+        int r = Math.round(Color.red(from) + (Color.red(to) - Color.red(from)) * k);
+        int g = Math.round(Color.green(from) + (Color.green(to) - Color.green(from)) * k);
+        int b = Math.round(Color.blue(from) + (Color.blue(to) - Color.blue(from)) * k);
+        return (a << 24) | (r << 16) | (g << 8) | b;
+    }
+
+    private void plainBoardRow() {
+        boardRowShown = -1;
+        boardRowArrow = 0;
+        boardRowGain = 0;
+        boardRowGlow = 0f;
+        boardRowPop = 0f;
+        boardRowLift = 0f;
+        boardRowArrowAlpha = 0f;
+        boardRowHot = 0f;
+        boardRowGainAge = -1f;
+    }
+
+    private void styleBoardRow(BoardMotion motion, int row) {
+        boardRowShown = motion.scoreAt(row);
+        boardRowGlow = motion.glow(row);
+        boardRowPop = motion.pop(row);
+        boardRowHot = motion.hot(row);
+        boardRowGainAge = motion.gainAge(row);
+        boardRowGain = motion.fromScore[row] >= 0 ? motion.list.get(row).score - motion.fromScore[row] : 0;
+        boardRowArrow = motion.arrow(row);
+        boardRowArrowAlpha = motion.arrowAlpha(boardRowArrow != 0);
+        boardRowLift = motion.lift(row);
+    }
+
+    private void drawMovingRows(Canvas canvas, BoardMotion motion, List<Leaderboard.Entry> entries, float left, float width, float rowsTop,
+            float rowsHeight, float unit) {
+        float rowHeight = BOARD_ROW_HEIGHT * unit;
+        int count = Math.min(entries.size(), motion.from.length);
+        float savedAlpha = boardAlpha;
+        for (int layer = 0; layer < 3; layer++) {
+            for (int row = 0; row < count; row++) {
+                if (motion.layer(row) != layer) continue;
+                float at = motion.rowAt(row);
+                float top = rowsTop + at * rowHeight - boardScroll;
+                if (top >= rowsTop + rowsHeight || top + rowHeight <= rowsTop) continue;
+                float enter = motion.enter(row);
+                if (enter <= 0f) continue;
+                styleBoardRow(motion, row);
+                String rank = motion.moving(row) ? String.valueOf(Math.max(1, Math.round(at) + 1)) : String.valueOf(row + 1);
+                boardAlpha = savedAlpha * enter;
+                boolean shifted = enter < 1f || boardRowLift > 0f;
+                if (shifted) {
+                    canvas.save();
+                    if (enter < 1f) canvas.translate((1f - enter) * (motion.newcomer[row] ? 18f : 10f) * unit, 0f);
+                    if (boardRowLift > 0f) {
+                        float grow = 1f + 0.035f * boardRowLift;
+                        canvas.scale(grow, grow, left + width / 2f, top + rowHeight / 2f);
+                    }
+                }
+                boardRow(canvas, entries.get(row), rank, left, width, top, unit, row == boardMineIndex);
+                if (shifted) canvas.restore();
+                boardAlpha = savedAlpha;
+                plainBoardRow();
+            }
+        }
+    }
+
+    private void drawBoardSkeleton(Canvas canvas, float left, float width, float rowsTop, float unit) {
+        float rowHeight = BOARD_ROW_HEIGHT * unit;
+        for (int row = 0; row < BOARD_ROWS; row++) {
+            float wave = 0.5f + 0.5f * (float) Math.sin(boardShine * 5.5f - row * 0.55f);
+            float fade = 1f - row / (float) (BOARD_ROWS + 2);
+            int color = scaleAlpha(BOARD_DARK, (0.07f + 0.08f * wave) * fade);
+            boardPaint.setColor(faded(color));
+            float top = rowsTop + row * rowHeight;
+            canvas.drawCircle(left + 23f * unit, top + 9.5f * unit, 5f * unit, boardPaint);
+            float nameWidth = (58f + ((row * 37) % 5) * 11f) * unit;
+            boardShape.set(left + 37f * unit, top + 6f * unit, left + 37f * unit + nameWidth, top + 13f * unit);
+            canvas.drawRoundRect(boardShape, unit * 3.5f, unit * 3.5f, boardPaint);
+            float scoreWidth = (16f + ((row * 3) % 3) * 5f) * unit;
+            boardShape.set(left + width - 13f * unit - scoreWidth, top + 5.5f * unit, left + width - 13f * unit, top + 13.5f * unit);
+            canvas.drawRoundRect(boardShape, unit * 3.5f, unit * 3.5f, boardPaint);
+        }
+    }
+
+    private void drawBoardProgress(Canvas canvas, float left, float width, float rowsTop, float unit) {
+        float trackLeft = left + 14f * unit;
+        float track = width - 28f * unit;
+        float top = rowsTop - 3.4f * unit;
+        float bottom = top + 1.6f * unit;
+        boardPaint.setColor(faded(scaleAlpha(BOARD_DARK, 0.12f)));
+        boardShape.set(trackLeft, top, trackLeft + track, bottom);
+        canvas.drawRoundRect(boardShape, unit, unit, boardPaint);
+        float cycle = (boardShine % 1.1f) / 1.1f;
+        float head = cycle < 1f ? 1f - (1f - cycle) * (1f - cycle) : 1f;
+        float tail = cycle * cycle;
+        float from = trackLeft + track * tail;
+        float to = trackLeft + track * head;
+        if (to - from < 2f * unit) return;
+        boardPaint.setColor(faded(BOARD_ORANGE));
+        boardShape.set(from, top, to, bottom);
+        canvas.drawRoundRect(boardShape, unit, unit, boardPaint);
     }
 
     static int medalFor(String rank) {
@@ -3814,7 +5731,8 @@ class GameView extends View implements Choreographer.FrameCallback {
         }
         boolean still = boardAnim >= 1f && !boardClosing;
         boolean reshaped = nameSpring[0] > 0f && (!nameSide || sideFit < 1f);
-        if (still && reshaped && drawBoardCached(canvas, fade)) return;
+        boolean idle = !boardLoading && currentBoardMotion() == null;
+        if (still && reshaped && idle && drawBoardCached(canvas, fade)) return;
         boardCached = false;
         canvas.save();
         canvas.scale(panelScale, panelScale, boardPanel.centerX(), boardPanel.centerY());
@@ -3855,6 +5773,8 @@ class GameView extends View implements Choreographer.FrameCallback {
         }
         long key = 17L;
         key = key * 31L + System.identityHashCode(boardData);
+        key = key * 31L + boardDataVersion;
+        key = key * 31L + (boardBubbleAge < BUBBLE_HOLD_SEC + BUBBLE_FADE_SEC ? Float.floatToIntBits(boardBubbleAge) : 0);
         key = key * 31L + (boardNote == null ? 0 : boardNote.hashCode());
         key = key * 31L + (boardLoading ? 1 : 2);
         key = key * 31L + (boardOffline ? 1 : 2);
@@ -3951,13 +5871,20 @@ class GameView extends View implements Choreographer.FrameCallback {
         boardRowsRect.set((int) left, (int) rowsTop, (int) (left + width), (int) (rowsTop + rowsHeight));
         canvas.save();
         canvas.clipRect(left, rowsTop, left + width, rowsTop + rowsHeight);
-        int first = Math.max(0, (int) (boardScroll / rowHeight));
-        int last = Math.min(count, first + BOARD_ROWS + 1);
-        for (int row = first; row < last; row++) {
-            boardRow(canvas, entries.get(row), String.valueOf(row + 1), left, width, rowsTop + row * rowHeight - boardScroll, unit,
-                    row == boardMineIndex);
+        BoardMotion motion = currentBoardMotion();
+        if (motion == null) {
+            int first = Math.max(0, (int) (boardScroll / rowHeight));
+            int last = Math.min(count, first + BOARD_ROWS + 1);
+            for (int row = first; row < last; row++) {
+                boardRow(canvas, entries.get(row), String.valueOf(row + 1), left, width, rowsTop + row * rowHeight - boardScroll, unit,
+                        row == boardMineIndex);
+            }
+        } else {
+            drawMovingRows(canvas, motion, entries, left, width, rowsTop, rowsHeight, unit);
         }
+        if (count == 0 && boardLoading && !boardOffline) drawBoardSkeleton(canvas, left, width, rowsTop, unit);
         canvas.restore();
+        if (boardLoading && Leaderboard.configured()) drawBoardProgress(canvas, left, width, rowsTop, unit);
         if (boardScrollMax > 0f) {
             float trackTop = rowsTop + 2f * unit;
             float track = rowsHeight - 4f * unit;
@@ -3973,7 +5900,8 @@ class GameView extends View implements Choreographer.FrameCallback {
         }
         float youTop = rowsTop + rowsHeight;
         boardYouRect.setEmpty();
-        if (!boardLoading) {
+        boardPinned = null;
+        if (!boardLoading || count > 0) {
             float mineTop = boardMineIndex * rowHeight - boardScroll;
             boolean hidden = boardMineIndex >= 0 && (mineTop < -rowHeight * 0.5f || mineTop > rowsHeight - rowHeight * 0.5f);
             Leaderboard.Entry pinned = null;
@@ -3984,17 +5912,41 @@ class GameView extends View implements Choreographer.FrameCallback {
                 boardYouRect.set((int) left, (int) youTop, (int) (left + width), (int) (youTop + rowHeight + 2f * unit));
             } else if (boardMineIndex < 0 && mine != null && mine.score > 0) {
                 pinned = mine;
-                place = rank > 0 ? "#" + rank : rank < 0 ? Leaderboard.RANK_LIMIT + "+" : "-";
+                place = rank > 0 ? "#" + rank : "-";
             }
+            boardPinned = pinned;
             if (pinned != null) {
                 boardPaint.setColor(faded(BOARD_DIVIDER));
                 boardShape.set(left + 12f * unit, youTop + unit, left + width - 12f * unit, youTop + unit * 1.8f);
                 canvas.drawRect(boardShape, boardPaint);
                 float drop = boardPressed == boardYouRect ? unit : 0f;
+                if (motion != null) {
+                    if (hidden) {
+                        styleBoardRow(motion, boardMineIndex);
+                        boardRowLift = 0f;
+                    } else {
+                        if (motion.mineFromScore >= 0) {
+                            boardRowShown = motion.mineScoreAt();
+                            boardRowHot = motion.mineCountSec > 0f && motion.age < BOARD_COUNT_DELAY + motion.mineCountSec ? (motion.age >= 0f ? 1f : 0f) : 0f;
+                            boardRowGlow = BoardMotion.glowAt(motion.age, 0f, BOARD_COUNT_DELAY + motion.mineCountSec);
+                            boardRowPop = BoardMotion.popAt(motion.age, BOARD_COUNT_DELAY + motion.mineCountSec);
+                            float gain = motion.age < BOARD_COUNT_DELAY ? -1f : (motion.age - BOARD_COUNT_DELAY) / BOARD_GAIN_SEC;
+                            boardRowGainAge = gain >= 1f ? -1f : gain;
+                            boardRowGain = motion.mineScore - motion.mineFromScore;
+                        }
+                        if (motion.mineFromRank > 0) {
+                            place = "#" + motion.mineRankAt();
+                            boardRowArrow = motion.mineToRank < motion.mineFromRank ? 1 : -1;
+                            boardRowArrowAlpha = motion.arrowAlpha(true);
+                        }
+                    }
+                }
                 boardRow(canvas, pinned, place, left, width, youTop + 2f * unit + drop, unit, true);
+                plainBoardRow();
             }
         }
 
+        drawBoardBubble(canvas, left, width, rowsTop, rowsHeight, youTop, unit);
         float footerTop = youTop + rowHeight;
         boolean offline = boardOffline;
         if (offline && count == 0) {
@@ -4124,7 +6076,7 @@ class GameView extends View implements Choreographer.FrameCallback {
     }
 
     private void triggerThunderHaptic() {
-        if (!settingHapticFeedbackEnabled || vibrator == null) return;
+        if (!settingHapticFeedbackEnabled || vibrator == null || (filmMode && !filmFeel)) return;
         long[] pattern = {0, 30, 40, 30, 40, 80, 20, 100};
         try {
             if (!vibrator.hasVibrator()) return;
@@ -4151,14 +6103,15 @@ class GameView extends View implements Choreographer.FrameCallback {
     }
 
     private void drawFrame(Canvas canvas) {
+        drawRandom.setSeed(Double.doubleToLongBits(clock) * 0x9E3779B97F4A7C15L);
         boolean shaking = shakeTimer > 0;
         if (shaking) canvas.drawColor(Color.BLACK);
 
         canvas.save();
         if (shaking) {
             float magnitude = currentShakeMagnitude * (shakeTimer / 0.5f);
-            float xOffset = (random.nextFloat() - 0.5f) * 2 * magnitude;
-            float yOffset = (random.nextFloat() - 0.5f) * 2 * magnitude;
+            float xOffset = (drawRandom.nextFloat() - 0.5f) * 2 * magnitude;
+            float yOffset = (drawRandom.nextFloat() - 0.5f) * 2 * magnitude;
             canvas.translate(xOffset, yOffset);
         }
         if (cameraZoom > 1.0f) {
@@ -4171,7 +6124,7 @@ class GameView extends View implements Choreographer.FrameCallback {
         canvas.restore();
 
         drawHud(canvas);
-        if (settingShowFps) drawFps(canvas);
+        if (settingShowFps && !filmMode) drawFps(canvas);
         if (isPaused) drawPauseOverlay(canvas);
         if (boardStatusAlpha > 0f && boardStatusPlace()) drawBoardStatus(canvas);
         if (boardOpen) drawBoard(canvas);
@@ -4398,11 +6351,11 @@ class GameView extends View implements Choreographer.FrameCallback {
 
         for (int strand = 0; strand < 3; strand++) {
             int count = 0;
-            float cx = x + (random.nextFloat() * w);
+            float cx = x + (drawRandom.nextFloat() * w);
             float cy = startY;
             while (cy < endY && count + 4 <= electricityPoints.length) {
-                float nextY = cy + (random.nextInt(40) + 10) * fxScale;
-                float nextX = Math.max(x, Math.min(x + w, cx + (random.nextInt(30) - 15) * fxScale));
+                float nextY = cy + (drawRandom.nextInt(40) + 10) * fxScale;
+                float nextX = Math.max(x, Math.min(x + w, cx + (drawRandom.nextInt(30) - 15) * fxScale));
                 electricityPoints[count++] = cx;
                 electricityPoints[count++] = cy;
                 electricityPoints[count++] = nextX;
@@ -4844,6 +6797,7 @@ class GameView extends View implements Choreographer.FrameCallback {
 
     @Override
     public boolean onTouchEvent(MotionEvent event) {
+        if (filmMode) return false;
         if (!isReady) return true;
         int touchX = (int) event.getX();
         int touchY = (int) event.getY();
@@ -4899,7 +6853,7 @@ class GameView extends View implements Choreographer.FrameCallback {
 
     @Override
     public boolean onHoverEvent(MotionEvent event) {
-        if (event.getToolType(0) == MotionEvent.TOOL_TYPE_MOUSE) {
+        if (!filmMode && event.getToolType(0) == MotionEvent.TOOL_TYPE_MOUSE) {
             hasMouse = true;
             if (event.getActionMasked() == MotionEvent.ACTION_HOVER_EXIT) {
                 hoverX = -1f;
@@ -5132,6 +7086,8 @@ class GameView extends View implements Choreographer.FrameCallback {
             if (playerFlaps) {
                 if (replayLive) recordEvent(REPLAY_FLAP);
                 flap();
+            } else if (replayLive && !replayForBoard) {
+                recordEvent(REPLAY_MARK | MARK_START);
             }
         } else if (gameState == GameState.PLAYING) {
             if (playerFlaps) {
@@ -5229,7 +7185,7 @@ class GameView extends View implements Choreographer.FrameCallback {
         roundFlaps++;
         kickTilt();
         playSound(soundWing);
-        if (settingHapticFeedbackEnabled && !settingAutopilotEnabled) {
+        if (settingHapticFeedbackEnabled && !settingAutopilotEnabled && (!filmMode || filmFeel)) {
             performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY);
         }
         lastFlapTime = clock;
@@ -5283,7 +7239,13 @@ class GameView extends View implements Choreographer.FrameCallback {
 
     private void updateWeatherSounds() {
         boolean inRound = (gameState == GameState.PLAYING && !isPaused) || gameState == GameState.WAITING;
-        boolean audible = settingSoundEnabled && hostResumed && inRound;
+        boolean audible = settingSoundEnabled && (filmMode ? filmAudible || filmSink != null : hostResumed) && inRound;
+        if (filmMode && filmSink != null) {
+            float level = Math.max(0, Math.min(100, settingWeatherVolume)) / 100f;
+            filmSink.loop(R.raw.rain, audible && (settingWeatherEffect == WEATHER_RAIN || settingWeatherEffect == WEATHER_STORM), filmTime, level);
+            filmSink.loop(R.raw.storm_backtrack, audible && settingWeatherEffect == WEATHER_STORM, filmTime, level);
+            return;
+        }
         boolean rain = audible && (settingWeatherEffect == WEATHER_RAIN || settingWeatherEffect == WEATHER_STORM);
         boolean storm = audible && settingWeatherEffect == WEATHER_STORM;
         float volume = Math.max(0, Math.min(100, settingWeatherVolume)) / 100f;
@@ -5299,6 +7261,11 @@ class GameView extends View implements Choreographer.FrameCallback {
     }
 
     private void stopWeatherSounds() {
+        if (filmMode && filmSink != null) {
+            filmSink.loop(R.raw.rain, false, filmTime, 0f);
+            filmSink.loop(R.raw.storm_backtrack, false, filmTime, 0f);
+            return;
+        }
         try {
             setLoopPlaying(rainSoundPlayer, false);
             setLoopPlaying(stormSoundPlayer, false);
@@ -5308,10 +7275,31 @@ class GameView extends View implements Choreographer.FrameCallback {
         }
     }
 
+    private int rawSound(int soundId) {
+        if (soundId == 0) return 0;
+        if (soundId == soundWing) return R.raw.wing;
+        if (soundId == soundPoint) return R.raw.point;
+        if (soundId == soundHit) return R.raw.hit;
+        if (soundId == soundDie) return R.raw.die;
+        if (soundId == soundSwooshing) return R.raw.swooshing;
+        if (soundId == soundThunder) return R.raw.thunder;
+        return 0;
+    }
+
     private void playSound(final int soundId) {
+        if (filmMode) {
+            if (!settingSoundEnabled) return;
+            float level = Math.max(0, Math.min(100, settingSoundVolume)) / 100f;
+            if (filmSink != null) {
+                int raw = rawSound(soundId);
+                if (raw != 0 && level > 0f) filmSink.sound(raw, filmTime, level);
+                return;
+            }
+            if (!filmAudible) return;
+        }
         final SoundPool pool = soundPool;
         final ExecutorService executor = soundExecutor;
-        if (!settingSoundEnabled || !hostResumed || soundId == 0) return;
+        if (!settingSoundEnabled || !(filmMode ? filmAudible : hostResumed) || soundId == 0) return;
         if (pool == null || executor == null || executor.isShutdown()) return;
         final float volume = Math.max(0, Math.min(100, settingSoundVolume)) / 100f;
         if (volume <= 0f) return;
@@ -5357,13 +7345,13 @@ class GameView extends View implements Choreographer.FrameCallback {
         trackPause();
         lastFrameTimeNanos = 0;
         stepAccumulator = 0f;
-        choreographer.postFrameCallback(this);
+        choreographer().postFrameCallback(this);
     }
 
     private void stopLoop() {
         isRunning = false;
         trackPause();
-        choreographer.removeFrameCallback(this);
+        choreographer().removeFrameCallback(this);
     }
 
     @Override
@@ -5377,7 +7365,7 @@ class GameView extends View implements Choreographer.FrameCallback {
     @Override
     public void doFrame(long frameTimeNanos) {
         if (!isRunning) return;
-        choreographer.postFrameCallback(this);
+        choreographer().postFrameCallback(this);
         long vsync = lastVsyncNanos == 0 ? 0 : frameTimeNanos - lastVsyncNanos;
         lastVsyncNanos = frameTimeNanos;
         if (lastFrameTimeNanos == 0) {
@@ -5458,6 +7446,24 @@ class GameView extends View implements Choreographer.FrameCallback {
     private static final class TrailParticle {
         float x, y, rotation, rainbowHue;
         int colorIndex, frameIndex;
+
+        void save(DataOutputStream out) throws IOException {
+            out.writeFloat(x);
+            out.writeFloat(y);
+            out.writeFloat(rotation);
+            out.writeFloat(rainbowHue);
+            out.writeInt(colorIndex);
+            out.writeInt(frameIndex);
+        }
+
+        void load(DataInputStream in) throws IOException {
+            x = in.readFloat();
+            y = in.readFloat();
+            rotation = in.readFloat();
+            rainbowHue = in.readFloat();
+            colorIndex = in.readInt();
+            frameIndex = in.readInt();
+        }
 
         void set(float x, float y, float rotation, int colorIndex, int frameIndex, float rainbowHue) {
             this.x = x;
@@ -5636,6 +7642,30 @@ class GameView extends View implements Choreographer.FrameCallback {
 
         void setHeavyRain(boolean enable) {
             heavyRain = enable;
+        }
+
+        void save(DataOutputStream out) throws IOException {
+            out.writeInt(weatherType);
+            out.writeBoolean(heavyRain);
+            out.writeFloat(lightningIntensity);
+            for (int i = 0; i < PARTICLES_PER_LAYER; i++) {
+                frontParticles[i].save(out);
+                backParticles[i].save(out);
+            }
+        }
+
+        void load(DataInputStream in) throws IOException {
+            int type = in.readInt();
+            boolean heavy = in.readBoolean();
+            float intensity = in.readFloat();
+            bolts.clear();
+            if (type != weatherType) return;
+            heavyRain = heavy;
+            lightningIntensity = intensity;
+            for (int i = 0; i < PARTICLES_PER_LAYER; i++) {
+                frontParticles[i].load(in);
+                backParticles[i].load(in);
+            }
         }
 
         void setWeatherType(int type) {
@@ -5826,7 +7856,7 @@ class GameView extends View implements Choreographer.FrameCallback {
     }
 
     private static final class WeatherParticle {
-        final float z;
+        float z;
         final float bandDepth;
         float x, y;
         float ySpeed, size, length;
@@ -5836,6 +7866,30 @@ class GameView extends View implements Choreographer.FrameCallback {
         WeatherParticle(float z, float bandDepth) {
             this.z = z;
             this.bandDepth = bandDepth;
+        }
+
+        void save(DataOutputStream out) throws IOException {
+            out.writeFloat(z);
+            out.writeFloat(x);
+            out.writeFloat(y);
+            out.writeFloat(ySpeed);
+            out.writeFloat(size);
+            out.writeFloat(length);
+            out.writeFloat(offset);
+            out.writeFloat(bounceX);
+            out.writeFloat(bounceY);
+        }
+
+        void load(DataInputStream in) throws IOException {
+            z = in.readFloat();
+            x = in.readFloat();
+            y = in.readFloat();
+            ySpeed = in.readFloat();
+            size = in.readFloat();
+            length = in.readFloat();
+            offset = in.readFloat();
+            bounceX = in.readFloat();
+            bounceY = in.readFloat();
         }
 
         void respawn(int screenWidth, int screenHeight, int weatherType, float fx, Random random) {
@@ -5898,15 +7952,22 @@ class Pipe {
     private static final float BASE_MARGIN_PERCENT = 0.08f;
     private static final float FAR_OFF_SCREEN = 20000f;
 
-    private static final Random random = new Random();
-    private static float pipeHeadWidth, pipeHeadHeight;
+    static final class Kit {
+        final Random random = new Random();
+        float headWidth, headHeight, bodyWidth, bodyOffsetX;
 
-    static void reseed(long seed) {
-        random.setSeed(seed);
+        void size(float scale) {
+            headWidth = UNSCALED_HEAD_WIDTH * scale;
+            headHeight = UNSCALED_HEAD_HEIGHT * scale;
+            bodyWidth = UNSCALED_BODY_WIDTH * scale;
+            bodyOffsetX = (headWidth - bodyWidth) / 2.0f;
+        }
     }
-    private static float pipeBodyWidth, pipeBodyOffsetX;
+
+    private final Kit kit;
 
     float x, pastX = Float.NaN, keptX;
+    int colorIndex;
     int topPipeY;
     boolean isScored;
     int width, height;
@@ -5917,7 +7978,8 @@ class Pipe {
     private final Rect bottomHeadRect = new Rect(), bottomBodyRect = new Rect();
     private float currentYOffset = 0;
 
-    public Pipe(float x, int width, int height) {
+    public Pipe(Kit kit, float x, int width, int height) {
+        this.kit = kit;
         this.x = x;
         this.width = width;
         this.height = height;
@@ -5926,13 +7988,6 @@ class Pipe {
         this.pipePaint = new Paint();
         this.pipePaint.setFilterBitmap(false);
         this.pipePaint.setAntiAlias(false);
-    }
-
-    public static void initHitboxDimensions(float scale) {
-        pipeHeadWidth = UNSCALED_HEAD_WIDTH * scale;
-        pipeHeadHeight = UNSCALED_HEAD_HEIGHT * scale;
-        pipeBodyWidth = UNSCALED_BODY_WIDTH * scale;
-        pipeBodyOffsetX = (pipeHeadWidth - pipeBodyWidth) / 2.0f;
     }
 
     public void resetHeight(int pipeGap, int playAreaHeight, int topOffset, float variationMultiplier) {
@@ -5944,14 +7999,14 @@ class Pipe {
         if (availableRange <= 0) {
             this.topPipeY = (playAreaHeight / 2) + topOffset - pipeGap / 2;
         } else {
-            this.topPipeY = random.nextInt(availableRange) + margin + topOffset;
+            this.topPipeY = kit.random.nextInt(availableRange) + margin + topOffset;
         }
         this.currentYOffset = 0;
     }
 
     public void resetHeightClassic(int pipeGap, int playAreaHeight, int topOffset, float variationMultiplier, float scale) {
         float spread = CLASSIC_GAP_BOTTOM_SPREAD * Math.max(0f, variationMultiplier);
-        float bottom = (CLASSIC_GAP_BOTTOM_CENTER + (random.nextFloat() - 0.5f) * spread) * scale;
+        float bottom = (CLASSIC_GAP_BOTTOM_CENTER + (kit.random.nextFloat() - 0.5f) * spread) * scale;
         int lowest = playAreaHeight - pipeGap;
         int top = Math.round(bottom) - pipeGap;
         this.topPipeY = (lowest <= 0 ? lowest / 2 : Math.max(0, Math.min(lowest, top))) + topOffset;
@@ -6001,7 +8056,7 @@ class Pipe {
     }
 
     public Rect getTopHeadRect(float widthMultiplier) {
-        float top = getCurrentTopPipeY() - pipeHeadHeight;
+        float top = getCurrentTopPipeY() - kit.headHeight;
         float bottom = getCurrentTopPipeY();
         float visualWidth = this.width * widthMultiplier;
         float xPos = x + (this.width - visualWidth) / 2.0f;
@@ -6010,16 +8065,16 @@ class Pipe {
     }
 
     public Rect getTopBodyRect(float widthMultiplier) {
-        float bottom = getCurrentTopPipeY() - pipeHeadHeight;
-        float visualWidth = pipeBodyWidth * widthMultiplier;
-        float xPos = x + pipeBodyOffsetX + (pipeBodyWidth - visualWidth) / 2.0f;
+        float bottom = getCurrentTopPipeY() - kit.headHeight;
+        float visualWidth = kit.bodyWidth * widthMultiplier;
+        float xPos = x + kit.bodyOffsetX + (kit.bodyWidth - visualWidth) / 2.0f;
         topBodyRect.set((int) xPos, (int) -FAR_OFF_SCREEN, (int) (xPos + visualWidth), (int) bottom);
         return topBodyRect;
     }
 
     public Rect getBottomHeadRect(int pipeGap, float widthMultiplier) {
         float top = getBottomPipeY(pipeGap);
-        float bottom = top + pipeHeadHeight;
+        float bottom = top + kit.headHeight;
         float visualWidth = this.width * widthMultiplier;
         float xPos = x + (this.width - visualWidth) / 2.0f;
         bottomHeadRect.set((int) xPos, (int) top, (int) (xPos + visualWidth), (int) bottom);
@@ -6027,9 +8082,9 @@ class Pipe {
     }
 
     public Rect getBottomBodyRect(int pipeGap, float widthMultiplier) {
-        float top = getBottomPipeY(pipeGap) + pipeHeadHeight;
-        float visualWidth = pipeBodyWidth * widthMultiplier;
-        float xPos = x + pipeBodyOffsetX + (pipeBodyWidth - visualWidth) / 2.0f;
+        float top = getBottomPipeY(pipeGap) + kit.headHeight;
+        float visualWidth = kit.bodyWidth * widthMultiplier;
+        float xPos = x + kit.bodyOffsetX + (kit.bodyWidth - visualWidth) / 2.0f;
         bottomBodyRect.set((int) xPos, (int) top, (int) (xPos + visualWidth), (int) (top + FAR_OFF_SCREEN));
         return bottomBodyRect;
     }
@@ -6414,5 +8469,174 @@ final class NamePanel extends FrameLayout {
 
     String statusText() {
         return String.valueOf(status.getText());
+    }
+}
+
+final class FastBytes extends java.io.OutputStream {
+    private byte[] data;
+    private int size;
+
+    FastBytes(int capacity) {
+        data = new byte[Math.max(64, capacity)];
+    }
+
+    void reset() {
+        size = 0;
+    }
+
+    private void room(int extra) {
+        if (size + extra <= data.length) return;
+        data = java.util.Arrays.copyOf(data, Math.max(data.length * 2, size + extra));
+    }
+
+    @Override
+    public void write(int value) {
+        room(1);
+        data[size++] = (byte) value;
+    }
+
+    @Override
+    public void write(byte[] source, int offset, int length) {
+        room(length);
+        System.arraycopy(source, offset, data, size, length);
+        size += length;
+    }
+
+    byte[] toByteArray() {
+        return java.util.Arrays.copyOf(data, size);
+    }
+}
+
+final class MemoryPrefs implements SharedPreferences {
+    private final java.util.Map<String, Object> values = new java.util.concurrent.ConcurrentHashMap<>();
+
+    MemoryPrefs(java.util.Map<String, Object> initial) {
+        for (java.util.Map.Entry<String, Object> entry : initial.entrySet()) {
+            if (entry.getKey() != null && entry.getValue() != null) values.put(entry.getKey(), entry.getValue());
+        }
+    }
+
+    @Override
+    public java.util.Map<String, ?> getAll() {
+        return new java.util.HashMap<>(values);
+    }
+
+    @Override
+    public String getString(String key, String fallback) {
+        Object value = values.get(key);
+        return value instanceof String ? (String) value : fallback;
+    }
+
+    @SuppressWarnings("unchecked")
+    public java.util.Set<String> getStringSet(String key, java.util.Set<String> fallback) {
+        Object value = values.get(key);
+        return value instanceof java.util.Set ? new java.util.HashSet<>((java.util.Set<String>) value) : fallback;
+    }
+
+    @Override
+    public int getInt(String key, int fallback) {
+        Object value = values.get(key);
+        return value instanceof Integer ? (Integer) value : fallback;
+    }
+
+    @Override
+    public long getLong(String key, long fallback) {
+        Object value = values.get(key);
+        return value instanceof Long ? (Long) value : fallback;
+    }
+
+    @Override
+    public float getFloat(String key, float fallback) {
+        Object value = values.get(key);
+        return value instanceof Float ? (Float) value : fallback;
+    }
+
+    @Override
+    public boolean getBoolean(String key, boolean fallback) {
+        Object value = values.get(key);
+        return value instanceof Boolean ? (Boolean) value : fallback;
+    }
+
+    @Override
+    public boolean contains(String key) {
+        return values.containsKey(key);
+    }
+
+    @Override
+    public Editor edit() {
+        return new MemoryEditor();
+    }
+
+    public void registerOnSharedPreferenceChangeListener(OnSharedPreferenceChangeListener listener) {
+    }
+
+    public void unregisterOnSharedPreferenceChangeListener(OnSharedPreferenceChangeListener listener) {
+    }
+
+    final class MemoryEditor implements Editor {
+        private final java.util.Map<String, Object> changes = new java.util.HashMap<>();
+        private boolean clear;
+
+        @Override
+        public Editor putString(String key, String value) {
+            changes.put(key, value);
+            return this;
+        }
+
+        public Editor putStringSet(String key, java.util.Set<String> value) {
+            changes.put(key, value == null ? null : new java.util.HashSet<>(value));
+            return this;
+        }
+
+        @Override
+        public Editor putInt(String key, int value) {
+            changes.put(key, value);
+            return this;
+        }
+
+        @Override
+        public Editor putLong(String key, long value) {
+            changes.put(key, value);
+            return this;
+        }
+
+        @Override
+        public Editor putFloat(String key, float value) {
+            changes.put(key, value);
+            return this;
+        }
+
+        @Override
+        public Editor putBoolean(String key, boolean value) {
+            changes.put(key, value);
+            return this;
+        }
+
+        @Override
+        public Editor remove(String key) {
+            changes.put(key, null);
+            return this;
+        }
+
+        @Override
+        public Editor clear() {
+            clear = true;
+            return this;
+        }
+
+        @Override
+        public boolean commit() {
+            if (clear) values.clear();
+            for (java.util.Map.Entry<String, Object> entry : changes.entrySet()) {
+                if (entry.getValue() == null) values.remove(entry.getKey());
+                else values.put(entry.getKey(), entry.getValue());
+            }
+            return true;
+        }
+
+        @Override
+        public void apply() {
+            commit();
+        }
     }
 }

@@ -216,6 +216,13 @@ public class SettingsActivity extends AppCompatActivity {
     public static final String PREF_FIXED_STEP_RATE = "pref_fixed_step_rate";
     public static final String PREF_FIXED_STEP_TIMING = "pref_fixed_step_timing";
     public static final String PREF_FRAME_RATE_LIMIT = "pref_frame_rate_limit";
+    public static final String PREF_REPLAY_ENABLED = "pref_replay_enabled";
+    public static final String PREF_REPLAY_KEEP = "pref_replay_keep";
+    public static final String PREF_REPLAY_RESOLUTION = "pref_replay_resolution";
+    public static final String PREF_REPLAY_FPS = "pref_replay_fps";
+    public static final String PREF_REPLAY_QUALITY = "pref_replay_quality";
+    public static final String PREF_REPLAY_SOUND = "pref_replay_sound";
+    public static final String PREF_REPLAY_MODE = "pref_replay_mode";
     public static final String PREF_TILT_STYLE = "pref_tilt_style";
     public static final String PREF_FLAP_LIMIT_ENABLED = "pref_flap_limit_enabled";
     public static final String PREF_HITBOX_SHAPE = "pref_hitbox_shape";
@@ -369,7 +376,32 @@ public class SettingsActivity extends AppCompatActivity {
     public static final boolean DEFAULT_BOARD_OPEN_ON_BEST = false;
     public static final int DEFAULT_BOARD_TAB = 0;
     public static final int DEFAULT_BOARD_SIZE = 0;
-    static final int[] BOARD_SIZES = {10, 25, 50, 100, 0};
+    static final int[] BOARD_SIZES = {10, 25, 50, 100};
+    public static final boolean DEFAULT_REPLAY_ENABLED = true;
+    public static final int DEFAULT_REPLAY_KEEP = 3;
+    public static final int DEFAULT_REPLAY_RESOLUTION = 0;
+    public static final int DEFAULT_REPLAY_FPS = 60;
+    public static final int DEFAULT_REPLAY_QUALITY = 1;
+    public static final boolean DEFAULT_REPLAY_SOUND = true;
+    public static final int DEFAULT_REPLAY_MODE = 0;
+    static final int REPLAY_MODE_RECENT = 0;
+    static final int REPLAY_MODE_BEST = 1;
+    static final int[] REPLAY_KEEPS = {1, 3, 5, 10};
+    static final int[] REPLAY_FPS_CHOICES = {30, 60};
+    static final int REPLAY_RESOLUTION_ORIGINAL = 0;
+    static final int REPLAY_RESOLUTION_1080 = 1;
+    static final int REPLAY_RESOLUTION_720 = 2;
+
+    static int replayKeep(int stored) {
+        for (int keep : REPLAY_KEEPS) if (keep == stored) return keep;
+        return DEFAULT_REPLAY_KEEP;
+    }
+
+    static int replayFps(int stored) {
+        for (int fps : REPLAY_FPS_CHOICES) if (fps == stored) return fps;
+        return DEFAULT_REPLAY_FPS;
+    }
+    static final int MAX_BOARD_SIZE = 100;
 
     public static final int FAIR_NONE = 0;
     public static final int FAIR_STANDARD = 1;
@@ -533,6 +565,10 @@ public class SettingsActivity extends AppCompatActivity {
 
     public static void adoptOldHighScore(SharedPreferences store) {
         Map<String, ?> all = store.getAll();
+        Object size = all.get(PREF_BOARD_SIZE);
+        if (size instanceof Integer && ((Integer) size < 0 || (Integer) size >= BOARD_SIZES.length)) {
+            store.edit().putInt(PREF_BOARD_SIZE, BOARD_SIZES.length - 1).apply();
+        }
         if (all.containsKey(KEY_EARNED_HIGH_SCORE)) return;
         Object old = all.get(KEY_HIGH_SCORE);
         recordEarnedScore(store, old instanceof Integer ? (Integer) old : 0, "");
@@ -855,7 +891,14 @@ public class SettingsActivity extends AppCompatActivity {
             }
             return out.toString();
         }
-        static final int RANK_LIMIT = 1000;
+        static final int VIEW_ALL_TIME = 0;
+        static final int VIEW_WEEKLY = 1;
+        static final int VIEW_VERIFIED_ALL_TIME = 2;
+        static final int VIEW_VERIFIED_WEEKLY = 3;
+        static final String[] VIEW_BRANCHES = {"scores", "weekly", "vscores", "vweekly"};
+        static final long BOARD_FRESH_MS = 60000L;
+        static final String OLD_VERSION = "V1.5.3 or older";
+        static final String COUNTS_DONE = "zt";
         static final float STANDARD_SECONDS_PER_POINT = 1.43f;
         static final float CLASSIC_SECONDS_PER_POINT = 1.25f;
         static final long WEEK_MS = 604800000L;
@@ -893,6 +936,7 @@ public class SettingsActivity extends AppCompatActivity {
         private static final int TIMEOUT_MS = 8000;
         private static final int MAX_REPLY_BYTES = 512 * 1024;
 
+        private static volatile String appVersionName = "";
         private static String idToken;
         private static long idTokenUntil;
         private static ExecutorService fetchPool;
@@ -913,6 +957,11 @@ public class SettingsActivity extends AppCompatActivity {
             boolean classic;
             boolean verified;
             long time;
+            String version = "";
+
+            String versionLabel() {
+                return version.isEmpty() ? OLD_VERSION : "V" + version;
+            }
         }
 
         static final class Board {
@@ -934,6 +983,52 @@ public class SettingsActivity extends AppCompatActivity {
             String verdictWhy = "";
             long verdictTime;
             long weekEnds;
+            final boolean[] loaded = new boolean[4];
+            final long[] loadedAt = new long[4];
+            boolean verdictKnown;
+            boolean mineMissing;
+
+            boolean fresh(int view, long now) {
+                return view >= 0 && view < 4 && loaded[view] && now - loadedAt[view] >= 0 && now - loadedAt[view] < BOARD_FRESH_MS;
+            }
+
+            void absorb(Board other, int view) {
+                switch (view) {
+                    case VIEW_ALL_TIME:
+                        allTime = other.allTime;
+                        mineAllTime = other.mineAllTime;
+                        rankAllTime = other.rankAllTime;
+                        break;
+                    case VIEW_WEEKLY:
+                        weekly = other.weekly;
+                        mineWeekly = other.mineWeekly;
+                        rankWeekly = other.rankWeekly;
+                        break;
+                    case VIEW_VERIFIED_ALL_TIME:
+                        verifiedAllTime = other.verifiedAllTime;
+                        mineVerifiedAllTime = other.mineVerifiedAllTime;
+                        rankVerifiedAllTime = other.rankVerifiedAllTime;
+                        break;
+                    default:
+                        verifiedWeekly = other.verifiedWeekly;
+                        mineVerifiedWeekly = other.mineVerifiedWeekly;
+                        rankVerifiedWeekly = other.rankVerifiedWeekly;
+                        break;
+                }
+                if (other.verdictKnown) {
+                    verdictKnown = true;
+                    verifying = other.verifying;
+                    verdictScore = other.verdictScore;
+                    verdictOk = other.verdictOk;
+                    verdictWhy = other.verdictWhy;
+                    verdictTime = other.verdictTime;
+                }
+                if (other.weekEnds > 0) weekEnds = other.weekEnds;
+                if (view >= 0 && view < 4) {
+                    loaded[view] = true;
+                    loadedAt[view] = other.loadedAt[view];
+                }
+            }
         }
 
         static final class Replay {
@@ -957,11 +1052,17 @@ public class SettingsActivity extends AppCompatActivity {
                 ByteArrayOutputStream bytes = new ByteArrayOutputStream(Math.max(1024, count));
                 Deflater deflater = new Deflater(Deflater.BEST_COMPRESSION);
                 try {
-                    DataOutputStream out = new DataOutputStream(new DeflaterOutputStream(bytes, deflater, 8192));
+                    DataOutputStream out = new DataOutputStream(new java.io.BufferedOutputStream(new DeflaterOutputStream(bytes, deflater, 8192), 16384));
                     out.writeInt(header.length);
                     out.write(header);
                     out.writeInt(count);
-                    for (int i = 0; i < count; i++) out.writeInt(events[i]);
+                    java.nio.ByteBuffer packed = java.nio.ByteBuffer.allocate(4 * Math.max(1, Math.min(count, 16384)));
+                    for (int from = 0; from < count; from += 16384) {
+                        int to = Math.min(count, from + 16384);
+                        packed.clear();
+                        packed.asIntBuffer().put(events, from, to - from);
+                        out.write(packed.array(), 0, (to - from) * 4);
+                    }
                     out.close();
                 } finally {
                     deflater.end();
@@ -1264,6 +1365,7 @@ public class SettingsActivity extends AppCompatActivity {
             entry.put("f", flaps);
             entry.put("p", paused);
             entry.put("v", version);
+            if (!appVersionName.isEmpty()) entry.put("vn", appVersionName);
             if (time > 0) entry.put("t", time);
             else entry.put("t", serverTime());
             return entry;
@@ -1278,6 +1380,17 @@ public class SettingsActivity extends AppCompatActivity {
             }
             entry.put("n", name);
             return entry;
+        }
+
+        static String versionName(Context context) {
+            try {
+                String name = context.getPackageManager().getPackageInfo(context.getPackageName(), 0).versionName;
+                String clean = name == null ? "" : name.trim();
+                if (clean.startsWith("v") || clean.startsWith("V")) clean = clean.substring(1);
+                return clean.matches("[0-9][0-9A-Za-z._-]{0,15}") ? clean : "";
+            } catch (Exception e) {
+                return "";
+            }
         }
 
         private static int versionCode(Context context) {
@@ -1496,11 +1609,11 @@ public class SettingsActivity extends AppCompatActivity {
                     if (!name(store).equals(text(store, KEY_NAME_SENT))) ensureEntry(app, store, token);
                     String session = new JSONObject().put("t", serverTime()).put("r", Long.toString(seed)).toString();
                     try {
-                        request("PUT", path("sessions", uid(store), token), session, JSON_TYPE);
+                        request("PUT", path("sessions", uid(store), token) + "&print=silent", session, JSON_TYPE);
                     } catch (HttpError e) {
                         if (e.code != 401) throw e;
                         token = token(store, true);
-                        request("PUT", path("sessions", uid(store), token), session, JSON_TYPE);
+                        request("PUT", path("sessions", uid(store), token) + "&print=silent", session, JSON_TYPE);
                     }
                 } catch (NameTaken e) {
                     breakRound(seed);
@@ -1583,7 +1696,7 @@ public class SettingsActivity extends AppCompatActivity {
             }
             String status = CURRENT;
             if (update.length() > 0) {
-                request("PATCH", base() + "/.json?auth=" + URLEncoder.encode(token, "UTF-8"), update.toString(), JSON_TYPE);
+                request("PATCH", base() + "/.json?print=silent&auth=" + URLEncoder.encode(token, "UTF-8"), update.toString(), JSON_TYPE);
                 SharedPreferences.Editor editor = store.edit().putInt(KEY_WEEK, thisWeek).putInt(KEY_WEEK_POSTED, Math.max(score, weekScore));
                 if (score > allTime) editor.putInt(KEY_POSTED, score);
                 editor.apply();
@@ -1640,6 +1753,7 @@ public class SettingsActivity extends AppCompatActivity {
             entry.put("t", serverTime());
             entry.put("w", thisWeek);
             entry.put("v", version);
+            if (!appVersionName.isEmpty()) entry.put("vn", appVersionName);
             entry.put("rv", replay.rules);
             entry.put("h", stamps);
             entry.put("d", data);
@@ -1677,6 +1791,8 @@ public class SettingsActivity extends AppCompatActivity {
             entry.classic = Boolean.TRUE.equals(raw.opt("c"));
             entry.time = number(raw.opt("t"));
             entry.verified = verified || (entry.score > 0 && raw.has("vs") && number(raw.opt("vs")) == entry.score);
+            String version = string(raw.opt("vn"));
+            entry.version = version.matches("[0-9][0-9A-Za-z._-]{0,15}") ? version : "";
             return entry;
         }
 
@@ -1739,132 +1855,168 @@ public class SettingsActivity extends AppCompatActivity {
             }
         }
 
-        private static int rank(Future<String> reply) throws IOException, JSONException {
-            if (reply == null) return 0;
-            JSONObject above = result(reply);
-            int count = above == null ? 0 : above.length();
-            return count >= RANK_LIMIT ? -1 : count + 1;
+        static int rankAbove(JSONObject counts) {
+            if (counts == null || !counts.has(COUNTS_DONE)) return 0;
+            long above = 0L;
+            java.util.Iterator<String> keys = counts.keys();
+            while (keys.hasNext()) {
+                String key = keys.next();
+                if (key.startsWith("s")) above += Math.max(0L, number(counts.opt(key)));
+            }
+            return (int) Math.min(Integer.MAX_VALUE - 1L, above + 1L);
         }
 
-        private static Future<String> rankQuery(String branch, String index, long from, long to) {
-            return later(base() + "/" + branch + ".json?orderBy=%22" + index + "%22&startAt=" + from
-                    + (to > 0 ? "&endAt=" + to : "") + "&limitToFirst=" + RANK_LIMIT);
+        static String countKey(int score) {
+            return "s" + String.format(java.util.Locale.US, "%04d", Math.max(0, Math.min(MAX_SCORE, score)));
+        }
+
+        private static Future<String> countsAbove(String branch, int thisWeek, int score) {
+            String place = branch.equals("weekly") || branch.equals("vweekly") ? branch + "/" + thisWeek : branch;
+            return later(base() + "/counts/" + place + ".json?orderBy=%22$key%22&startAt=%22" + countKey(score + 1) + "%22");
         }
 
         static int boardSize(int choice) {
-            return choice >= 0 && choice < BOARD_SIZES.length ? BOARD_SIZES[choice] : BOARD_SIZES[DEFAULT_BOARD_SIZE];
+            if (choice < 0) return BOARD_SIZES[DEFAULT_BOARD_SIZE];
+            return BOARD_SIZES[Math.min(choice, BOARD_SIZES.length - 1)];
         }
 
-        static void fetch(final Context context, final int limit, final Poster poster, final Callback<Board> callback) {
+        static void fetch(final Context context, final int limit, final int view, final Poster poster, final Callback<Board> callback) {
             if (!configured()) {
                 finish(poster, callback, null, "The leaderboard is not set up in this build");
                 return;
             }
             final SharedPreferences store = store(context);
             final Context app = app(context);
+            appVersionName = versionName(app);
             worker().execute(() -> {
                 try {
                     Board board = new Board();
                     int thisWeek = week(now());
                     long first = thisWeek * WEEK_KEY + 1;
                     long last = thisWeek * WEEK_KEY + MAX_SCORE;
-                    String size = limit > 0 ? "&limitToLast=" + limit : "";
-                    String weekRange = "?orderBy=%22k%22&startAt=" + first + "&endAt=" + last + size;
-                    String scoreRange = "?orderBy=%22s%22&startAt=1" + size;
-                    Future<String> allTop = later(base() + "/scores.json" + scoreRange);
-                    Future<String> weekTop = later(base() + "/weekly.json" + weekRange);
-                    Future<String> verifiedTop = later(base() + "/vscores.json" + scoreRange);
-                    Future<String> verifiedWeekTop = later(base() + "/vweekly.json" + weekRange);
+                    int size = Math.max(1, Math.min(MAX_BOARD_SIZE, limit));
+                    boolean weeklyView = view == VIEW_WEEKLY || view == VIEW_VERIFIED_WEEKLY;
+                    boolean verifiedView = view == VIEW_VERIFIED_ALL_TIME || view == VIEW_VERIFIED_WEEKLY;
+                    String branch = VIEW_BRANCHES[view];
+                    String range = weeklyView ? "?orderBy=%22k%22&startAt=" + first + "&endAt=" + last + "&limitToLast=" + size
+                            : "?orderBy=%22s%22&startAt=1&limitToLast=" + size;
+                    Future<String> top = later(base() + "/" + branch + ".json" + range);
                     board.weekEnds = weekEnds(thisWeek);
                     String user = uid(store);
-                    Future<String> mine = null, mineWeek = null, mineVerified = null, mineVerifiedWeek = null, verdict = null, pending = null;
+                    Future<String> mine = null, otherMine = null, verdict = null, pending = null, verifiedAll = null, verifiedWeek = null;
                     if (!user.isEmpty()) {
                         String encoded = URLEncoder.encode(user, "UTF-8");
-                        mine = later(base() + "/scores/" + encoded + ".json");
-                        mineWeek = later(base() + "/weekly/" + encoded + ".json");
-                        mineVerified = later(base() + "/vscores/" + encoded + ".json");
-                        mineVerifiedWeek = later(base() + "/vweekly/" + encoded + ".json");
+                        String token = null;
                         try {
-                            String token = token(store, false);
-                            verdict = later(path("verdicts", user, token));
-                            pending = later(base() + "/replays/" + encoded + ".json?shallow=true&auth=" + URLEncoder.encode(token, "UTF-8"));
+                            token = token(store, false);
                         } catch (IOException | JSONException e) {
-                            verdict = null;
+                            token = null;
+                        }
+                        String auth = token == null ? "" : "?auth=" + URLEncoder.encode(token, "UTF-8");
+                        mine = later(base() + "/" + branch + "/" + encoded + ".json" + auth);
+                        if (verifiedView && token != null) {
+                            otherMine = later(base() + "/" + (weeklyView ? "vscores" : "vweekly") + "/" + encoded + ".json" + auth);
+                            verdict = later(path("verdicts", user, token));
+                        }
+                        if (token != null && (verifiedView || replayBest(store) > 0 || replayWeekBest(store) > 0)) {
+                            pending = later(base() + "/replays/" + encoded + ".json?shallow=true&auth=" + URLEncoder.encode(token, "UTF-8"));
+                            if (!verifiedView) {
+                                verifiedAll = later(base() + "/vscores/" + encoded + ".json" + auth);
+                                verifiedWeek = later(base() + "/vweekly/" + encoded + ".json" + auth);
+                            }
                         }
                     }
-                    board.allTime = list(result(allTop), false);
-                    board.weekly = list(result(weekTop), false);
-                    board.verifiedAllTime = list(quiet(verifiedTop), true);
-                    board.verifiedWeekly = list(quiet(verifiedWeekTop), true);
-                    Future<String> rankAll = null, rankWeek = null, rankVerified = null, rankVerifiedWeek = null;
-                    JSONObject raw = result(mine);
-                    if (raw != null) {
-                        board.mineAllTime = entry(user, raw, false);
-                        if (board.mineAllTime.score > 0 && !listed(board.allTime, user)) {
-                            rankAll = rankQuery("scores", "s", board.mineAllTime.score + 1, 0);
-                        }
-                    }
-                    raw = result(mineWeek);
-                    if (raw != null && number(raw.opt("w")) == thisWeek) {
-                        board.mineWeekly = entry(user, raw, false);
-                        if (board.mineWeekly.score > 0 && !listed(board.weekly, user)) {
-                            rankWeek = rankQuery("weekly", "k", first + board.mineWeekly.score, last);
-                        }
-                    }
-                    boolean verifiedKnown = true;
+                    List<Entry> entries = list(result(top), verifiedView);
+                    if (entries.size() > size) entries = new ArrayList<>(entries.subList(0, size));
+                    Entry own = null;
+                    boolean ownKnown = true;
+                    JSONObject raw;
                     try {
-                        raw = result(mineVerified);
+                        raw = result(mine);
                     } catch (IOException | JSONException | RuntimeException e) {
+                        if (!verifiedView) throw e;
                         raw = null;
-                        verifiedKnown = false;
+                        ownKnown = false;
                     }
-                    if (raw != null) {
-                        board.mineVerifiedAllTime = entry(user, raw, true);
-                        if (board.mineVerifiedAllTime.score > 0 && !listed(board.verifiedAllTime, user)) {
-                            rankVerified = rankQuery("vscores", "s", board.mineVerifiedAllTime.score + 1, 0);
-                        }
-                    }
-                    try {
-                        raw = result(mineVerifiedWeek);
-                    } catch (IOException | JSONException | RuntimeException e) {
-                        raw = null;
-                        verifiedKnown = false;
-                    }
-                    if (raw != null && number(raw.opt("w")) == thisWeek) {
-                        board.mineVerifiedWeekly = entry(user, raw, true);
-                        if (board.mineVerifiedWeekly.score > 0 && !listed(board.verifiedWeekly, user)) {
-                            rankVerifiedWeek = rankQuery("vweekly", "k", first + board.mineVerifiedWeekly.score, last);
+                    if (raw != null && (!weeklyView || number(raw.opt("w")) == thisWeek)) own = entry(user, raw, verifiedView);
+                    if (!verifiedView && !weeklyView && mine != null && raw == null && ownKnown) board.mineMissing = true;
+                    Future<String> above = null;
+                    if (own != null && own.score > 0 && !listed(entries, user)) above = countsAbove(branch, thisWeek, own.score);
+                    Entry otherOwn = null;
+                    boolean otherKnown = otherMine != null;
+                    if (otherMine != null) {
+                        try {
+                            JSONObject other = result(otherMine);
+                            if (other != null && (weeklyView || number(other.opt("w")) == thisWeek)) otherOwn = entry(user, other, true);
+                        } catch (IOException | JSONException | RuntimeException e) {
+                            otherKnown = false;
                         }
                     }
                     JSONObject judged = quiet(verdict);
-                    if (judged != null) {
-                        board.verdictScore = (int) number(judged.opt("s"));
-                        board.verdictOk = Boolean.TRUE.equals(judged.opt("ok"));
-                        board.verdictWhy = string(judged.opt("why"));
-                        board.verdictTime = number(judged.opt("t"));
+                    if (verdict != null) {
+                        board.verdictKnown = true;
+                        if (judged != null) {
+                            board.verdictScore = (int) number(judged.opt("s"));
+                            board.verdictOk = Boolean.TRUE.equals(judged.opt("ok"));
+                            board.verdictWhy = string(judged.opt("why"));
+                            board.verdictTime = number(judged.opt("t"));
+                        }
                     }
                     if (pending != null) {
                         boolean pendingKnown = true;
+                        boolean waiting = false;
                         try {
-                            board.verifying = result(pending) != null;
+                            waiting = result(pending) != null;
                         } catch (IOException | JSONException | RuntimeException e) {
                             pendingKnown = false;
                         }
-                        if (pendingKnown && verifiedKnown && !board.verifying) {
-                            int verifiedBest = board.mineVerifiedAllTime != null ? board.mineVerifiedAllTime.score : 0;
-                            int verifiedWeek = board.mineVerifiedWeekly != null ? board.mineVerifiedWeekly.score : 0;
-                            store.edit().putInt(KEY_REPLAY_BEST, verifiedBest).putInt(KEY_REPLAY_WEEK_BEST, verifiedWeek)
+                        if (verifiedView) board.verifying = waiting;
+                        Entry allTimeOwn = weeklyView ? otherOwn : own;
+                        Entry weekOwn = weeklyView ? own : otherOwn;
+                        boolean known = verifiedView ? ownKnown && otherKnown : true;
+                        if (!verifiedView) {
+                            try {
+                                JSONObject best = result(verifiedAll);
+                                allTimeOwn = best == null ? null : entry(user, best, true);
+                                JSONObject week = result(verifiedWeek);
+                                weekOwn = week != null && number(week.opt("w")) == thisWeek ? entry(user, week, true) : null;
+                            } catch (IOException | JSONException | RuntimeException e) {
+                                known = false;
+                            }
+                        }
+                        if (pendingKnown && known && !waiting) {
+                            int verifiedBest = allTimeOwn != null ? allTimeOwn.score : 0;
+                            int verifiedWeekBest = weekOwn != null ? weekOwn.score : 0;
+                            store.edit().putInt(KEY_REPLAY_BEST, verifiedBest).putInt(KEY_REPLAY_WEEK_BEST, verifiedWeekBest)
                                     .putInt(KEY_REPLAY_WEEK, thisWeek).apply();
                         }
                     }
-                    board.rankAllTime = rank(rankAll);
-                    board.rankWeekly = rank(rankWeek);
-                    try {
-                        board.rankVerifiedAllTime = rank(rankVerified);
-                        board.rankVerifiedWeekly = rank(rankVerifiedWeek);
-                    } catch (IOException | JSONException e) {
-                        board.rankVerifiedAllTime = 0;
+                    int rank = 0;
+                    if (above != null) {
+                        try {
+                            rank = rankAbove(result(above));
+                        } catch (IOException | JSONException | RuntimeException e) {
+                            rank = 0;
+                        }
                     }
+                    if (board.mineMissing && posted(store) > 0) {
+                        store.edit().putInt(KEY_POSTED, 0).apply();
+                        log(app, "Your leaderboard entry was cleared after a long break. Your next score will post again");
+                    }
+                    switch (view) {
+                        case VIEW_ALL_TIME: board.allTime = entries; board.mineAllTime = own; board.rankAllTime = rank; break;
+                        case VIEW_WEEKLY: board.weekly = entries; board.mineWeekly = own; board.rankWeekly = rank; break;
+                        case VIEW_VERIFIED_ALL_TIME:
+                            board.verifiedAllTime = entries; board.mineVerifiedAllTime = own; board.rankVerifiedAllTime = rank;
+                            board.mineVerifiedWeekly = otherOwn;
+                            break;
+                        default:
+                            board.verifiedWeekly = entries; board.mineVerifiedWeekly = own; board.rankVerifiedWeekly = rank;
+                            board.mineVerifiedAllTime = otherOwn;
+                            break;
+                    }
+                    board.loaded[view] = true;
+                    board.loadedAt[view] = now();
                     finish(poster, callback, board, null);
                 } catch (IOException | JSONException | RuntimeException e) {
                     log(app, "Loading the leaderboard failed: " + e);
@@ -2174,6 +2326,7 @@ public class SettingsActivity extends AppCompatActivity {
         if (previewView != null) previewView.setHostResumed(true);
         if (currentPage == ABOUT_PAGE) refreshAbout();
         refreshBoardName();
+        refreshReplayHero();
     }
 
     @Override
@@ -2190,6 +2343,7 @@ public class SettingsActivity extends AppCompatActivity {
             root.removeCallbacks(saveRunnable);
             root.removeCallbacks(hideCaptionRunnable);
         }
+        if (replayHeroWorker != null) replayHeroWorker.shutdownNow();
         super.onDestroy();
     }
 
@@ -3011,6 +3165,7 @@ public class SettingsActivity extends AppCompatActivity {
 
         LinearLayout start = addPage(ALL_PAGE);
         LinearLayout quick = addGroup(start, "Start here");
+        replayHeroRow(quick);
         actionRow(quick, "button_reset_all_quick", "Reset to defaults",
                 "Puts every setting back to normal. Your high score and saved setups are kept", COLOR_PRIMARY);
 
@@ -3148,6 +3303,15 @@ public class SettingsActivity extends AppCompatActivity {
         group = addGroup(page, "Interface");
         toggleRow(group, "row_hide_settings_icon", "Hide settings button", "The top right corner still opens settings");
         toggleRow(group, "row_classic_menu", "Original menu buttons", "Rate button on the home screen and a leaderboard button after a crash");
+        group = addGroup(page, "Replays");
+        actionRow(group, "button_replays", "Watch replays", "Watch your rounds again or save them as videos", COLOR_PRIMARY);
+        toggleRow(group, "row_replay_enabled", "Record replays", "Quietly saves your rounds. Uses almost no battery or storage");
+        choiceRowWithNote(group, "row_replay_mode", "Replays to keep", "Best only keeps your top round until you beat it", "Latest", "Best only");
+        choiceRow(group, "row_replay_keep", "Rounds kept", "1", "3", "5", "10");
+        choiceRow(group, "row_replay_resolution", "Video size", "Full", "1080p", "720p");
+        choiceRow(group, "row_replay_fps", "Video frame rate", "30 fps", "60 fps");
+        choiceRow(group, "row_replay_quality", "Video quality", "High", "Very high", "Best");
+        toggleRow(group, "row_replay_sound", "Sound in videos", "Mixes the game's sounds into saved videos");
         group = addGroup(page, "Performance");
         choiceRowWithNote(group, "row_frame_rate_limit", "Frame rate limit", "Lower limits save battery. Unlimited follows your screen",
                 "Unlimited", "30", "60", "90", "120");
@@ -3165,7 +3329,7 @@ public class SettingsActivity extends AppCompatActivity {
         group = addGroup(page, "Leaderboard screen");
         toggleRow(group, "row_board_open_on_best", "Open the leaderboard after a new best", "Shows where you placed when a posted score beats your best");
         choiceRow(group, "row_board_tab", "Leaderboard opens on", "All time", "Weekly");
-        choiceRow(group, "row_board_size", "Scores shown on the leaderboard", "10", "25", "50", "100", "All");
+        choiceRow(group, "row_board_size", "Scores shown on the leaderboard", "10", "25", "50", "100");
 
         page = addPage(ADVANCED_PAGE);
         group = addGroup(page, "Classic feel");
@@ -3595,9 +3759,31 @@ public class SettingsActivity extends AppCompatActivity {
         frameLimit.randomizable = false;
         frameLimit.note = "used in the game";
         ChoiceSetting boardSize = new ChoiceSetting(PREF_BOARD_SIZE, DEFAULT_BOARD_SIZE, rowView("row_board_size"),
-                new int[]{0, 1, 2, 3, 4}, new int[]{COLOR_PRIMARY, COLOR_SKY, 0xFF9C8CFF, 0xFF9BE15D, 0xFFFC7858}, null);
+                new int[]{0, 1, 2, 3}, new int[]{COLOR_PRIMARY, COLOR_SKY, 0xFF9C8CFF, 0xFF9BE15D}, null);
         boardSize.randomizable = false;
         boardSize.note = "used in the game";
+        ToggleSetting replayEnabled = toggle(PREF_REPLAY_ENABLED, DEFAULT_REPLAY_ENABLED, rowView("row_replay_enabled"));
+        replayEnabled.note = "used in the game";
+        replayEnabled.randomizable = false;
+        ChoiceSetting replayMode = new ChoiceSetting(PREF_REPLAY_MODE, DEFAULT_REPLAY_MODE, rowView("row_replay_mode"),
+                new int[]{REPLAY_MODE_RECENT, REPLAY_MODE_BEST}, new int[]{COLOR_SKY, COLOR_PRIMARY}, null);
+        replayMode.randomizable = false;
+        ChoiceSetting replayKeep = new ChoiceSetting(PREF_REPLAY_KEEP, DEFAULT_REPLAY_KEEP, rowView("row_replay_keep"),
+                REPLAY_KEEPS, new int[]{COLOR_SKY, COLOR_PRIMARY, 0xFF9C8CFF, 0xFF9BE15D}, null);
+        replayKeep.randomizable = false;
+        ChoiceSetting replayResolution = new ChoiceSetting(PREF_REPLAY_RESOLUTION, DEFAULT_REPLAY_RESOLUTION, rowView("row_replay_resolution"),
+                new int[]{REPLAY_RESOLUTION_ORIGINAL, REPLAY_RESOLUTION_1080, REPLAY_RESOLUTION_720}, new int[]{COLOR_PRIMARY, COLOR_SKY, 0xFF9C8CFF}, null);
+        replayResolution.randomizable = false;
+        ChoiceSetting replayFps = new ChoiceSetting(PREF_REPLAY_FPS, DEFAULT_REPLAY_FPS, rowView("row_replay_fps"),
+                REPLAY_FPS_CHOICES, new int[]{COLOR_SKY, COLOR_PRIMARY}, null);
+        replayFps.randomizable = false;
+        ChoiceSetting replayQuality = new ChoiceSetting(PREF_REPLAY_QUALITY, DEFAULT_REPLAY_QUALITY, rowView("row_replay_quality"),
+                new int[]{0, 1, 2}, new int[]{COLOR_SKY, COLOR_PRIMARY, 0xFF9C8CFF}, null);
+        replayQuality.randomizable = false;
+        ToggleSetting replaySound = toggle(PREF_REPLAY_SOUND, DEFAULT_REPLAY_SOUND, rowView("row_replay_sound"));
+        replaySound.randomizable = false;
+        rowView("button_replays").setOnClickListener(v -> openReplays());
+        rowView("button_replays_quick").setOnClickListener(v -> openReplays());
         rowView("button_board_rules").setOnClickListener(v -> showScoreRules());
         rowView("button_board_name").setOnClickListener(v -> showNameDialog(this, Leaderboard.name(prefs), false, (name, result) ->
                 Leaderboard.setName(this, name, this::runOnUiThread, (status, error) -> {
@@ -3941,7 +4127,8 @@ public class SettingsActivity extends AppCompatActivity {
                 rowOf(PREF_SOUND_VOLUME), rowOf(PREF_WEATHER_VOLUME),
                 rowOf(PREF_KEY_FLAP), rowOf(PREF_KEY_FLAP_ALT), rowOf(PREF_KEY_PAUSE),
                 rowOf(PREF_KEY_PLAY), rowOf(PREF_KEY_SETTINGS),
-                rowOf(PREF_GOD_FALL_ENABLED), rowOf(PREF_GOD_FALL_SECONDS)};
+                rowOf(PREF_GOD_FALL_ENABLED), rowOf(PREF_GOD_FALL_SECONDS),
+                rowOf(PREF_REPLAY_MODE), rowOf(PREF_REPLAY_KEEP)};
         boolean[] shown = {
                 wingAnimation.value,
                 storm, storm,
@@ -3957,7 +4144,8 @@ public class SettingsActivity extends AppCompatActivity {
                 sound.value, sound.value,
                 keyboard.value, keyboard.value, keyboard.value,
                 keyboard.value, keyboard.value,
-                flag(PREF_NO_CLIP_ENABLED), flag(PREF_NO_CLIP_ENABLED) && flag(PREF_GOD_FALL_ENABLED)};
+                flag(PREF_NO_CLIP_ENABLED), flag(PREF_NO_CLIP_ENABLED) && flag(PREF_GOD_FALL_ENABLED),
+                flag(PREF_REPLAY_ENABLED), flag(PREF_REPLAY_ENABLED) && option(PREF_REPLAY_MODE) == REPLAY_MODE_RECENT};
 
         if (!twins.isEmpty()) {
             List<View> allRows = new ArrayList<>(Arrays.asList(rows));
@@ -4194,6 +4382,124 @@ public class SettingsActivity extends AppCompatActivity {
         return text.toString();
     }
 
+    static final String REPLAYS_OPENED = "replaysOpened";
+    private ImageView replayHeroImage;
+    private TextView replayHeroBadge;
+    private ExecutorService replayHeroWorker;
+    private int replayHeroToken;
+
+    private void replayHeroRow(LinearLayout group) {
+        LinearLayout row = addRow(group, "button_replays_quick", true, 12, 12);
+        row.setMinimumHeight(dp(104));
+        row.setPadding(dp(12), dp(12), dp(16), dp(12));
+        replayHeroImage = new ImageView(this);
+        replayHeroImage.setScaleType(ImageView.ScaleType.CENTER_CROP);
+        replayHeroImage.setBackground(rounded(COLOR_PRIMARY_CONTAINER, dp(12)));
+        replayHeroImage.setClipToOutline(true);
+        replayHeroImage.setImageDrawable(new IconDrawable(IconDrawable.PLAY, dp(28), dp(2f), COLOR_ON_PRIMARY_CONTAINER));
+        replayHeroImage.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+        LinearLayout.LayoutParams imageParams = linear(dp(60), dp(80));
+        imageParams.setMarginEnd(dp(14));
+        row.addView(replayHeroImage, imageParams);
+        addTexts(row, "button_replays_quick", "Watch replays", "Every round is recorded. Watch it again or save it as a video", true, COLOR_PRIMARY);
+        replayHeroBadge = newText("NEW", 11, COLOR_ON_PRIMARY_CONTAINER, pixelBold != null ? pixelBold : pixelFont);
+        replayHeroBadge.setLetterSpacing(0.08f);
+        replayHeroBadge.setBackground(rounded(COLOR_PRIMARY_CONTAINER, dp(10)));
+        replayHeroBadge.setPadding(dp(10), dp(3), dp(10), dp(3));
+        LinearLayout.LayoutParams badgeParams = linear(WRAP, WRAP);
+        badgeParams.setMarginStart(dp(12));
+        row.addView(replayHeroBadge, badgeParams);
+    }
+
+    private void refreshReplayHero() {
+        if (replayHeroImage == null || isFinishing()) return;
+        Map<String, ?> all = prefs.getAll();
+        Object opened = all.get(REPLAYS_OPENED);
+        replayHeroBadge.setVisibility(opened instanceof Boolean && (Boolean) opened ? View.GONE : View.VISIBLE);
+        Object keepValue = all.get(PREF_REPLAY_KEEP);
+        final int keep = replayKeep(keepValue instanceof Integer ? (Integer) keepValue : DEFAULT_REPLAY_KEEP);
+        Object enabled = all.get(PREF_REPLAY_ENABLED);
+        final boolean recording = enabled instanceof Boolean ? (Boolean) enabled : DEFAULT_REPLAY_ENABLED;
+        final File dir = new File(getFilesDir(), GameView.FILM_DIR);
+        final int token = ++replayHeroToken;
+        if (replayHeroWorker == null) {
+            replayHeroWorker = Executors.newSingleThreadExecutor(runnable -> {
+                Thread thread = new Thread(runnable, "ReplayCard");
+                thread.setPriority(Thread.MIN_PRIORITY);
+                return thread;
+            });
+        }
+        try {
+            replayHeroWorker.execute(() -> {
+                List<File> films = GameView.newestFilms(dir, keep);
+                GameView.Film info = null;
+                File newest = null;
+                for (File file : films) {
+                    try {
+                        info = GameView.Film.readInfo(file);
+                        newest = file;
+                        break;
+                    } catch (IOException e) {
+                        info = null;
+                    }
+                }
+                final GameView.Film latest = info;
+                final int count = films.size();
+                final Bitmap still = newest != null ? GameView.snapshot(SettingsActivity.this, newest) : null;
+                runOnUiThread(() -> showReplayHero(token, latest, count, still, recording));
+            });
+        } catch (RejectedExecutionException ignored) {
+        }
+    }
+
+    private void showReplayHero(int token, GameView.Film latest, int count, Bitmap still, boolean recording) {
+        if (token != replayHeroToken || isDestroyed() || replayHeroImage == null) return;
+        TextView summary = summaries.get("button_replays_quick");
+        String text;
+        if (latest != null) {
+            text = "Latest round: score " + latest.score + ", " + replayWhen(latest.savedAt)
+                    + (count > 1 ? "  ·  " + count + " saved" : "") + ". Watch it or save it as a video";
+        } else if (recording) {
+            text = "Every round is recorded. Play one, then watch it here or save it as a video";
+        } else {
+            text = "Recording is off. Turn on Record replays in System to save your rounds";
+        }
+        if (summary != null) summary.setText(text);
+        rowView("button_replays_quick").setContentDescription("Watch replays. " + text);
+        if (still != null) {
+            boolean fresh = !(replayHeroImage.getTag() instanceof Bitmap);
+            replayHeroImage.setTag(still);
+            replayHeroImage.setImageBitmap(still);
+            if (fresh) {
+                replayHeroImage.setAlpha(0f);
+                replayHeroImage.animate().alpha(1f).setDuration(260).start();
+            }
+        } else {
+            replayHeroImage.setTag(null);
+            replayHeroImage.setImageDrawable(new IconDrawable(IconDrawable.PLAY, dp(28), dp(2f), COLOR_ON_PRIMARY_CONTAINER));
+        }
+    }
+
+    private String replayWhen(long time) {
+        java.util.Date date = new java.util.Date(time);
+        String clock = android.text.format.DateFormat.getTimeFormat(this).format(date);
+        if (android.text.format.DateUtils.isToday(time)) return "today " + clock;
+        if (android.text.format.DateUtils.isToday(time + android.text.format.DateUtils.DAY_IN_MILLIS)) return "yesterday " + clock;
+        return android.text.format.DateFormat.getMediumDateFormat(this).format(date) + " " + clock;
+    }
+
+    private void openReplays() {
+        prefs.edit().putBoolean(REPLAYS_OPENED, true).apply();
+        if (replayHeroBadge != null) replayHeroBadge.setVisibility(View.GONE);
+        Intent replays = new Intent();
+        replays.setClassName(getPackageName(), SettingsActivity.class.getPackage().getName() + ".ReplayActivity");
+        try {
+            startActivity(replays);
+        } catch (RuntimeException e) {
+            announce("Replays aren't available in this build", null, null);
+        }
+    }
+
     private boolean isPersonal(Setting setting) {
         String key = setting.key;
         return key.equals(PREF_SOUND_ENABLED) || key.equals(PREF_HAPTIC_FEEDBACK_ENABLED)
@@ -4201,7 +4507,8 @@ public class SettingsActivity extends AppCompatActivity {
                 || key.equals(PREF_AUTO_PAUSE_ENABLED) || key.equals(PREF_SOUND_VOLUME)
                 || key.equals(PREF_WEATHER_VOLUME) || key.equals(PREF_SHOW_FPS) || key.equals(PREF_SHOW_HITBOXES)
                 || key.equals(PREF_CLASSIC_MENU_ENABLED) || key.equals(PREF_KEYBOARD_ENABLED)
-                || key.equals(PREF_RIGHT_CLICK_PAUSES) || key.equals(PREF_HIDE_CURSOR) || setting instanceof KeySetting;
+                || key.equals(PREF_RIGHT_CLICK_PAUSES) || key.equals(PREF_HIDE_CURSOR) || key.startsWith("pref_replay_")
+                || setting instanceof KeySetting;
     }
 
     private void setFlag(String key, boolean value) {
@@ -6230,6 +6537,7 @@ public class SettingsActivity extends AppCompatActivity {
         static final int BACK = 0;
         static final int SEARCH = 1;
         static final int CLOSE = 2;
+        static final int PLAY = 3;
         private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final Path path = new Path();
         private final int kind;
@@ -6260,6 +6568,18 @@ public class SettingsActivity extends AppCompatActivity {
                 float edge = radius * 0.7071f;
                 path.moveTo(lensX + edge, lensY + edge);
                 path.lineTo(centerX + reach * 0.95f, centerY + reach * 0.95f);
+            } else if (kind == PLAY) {
+                float unit = size / 24f;
+                float left = bounds.left + (bounds.width() - size) / 2f, top = bounds.top + (bounds.height() - size) / 2f;
+                path.moveTo(left + 8.5f * unit, top + 5.8f * unit);
+                path.lineTo(left + 18.6f * unit, top + 12f * unit);
+                path.lineTo(left + 8.5f * unit, top + 18.2f * unit);
+                path.close();
+                Paint.Style style = paint.getStyle();
+                paint.setStyle(Paint.Style.FILL_AND_STROKE);
+                canvas.drawPath(path, paint);
+                paint.setStyle(style);
+                return;
             } else if (kind == CLOSE) {
                 float arm = reach * 0.78f;
                 path.moveTo(centerX - arm, centerY - arm);
