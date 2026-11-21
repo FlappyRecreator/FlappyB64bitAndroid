@@ -228,18 +228,7 @@ If you'd rather not share the log, open **Settings > About > Copy app info** and
 
 ## Contributing
 
-Contributions are welcome, including bug fixes, accuracy improvements, performance work and new options.
-
-1. Fork the repository.
-2. Create a new branch for your changes.
-3. Commit your changes with clear, descriptive messages.
-4. Push the branch to your fork.
-5. Open a pull request that explains what you changed and why. For visual or gameplay changes, please include screenshots or a short video.
-
-With default settings, the game must play out exactly the same as before, and changes that affect gameplay need to keep verified scores working. If your change touches physics, scoring or the leaderboard, please say so in your pull request.
-
-I'm still learning GitHub, so if your pull request needs anything special to merge correctly, please include brief instructions.
-
+Contributions are normally not accepted but feel free to fork or play around.
 Please do not submit code, artwork or audio that you don't have the right to share.
 
 ---
