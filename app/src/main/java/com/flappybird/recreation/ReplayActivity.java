@@ -80,6 +80,7 @@ import androidx.core.view.WindowInsetsControllerCompat;
 import com.google.android.material.button.MaterialButton;
 import com.google.android.material.card.MaterialCardView;
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
+import com.google.android.material.materialswitch.MaterialSwitch;
 import com.google.android.material.slider.Slider;
 import com.google.android.material.snackbar.Snackbar;
 import java.io.File;
@@ -127,7 +128,7 @@ public class ReplayActivity extends AppCompatActivity implements Choreographer.F
     static final int AUDIO_BITRATE = 256000;
     static final int AUDIO_FRAMES = 1024;
     static final float[] QUALITY_BITS = {0.12f, 0.2f, 0.32f};
-    static final String MOVIES_FOLDER = "Flappy Bird";
+    static final String MOVIES_FOLDER = SettingsActivity.APP_NAME;
     static final int REQUEST_STORAGE = 41;
     static final double LIVE_SEEK_STEPS = 6000;
 
@@ -287,7 +288,7 @@ public class ReplayActivity extends AppCompatActivity implements Choreographer.F
     }
 
     private void haptic(View view, int kind) {
-        if (view != null && hapticsOn()) view.performHapticFeedback(kind);
+        if (view != null && hapticsOn() && flag(SettingsActivity.PREF_HAPTIC_MENUS, SettingsActivity.DEFAULT_HAPTIC_MENUS)) view.performHapticFeedback(kind);
     }
 
     private int confirmHaptic() {
@@ -2160,6 +2161,7 @@ public class ReplayActivity extends AppCompatActivity implements Choreographer.F
     static final class VideoPlan {
         int width, height, fps, bitrate;
         boolean sound;
+        boolean credit;
         String codec;
     }
 
@@ -2192,6 +2194,8 @@ public class ReplayActivity extends AppCompatActivity implements Choreographer.F
         plan.height = size[1];
         plan.fps = fps;
         plan.sound = sound instanceof Boolean ? (Boolean) sound : SettingsActivity.DEFAULT_REPLAY_SOUND;
+        Object credit = all.get(SettingsActivity.PREF_REPLAY_CREDIT);
+        plan.credit = credit instanceof Boolean ? (Boolean) credit : SettingsActivity.DEFAULT_REPLAY_CREDIT;
         fitEncoder(plan);
         plan.bitrate = bitrate(plan.width, plan.height, plan.fps, quality);
         clampBitrate(plan);
@@ -2274,10 +2278,44 @@ public class ReplayActivity extends AppCompatActivity implements Choreographer.F
         String summary = plan.width + " × " + plan.height + "  ·  " + plan.fps + " fps  ·  "
                 + String.format(Locale.US, "%.0f", plan.bitrate / 1_000_000.0) + " Mbps  ·  " + (plan.sound ? "with sound" : "no sound")
                 + "\n\nAbout " + clockText(filmLength) + " long. Every frame is drawn from the replay, so it's smoother and sharper than a screen recording."
-                + "\n\nChange the size, frame rate and quality in Settings > System > Replays.";
+                + "\n\nChange the size, frame rate, quality and credit in Settings > System > Replays.";
+        LinearLayout body = new LinearLayout(this);
+        body.setOrientation(LinearLayout.VERTICAL);
+        body.setPadding(dp(24), dp(4), dp(24), 0);
+        body.addView(text(summary, 14, COLOR_ON_VARIANT, null), new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        LinearLayout creditRow = new LinearLayout(this);
+        creditRow.setOrientation(LinearLayout.HORIZONTAL);
+        creditRow.setGravity(Gravity.CENTER_VERTICAL);
+        creditRow.setMinimumHeight(dp(48));
+        LinearLayout creditTexts = new LinearLayout(this);
+        creditTexts.setOrientation(LinearLayout.VERTICAL);
+        creditTexts.addView(text("Credit in the corner", 15, COLOR_ON, mediumFont));
+        String[] credit = SettingsActivity.videoCredit(this);
+        creditTexts.addView(text(credit[0] + " " + credit[1], 12, COLOR_ON_VARIANT, null));
+        creditRow.addView(creditTexts, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        final MaterialSwitch creditSwitch = new MaterialSwitch(this);
+        creditSwitch.setSaveEnabled(false);
+        int[][] states = {{android.R.attr.state_checked}, {}};
+        creditSwitch.setThumbTintList(new ColorStateList(states, new int[] {COLOR_ON_PRIMARY, 0xFF8791A8}));
+        creditSwitch.setTrackTintList(new ColorStateList(states, new int[] {COLOR_PRIMARY, COLOR_TRACK_OFF}));
+        creditSwitch.setTrackDecorationTintList(new ColorStateList(states, new int[] {Color.TRANSPARENT, 0xFF8791A8}));
+        creditSwitch.setChecked(plan.credit);
+        LinearLayout.LayoutParams switchParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        switchParams.leftMargin = dp(12);
+        creditRow.addView(creditSwitch, switchParams);
+        creditRow.setOnClickListener(v -> creditSwitch.setChecked(!creditSwitch.isChecked()));
+        creditSwitch.setOnCheckedChangeListener((button, checked) -> {
+            plan.credit = checked;
+            prefs.edit().putBoolean(SettingsActivity.PREF_REPLAY_CREDIT, checked).apply();
+        });
+        LinearLayout.LayoutParams rowParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        rowParams.topMargin = dp(10);
+        body.addView(creditRow, rowParams);
+        ScrollView scroller = new ScrollView(this);
+        scroller.addView(body);
         showDialog(new MaterialAlertDialogBuilder(this)
                 .setTitle("Save as a video?")
-                .setMessage(summary)
+                .setView(scroller)
                 .setNegativeButton("Cancel", null)
                 .setPositiveButton("Save video", (dialog, which) -> startExport(plan)));
     }
@@ -2393,7 +2431,7 @@ public class ReplayActivity extends AppCompatActivity implements Choreographer.F
             }
             return;
         }
-        String name = "Flappy Bird " + (film != null ? film.score : 0) + " " + new java.text.SimpleDateFormat("yyyy-MM-dd HH-mm-ss", Locale.US).format(new Date()) + ".mp4";
+        String name = SettingsActivity.APP_NAME + " " + (film != null ? film.score : 0) + " " + new java.text.SimpleDateFormat("yyyy-MM-dd HH-mm-ss", Locale.US).format(new Date()) + ".mp4";
         Uri saved;
         String where;
         try {
@@ -3130,6 +3168,8 @@ public class ReplayActivity extends AppCompatActivity implements Choreographer.F
         private int reportedPercent = -1;
         private String reportedStage = "";
         private long renderStarted;
+        private String[] credit;
+        private Paint creditFill, creditEdge;
 
         Exporter(android.content.Context context, Map<String, Object> values, GameView.Film film, VideoPlan plan, File folder, Listener listener) {
             this.context = context.getApplicationContext() != null ? context.getApplicationContext() : context;
@@ -3139,6 +3179,7 @@ public class ReplayActivity extends AppCompatActivity implements Choreographer.F
             this.plan = plan;
             this.folder = folder;
             this.listener = listener;
+            this.credit = plan.credit ? SettingsActivity.videoCredit(this.context) : null;
         }
 
         void start() {
@@ -3305,6 +3346,38 @@ public class ReplayActivity extends AppCompatActivity implements Choreographer.F
             renderer.filmDraw(canvas);
             canvas.setDrawFilter(null);
             canvas.restore();
+            drawCredit(canvas);
+        }
+
+        private void drawCredit(Canvas canvas) {
+            if (credit == null) return;
+            float shortSide = Math.min(plan.width, plan.height);
+            if (creditFill == null) {
+                Typeface face = Typeface.create("sans-serif-medium", Typeface.NORMAL);
+                float size = Math.max(9f, shortSide * 0.022f);
+                creditFill = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.SUBPIXEL_TEXT_FLAG);
+                creditFill.setTypeface(face);
+                creditFill.setTextSize(size);
+                creditFill.setTextAlign(Paint.Align.RIGHT);
+                creditFill.setColor(0xE6FFFFFF);
+                creditEdge = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.SUBPIXEL_TEXT_FLAG);
+                creditEdge.setTypeface(face);
+                creditEdge.setTextSize(size);
+                creditEdge.setTextAlign(Paint.Align.RIGHT);
+                creditEdge.setStyle(Paint.Style.STROKE);
+                creditEdge.setStrokeJoin(Paint.Join.ROUND);
+                creditEdge.setStrokeWidth(Math.max(1.5f, size * 0.18f));
+                creditEdge.setColor(0x8C000000);
+            }
+            float size = creditFill.getTextSize();
+            float margin = Math.round(shortSide * 0.03f);
+            float x = plan.width - margin;
+            float y = plan.height - margin - creditFill.descent();
+            for (int i = credit.length - 1; i >= 0; i--) {
+                canvas.drawText(credit[i], x, y, creditEdge);
+                canvas.drawText(credit[i], x, y, creditFill);
+                y -= size * 1.25f;
+            }
         }
 
         private boolean attempt(boolean gpu, double length, File out, Map<Integer, Future<Pcm>> sounds) throws IOException {

@@ -108,6 +108,9 @@ public class MainActivity extends AppCompatActivity implements GameView.BoardHos
     private OnBackPressedCallback boardBack;
     private OnBackPressedCallback nameBack;
     private NamePanel namePanel;
+    private PhysicsPanel physicsPanel;
+    private OnBackPressedCallback physicsBack;
+    private OnBackPressedCallback runBack;
 
     @Override
     protected void onCreate(@Nullable Bundle savedInstanceState) {
@@ -127,8 +130,20 @@ public class MainActivity extends AppCompatActivity implements GameView.BoardHos
         }
         namePanel = new NamePanel(this, face != null ? face : Typeface.DEFAULT_BOLD);
         gameContainer.addView(namePanel, new FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT));
+        physicsPanel = new PhysicsPanel(this, face != null ? face : Typeface.DEFAULT_BOLD);
+        gameContainer.addView(physicsPanel, new FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT));
         getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
 
+        runBack = new OnBackPressedCallback(true) {
+            @Override
+            public void handleOnBackPressed() {
+                if (gameView != null && gameView.pauseForBack()) return;
+                setEnabled(false);
+                getOnBackPressedDispatcher().onBackPressed();
+                setEnabled(true);
+            }
+        };
+        getOnBackPressedDispatcher().addCallback(this, runBack);
         boardBack = new OnBackPressedCallback(false) {
             @Override
             public void handleOnBackPressed() {
@@ -143,6 +158,13 @@ public class MainActivity extends AppCompatActivity implements GameView.BoardHos
             }
         };
         getOnBackPressedDispatcher().addCallback(this, nameBack);
+        physicsBack = new OnBackPressedCallback(false) {
+            @Override
+            public void handleOnBackPressed() {
+                if (physicsPanel != null) physicsPanel.choose(false);
+            }
+        };
+        getOnBackPressedDispatcher().addCallback(this, physicsBack);
         gameView.setBoardHost(this);
         gameView.post(() -> {
             if (gameView != null && !isFinishing()) gameView.askFirstName();
@@ -181,6 +203,23 @@ public class MainActivity extends AppCompatActivity implements GameView.BoardHos
             }
         });
         if (nameBack != null) nameBack.setEnabled(true);
+    }
+
+    @Override
+    public void askPhysics() {
+        if (isFinishing() || physicsPanel == null || physicsPanel.isOpen()) return;
+        if (gameView != null) gameView.setNameOverlay(true);
+        physicsPanel.open(classic -> {
+            SharedPreferences.Editor editor = getSharedPreferences(PREFS_NAME, MODE_PRIVATE).edit();
+            if (classic) SettingsActivity.writeClassicFeel(editor);
+            editor.putBoolean(KEY_PHYSICS_CHOSEN, true).apply();
+            if (physicsBack != null) physicsBack.setEnabled(false);
+            if (gameView != null) {
+                gameView.setNameOverlay(false);
+                gameView.physicsChosen(classic);
+            }
+        });
+        if (physicsBack != null) physicsBack.setEnabled(true);
     }
 
     private void closeNamePanel() {
@@ -242,7 +281,17 @@ public class MainActivity extends AppCompatActivity implements GameView.BoardHos
     public void onWindowFocusChanged(boolean hasFocus) {
         super.onWindowFocusChanged(hasFocus);
         if (hasFocus) hideSystemBars();
-        else if (gameView != null) gameView.releaseHeldInput();
+        else if (gameView != null) gameView.focusLost();
+    }
+
+    @Override
+    public boolean dispatchKeyEvent(KeyEvent event) {
+        if (physicsPanel != null && physicsPanel.isOpen() && physicsPanel.key(event)) return true;
+        return super.dispatchKeyEvent(event);
+    }
+
+    void feel(int kind) {
+        if (gameView != null) gameView.feel(kind);
     }
 
     @Override
@@ -300,6 +349,8 @@ class GameView extends View implements Choreographer.FrameCallback {
         void placeNamePanel(int left, int top, float unit);
 
         boolean namePanelShowing();
+
+        void askPhysics();
     }
 
     private static final int BOARD_ROWS = 10;
@@ -402,7 +453,6 @@ class GameView extends View implements Choreographer.FrameCallback {
     private static final float FIRST_PIPE_REFERENCE_DISTANCE = 2f / 3f;
     private static final int MIN_PIPE_COUNT = 5;
     private static final int MAX_PIPE_COUNT = 64;
-    private static final int PIPE_COLOR_COUNT = 9;
     private static final float PIPE_MOVE_RANGE_PERCENT = 0.08f;
     private static final float PIPE_MOVE_SPEED_TIER_1 = 0.03f;
     private static final float PIPE_MOVE_SPEED_TIER_2 = 0.06f;
@@ -415,6 +465,15 @@ class GameView extends View implements Choreographer.FrameCallback {
     private static final float HOME_BUTTON_GAP_PERCENT = 0.05f;
     private static final float SETTINGS_BUTTON_SCALE_MULTIPLIER = 0.75f;
     private static final float SCORE_PANEL_NUMBER_SCALE_MULTIPLIER = 0.6f;
+    private static final int SCORE_DIGIT_OVERLAP = 4;
+    private static final int PANEL_DIGIT_GAP = 2;
+    private static final int[][] ATLAS_PANEL_DIGITS = {
+            {274, 612, 14, 20}, {278, 954, 10, 20}, {274, 978, 14, 20}, {262, 1002, 14, 20}, {1004, 0, 14, 20},
+            {1004, 24, 14, 20}, {1010, 52, 14, 20}, {1010, 84, 14, 20}, {586, 484, 14, 20}, {622, 412, 14, 20}};
+    private static final int[] ATLAS_TUTORIAL = {584, 182, 114, 98};
+    private static final float TUTORIAL_ABOVE_BIRD = 22f;
+    private static final float READY_FADE_SEC = 0.25f;
+    private static final float READY_SPACE_ABOVE = 0.58f;
     private static final int SCORE_PANEL_CURRENT_SCORE_Y_OFFSET = 55;
     private static final int SCORE_PANEL_HIGH_SCORE_Y_OFFSET = 98;
     private static final int SCORE_PANEL_MEDAL_X_OFFSET = 32;
@@ -460,6 +519,7 @@ class GameView extends View implements Choreographer.FrameCallback {
     private static final float PIXEL_STEP_EPSILON = 0.001f;
     private static final float CLASSIC_TILT_KICK_PER_SEC = -600f;
     private static final float CLASSIC_TILT_PULL_PER_SEC2 = 1440f;
+    private static final float ORIGINAL_STEP_SEC = 1f / 60f;
     private static final float SQUARE_HITBOX_SIZE = 20f;
     private static final float FPS_REFRESH_SEC = 0.5f;
     private static final float FPS_DIGIT_SCALE = 0.8f;
@@ -588,6 +648,11 @@ class GameView extends View implements Choreographer.FrameCallback {
     private final Bitmap[] medalBitmaps = new Bitmap[4];
     private final Bitmap[] numberBitmaps = new Bitmap[10];
     private final Bitmap[] smallNumberBitmaps = new Bitmap[10];
+    private final Bitmap[] panelNumberBitmaps = new Bitmap[10];
+    private final Bitmap[] unscaledPanelNumbers = new Bitmap[10];
+    private Bitmap unscaledTutorial, tutorialBitmap;
+    private final Paint readyPaint = newPixelPaint();
+    private final RectF readyDestRect = new RectF();
     private Bitmap sparkleBitmap, smokeBitmap;
 
     private int birdFrame = 0;
@@ -673,7 +738,7 @@ class GameView extends View implements Choreographer.FrameCallback {
     private int fpsColor = FPS_COLOR_GOOD;
     private boolean settingKeyboardEnabled, settingRightClickPauses, settingHideCursor;
     private int keyFlap, keyFlapAlt, keyPause, keyPlay, keySettings;
-    private boolean touchHeld, flapKeyHeld, flapAltKeyHeld, secondaryClickHeld;
+    private boolean touchHeld, flapKeyHeld, flapAltKeyHeld, padKeyHeld, secondaryClickHeld;
     private int keyButtonCode = KeyEvent.KEYCODE_UNKNOWN;
     private boolean hasMouse;
     private float hoverX = -1f, hoverY = -1f, cursorIdleSec = 0f;
@@ -762,6 +827,7 @@ class GameView extends View implements Choreographer.FrameCallback {
     private GameState motionState;
     private float pastBirdX, pastBirdY, pastGroundX, pastBackgroundX;
     private float keptBirdX, keptBirdY, keptGroundX, keptBackgroundX;
+    private float pastBirdRotation, keptBirdRotation;
     private float returnHoldSec;
     private final RectF boardStatusPill = new RectF();
     private Paint boardStatusPaint;
@@ -869,6 +935,9 @@ class GameView extends View implements Choreographer.FrameCallback {
     private ExecutorService soundExecutor;
     private MediaPlayer rainSoundPlayer, stormSoundPlayer;
     private final Vibrator vibrator;
+    private final Feel feel;
+    private double scoreFeltAt = -1;
+    private boolean panelFelt;
     private final Runnable playDieSound = () -> playSound(soundDie);
 
     private final SharedPreferences prefs;
@@ -921,6 +990,7 @@ class GameView extends View implements Choreographer.FrameCallback {
     private float settingScreenShakeStrength, settingMotionBlurStrength;
     private boolean settingSoundEnabled, settingNoClipEnabled, settingWingAnimationEnabled;
     private boolean settingMovingPipesEnabled, settingHideSettingsIcon, settingRainbowBirdEnabled;
+    private boolean settingShowTapGuide = true, settingShowGetReady = true, settingShowScore = true;
     private boolean settingUpsideDownEnabled, settingReversePipesEnabled, settingHapticFeedbackEnabled;
     private boolean settingBirdTrailEnabled, settingGhostModeEnabled, settingRandomPipeColorsEnabled;
     private boolean settingInfiniteFlapEnabled, settingJetpackModeEnabled, settingDrunkModeEnabled;
@@ -928,6 +998,7 @@ class GameView extends View implements Choreographer.FrameCallback {
     private boolean settingMotionBlurEnabled;
     private boolean settingCrashFlashEnabled, settingFixedStepEnabled, settingCeilingEnabled, settingBirdTiltEnabled;
     private boolean settingStepOriginal;
+    private boolean settingOriginalMotion;
     private int settingStepRate = DEFAULT_FIXED_STEP_RATE, settingFrameLimit;
     private float fixedStepSec = 1f / DEFAULT_FIXED_STEP_RATE;
     private long lastVsyncNanos, frameCreditNanos;
@@ -957,6 +1028,7 @@ class GameView extends View implements Choreographer.FrameCallback {
         highScore = intPref(prefs.getAll(), PREF_HIGH_SCORE, 0);
         if (!filmMode) adoptOldHighScore(prefs);
         vibrator = filmMode && !withSounds ? null : ContextCompat.getSystemService(context, Vibrator.class);
+        feel = new Feel(vibrator, this);
         weatherSystem = new WeatherSystem(fxRandom);
 
         loadSettings();
@@ -1050,14 +1122,7 @@ class GameView extends View implements Choreographer.FrameCallback {
 
         burntColorFilter = new PorterDuffColorFilter(Color.rgb(40, 40, 40), PorterDuff.Mode.MULTIPLY);
 
-        pipeColorFilters[1] = new PorterDuffColorFilter(0xFFD05050, PorterDuff.Mode.MULTIPLY);
-        pipeColorFilters[2] = new PorterDuffColorFilter(0xFF6080E0, PorterDuff.Mode.MULTIPLY);
-        pipeColorFilters[3] = new PorterDuffColorFilter(0xFFE0E060, PorterDuff.Mode.MULTIPLY);
-        pipeColorFilters[4] = new PorterDuffColorFilter(0xFFFFFFFF, PorterDuff.Mode.SRC_ATOP);
-        pipeColorFilters[5] = new PorterDuffColorFilter(0xFFE879E8, PorterDuff.Mode.MULTIPLY);
-        pipeColorFilters[6] = new PorterDuffColorFilter(0xFF505050, PorterDuff.Mode.MULTIPLY);
-        pipeColorFilters[7] = new PorterDuffColorFilter(0xFF9040D0, PorterDuff.Mode.MULTIPLY);
-        pipeColorFilters[8] = new PorterDuffColorFilter(0xFFE89030, PorterDuff.Mode.MULTIPLY);
+        for (int i = 0; i < PIPE_COLOR_COUNT; i++) pipeColorFilters[i] = pipeColorFilter(i);
     }
 
     private void createParticlePools() {
@@ -1128,6 +1193,9 @@ class GameView extends View implements Choreographer.FrameCallback {
         settingWingAnimationEnabled = flagPref(stored, PREF_WING_ANIMATION_ENABLED, DEFAULT_WING_ANIMATION_ENABLED);
         settingPipeColor = intPref(stored, PREF_PIPE_COLOR, DEFAULT_PIPE_COLOR);
         settingHideSettingsIcon = flagPref(stored, PREF_HIDE_SETTINGS_ICON, DEFAULT_HIDE_SETTINGS_ICON);
+        settingShowTapGuide = flagPref(stored, PREF_SHOW_TAP_GUIDE, DEFAULT_SHOW_TAP_GUIDE);
+        settingShowGetReady = flagPref(stored, PREF_SHOW_GET_READY, DEFAULT_SHOW_GET_READY);
+        settingShowScore = flagPref(stored, PREF_SHOW_SCORE, DEFAULT_SHOW_SCORE);
         settingClassicMenuEnabled = flagPref(stored, PREF_CLASSIC_MENU_ENABLED, DEFAULT_CLASSIC_MENU_ENABLED);
         settingKeyboardEnabled = flagPref(stored, PREF_KEYBOARD_ENABLED, DEFAULT_KEYBOARD_ENABLED);
         settingRightClickPauses = flagPref(stored, PREF_RIGHT_CLICK_PAUSES, DEFAULT_RIGHT_CLICK_PAUSES);
@@ -1158,6 +1226,7 @@ class GameView extends View implements Choreographer.FrameCallback {
         settingPipeVariation = floatPref(stored, PREF_PIPE_VARIATION, DEFAULT_PIPE_VARIATION);
         settingScoreMultiplier = intPref(stored, PREF_SCORE_MULTIPLIER, DEFAULT_SCORE_MULTIPLIER);
         settingHapticFeedbackEnabled = flagPref(stored, PREF_HAPTIC_FEEDBACK_ENABLED, DEFAULT_HAPTIC_FEEDBACK_ENABLED);
+        if (feel != null) feel.load(stored);
         settingBirdTrailEnabled = flagPref(stored, PREF_BIRD_TRAIL_ENABLED, DEFAULT_BIRD_TRAIL_ENABLED);
         settingGhostModeEnabled = flagPref(stored, PREF_GHOST_MODE_ENABLED, DEFAULT_GHOST_MODE_ENABLED);
         settingPipeSpeedVariation = floatPref(stored, PREF_PIPE_SPEED_VARIATION, DEFAULT_PIPE_SPEED_VARIATION);
@@ -1208,6 +1277,7 @@ class GameView extends View implements Choreographer.FrameCallback {
         settingTiltSpeed = floatPref(stored, PREF_TILT_SPEED, DEFAULT_TILT_SPEED);
         settingScorePoint = intPref(stored, PREF_SCORE_POINT, DEFAULT_SCORE_POINT);
         settingPixelStepsEnabled = flagPref(stored, PREF_PIXEL_STEPS_ENABLED, DEFAULT_PIXEL_STEPS_ENABLED);
+        settingOriginalMotion = flagPref(stored, PREF_ORIGINAL_MOTION_ENABLED, DEFAULT_ORIGINAL_MOTION_ENABLED);
         settingTiltStyle = intPref(stored, PREF_TILT_STYLE, DEFAULT_TILT_STYLE);
         settingFlapLimitEnabled = flagPref(stored, PREF_FLAP_LIMIT_ENABLED, DEFAULT_FLAP_LIMIT_ENABLED);
         settingHitboxShape = intPref(stored, PREF_HITBOX_SHAPE, DEFAULT_HITBOX_SHAPE);
@@ -1366,6 +1436,14 @@ class GameView extends View implements Choreographer.FrameCallback {
         unscaledCopyright = extract(atlas, loc(0.86328125, ATLAS_WIDTH), loc(0.17773438, ATLAS_HEIGHT), 126, 14);
         unscaledButtonScore = extract(atlas, loc(0.8027344, ATLAS_WIDTH), loc(0.22851562, ATLAS_HEIGHT), 116, 70);
         unscaledTextReady = extract(atlas, loc(0.5703125, ATLAS_WIDTH), loc(0.11328125, ATLAS_HEIGHT), 196, 62);
+        unscaledTutorial = extractOptional(atlas, ATLAS_TUTORIAL[0], ATLAS_TUTORIAL[1], ATLAS_TUTORIAL[2], ATLAS_TUTORIAL[3]);
+        boolean panelDigits = true;
+        for (int i = 0; i < 10; i++) {
+            int[] at = ATLAS_PANEL_DIGITS[i];
+            unscaledPanelNumbers[i] = extractOptional(atlas, at[0], at[1], at[2], at[3]);
+            if (unscaledPanelNumbers[i] == null) panelDigits = false;
+        }
+        if (!panelDigits) Arrays.fill(unscaledPanelNumbers, null);
         unscaledTextGameOver = extract(atlas, loc(0.765625, ATLAS_WIDTH), loc(0.11328125, ATLAS_HEIGHT), 204, 54);
         unscaledScorePanel = extract(atlas, loc(0.0, ATLAS_WIDTH), loc(0.50390625, ATLAS_HEIGHT), 238, 126);
         unscaledButtonPlay = extract(atlas, loc(0.6855469, ATLAS_WIDTH), loc(0.22851562, ATLAS_HEIGHT), 116, 70);
@@ -1446,7 +1524,9 @@ class GameView extends View implements Choreographer.FrameCallback {
         for (int i = 0; i < 10; i++) {
             numberBitmaps[i] = rescale(numberBitmaps[i], unscaledNumberBitmaps[i], scale);
             smallNumberBitmaps[i] = rescale(smallNumberBitmaps[i], unscaledNumberBitmaps[i], scale * SCORE_PANEL_NUMBER_SCALE_MULTIPLIER);
+            panelNumberBitmaps[i] = rescale(panelNumberBitmaps[i], unscaledPanelNumbers[i], scale);
         }
+        tutorialBitmap = rescale(tutorialBitmap, unscaledTutorial, scale);
         titleBitmap = rescale(titleBitmap, unscaledTitle, scale);
         copyrightBitmap = rescale(copyrightBitmap, unscaledCopyright, scale);
         scoreButtonBitmap = rescale(scoreButtonBitmap, unscaledButtonScore, scale);
@@ -1729,6 +1809,8 @@ class GameView extends View implements Choreographer.FrameCallback {
         guardScore();
         displayedScore = 0;
         lastScoreTickTime = -1;
+        panelFelt = false;
+        scoreFeltAt = -1;
         currentMedal = MEDAL_NONE;
         darkenPaint.setAlpha(0);
     }
@@ -1821,7 +1903,11 @@ class GameView extends View implements Choreographer.FrameCallback {
         }
         pipe.isScored = false;
 
-        int color = settingRandomPipeColorsEnabled ? random.nextInt(PIPE_COLOR_COUNT) : settingPipeColor;
+        int color = settingPipeColor;
+        if (settingRandomPipeColorsEnabled) {
+            random.nextInt(CLASSIC_PIPE_COLOR_COUNT);
+            color = fxRandom.nextInt(PIPE_COLOR_COUNT);
+        }
         paintPipe(pipe, color);
 
         pipe.isGolden = settingGoldenPipeEnabled && random.nextInt(100) < settingGoldenPipeChance;
@@ -2209,8 +2295,13 @@ class GameView extends View implements Choreographer.FrameCallback {
             kickTilt();
         }
 
-        birdVelocityY = capFall(birdVelocityY + gravityPerSec * gameDeltaTime);
-        birdY = moveBird(birdY, birdVelocityY * gameDeltaTime);
+        if (originalMotion()) {
+            birdY = moveBird(birdY, originalTravel(birdVelocityY, gravityPerSec, gameDeltaTime));
+            birdVelocityY = capFall(birdVelocityY + gravityPerSec * gameDeltaTime);
+        } else {
+            birdVelocityY = capFall(birdVelocityY + gravityPerSec * gameDeltaTime);
+            birdY = moveBird(birdY, birdVelocityY * gameDeltaTime);
+        }
 
         if (!settingNoClipEnabled && !settingUpsideDownEnabled && settingCeilingEnabled) {
             float halfHeight = birdHalfHeight(birdFrame);
@@ -2232,6 +2323,20 @@ class GameView extends View implements Choreographer.FrameCallback {
         if (settingWeatherEffect == WEATHER_STORM) updateStorm(realDeltaTime);
 
         updateTilt(gameDeltaTime);
+    }
+
+    private boolean originalMotion() {
+        return settingOriginalMotion && !settingUpsideDownEnabled && !settingJetpackModeEnabled && gravityPerSec > 0f;
+    }
+
+    private float originalTravel(float velocity, float gravity, float dt) {
+        float lead = velocity + gravity * ORIGINAL_STEP_SEC * 0.5f;
+        if (settingMaxFallSpeed <= 0f) return lead * dt + 0.5f * gravity * dt * dt;
+        float cap = fallLimit();
+        if (lead >= cap) return cap * dt;
+        float reach = (cap - lead) / gravity;
+        if (reach >= dt) return lead * dt + 0.5f * gravity * dt * dt;
+        return lead * reach + 0.5f * gravity * reach * reach + cap * (dt - reach);
     }
 
     private float fallLimit() {
@@ -2262,8 +2367,11 @@ class GameView extends View implements Choreographer.FrameCallback {
         float down = tiltDownLimit();
         if (settingTiltStyle == TILT_STYLE_CLASSIC) {
             float side = settingUpsideDownEnabled ? -1f : 1f;
-            float angle = birdRotation * side + birdTiltVelocity * dt;
-            birdTiltVelocity += CLASSIC_TILT_PULL_PER_SEC2 * speed * speed * dt;
+            float pull = CLASSIC_TILT_PULL_PER_SEC2 * speed * speed;
+            float angle = settingOriginalMotion
+                    ? birdRotation * side + (birdTiltVelocity - pull * ORIGINAL_STEP_SEC * 0.5f) * dt + 0.5f * pull * dt * dt
+                    : birdRotation * side + birdTiltVelocity * dt;
+            birdTiltVelocity += pull * dt;
             birdRotation = Math.max(-up, Math.min(down, angle)) * side;
             return;
         }
@@ -2354,8 +2462,14 @@ class GameView extends View implements Choreographer.FrameCallback {
         boolean gaveUpWaiting = !isOnGround && clock - gameOverTime > GAME_OVER_MAX_FALL_SEC;
 
         if (!isOnGround && !gaveUpWaiting) {
-            birdVelocityY = capFall(birdVelocityY + (gravityPerSec * Math.max(0f, settingCrashGravity)) * dt);
-            birdY = moveBird(birdY, birdVelocityY * dt);
+            float fallGravity = gravityPerSec * Math.max(0f, settingCrashGravity);
+            if (originalMotion() && fallGravity > 0f) {
+                birdY = moveBird(birdY, originalTravel(birdVelocityY, fallGravity, dt));
+                birdVelocityY = capFall(birdVelocityY + fallGravity * dt);
+            } else {
+                birdVelocityY = capFall(birdVelocityY + fallGravity * dt);
+                birdY = moveBird(birdY, birdVelocityY * dt);
+            }
             float deathAngle = tiltDownLimit();
             if (settingTiltStyle == TILT_STYLE_CLASSIC) {
                 updateTilt(dt);
@@ -2380,7 +2494,10 @@ class GameView extends View implements Choreographer.FrameCallback {
         birdFrame = 1;
         if (birdHitGroundTime < 0) {
             birdHitGroundTime = clock;
-            if (isOnGround) triggerShake(5.0f, 0.4f);
+            if (isOnGround) {
+                triggerShake(5.0f, 0.4f);
+                if (clock - gameOverTime > 0.15f) feel(Feel.LAND);
+            }
         }
 
         if (clock - birdHitGroundTime > PANEL_SLIDE_DELAY_SEC) {
@@ -2471,9 +2588,19 @@ class GameView extends View implements Choreographer.FrameCallback {
         }
     }
 
+    private void feelPanel() {
+        if (panelFelt) return;
+        panelFelt = true;
+        if (isNewBest) feel(Feel.BEST);
+        else if (currentMedal != MEDAL_NONE) feel(Feel.MEDAL);
+    }
+
     private void updateScoreCountUp() {
         if (lastScoreTickTime < 0) lastScoreTickTime = clock;
-        if (displayedScore >= score) return;
+        if (displayedScore >= score) {
+            if (score > 0) feelPanel();
+            return;
+        }
 
         int remaining = score - displayedScore;
         float interval;
@@ -2491,6 +2618,12 @@ class GameView extends View implements Choreographer.FrameCallback {
         if (clock - lastScoreTickTime > interval) {
             displayedScore = Math.min(score, displayedScore + increment);
             lastScoreTickTime = clock;
+            if (displayedScore >= score) {
+                feelPanel();
+            } else if (scoreFeltAt < 0 || clock - scoreFeltAt >= 0.05) {
+                scoreFeltAt = clock;
+                feel(Feel.TICK);
+            }
         }
     }
 
@@ -2527,6 +2660,7 @@ class GameView extends View implements Choreographer.FrameCallback {
                     roundGoldenPoints += settingGoldenPipeBonus;
                 }
                 playSound(soundPoint);
+                feel(pipe.isGolden ? Feel.GOLDEN : Feel.SCORE);
             }
 
             boolean leftTheScreen = settingReversePipesEnabled
@@ -2662,6 +2796,7 @@ class GameView extends View implements Choreographer.FrameCallback {
         invulnerableTimer = INVULNERABLE_SEC;
         startCrashFlash(150f / 255f);
         playSound(soundHit);
+        feel(Feel.LIFE);
         triggerShake(5.0f, 0.3f);
         return true;
     }
@@ -2808,6 +2943,7 @@ class GameView extends View implements Choreographer.FrameCallback {
         startCrashFlash(1f);
         stopWeatherSounds();
         playSound(soundHit);
+        feel(Feel.CRASH);
         triggerShake(5.0f, 0.4f);
         if (filmMode) filmDieIn = 0.3f;
         else postDelayed(playDieSound, 300);
@@ -2831,6 +2967,8 @@ class GameView extends View implements Choreographer.FrameCallback {
 
         displayedScore = 0;
         lastScoreTickTime = -1;
+        panelFelt = false;
+        scoreFeltAt = -1;
     }
 
     private void recordRound() {
@@ -2900,6 +3038,7 @@ class GameView extends View implements Choreographer.FrameCallback {
         h = fingerprint(h, settingSpeedRampPercent);
         h = fingerprint(h, settingGapShrinkPercent);
         h = fingerprint(h, settingFixedStepEnabled ? 1 : 0);
+        h = fingerprint(h, settingOriginalMotion ? 1 : 0);
         h = fingerprint(h, settingMaxFallSpeed);
         h = fingerprint(h, settingCeilingEnabled ? 1 : 0);
         h = fingerprint(h, settingPixelStepsEnabled ? 1 : 0);
@@ -3175,6 +3314,7 @@ class GameView extends View implements Choreographer.FrameCallback {
     private void holdMotion() {
         pastBirdX = birdX;
         pastBirdY = birdY;
+        pastBirdRotation = birdRotation;
         pastGroundX = groundX;
         pastBackgroundX = backgroundX;
         for (int i = 0; i < pipes.size(); i++) {
@@ -3199,10 +3339,12 @@ class GameView extends View implements Choreographer.FrameCallback {
         if (!(amount > 0f) || amount >= 1f) return false;
         keptBirdX = birdX;
         keptBirdY = birdY;
+        keptBirdRotation = birdRotation;
         keptGroundX = groundX;
         keptBackgroundX = backgroundX;
         birdX += (birdX - pastBirdX) * amount;
         birdY += (birdY - pastBirdY) * amount;
+        birdRotation = Math.max(-90f, Math.min(90f, birdRotation + (birdRotation - pastBirdRotation) * amount));
         groundX = blendWrapped(pastGroundX, groundX, amount, groundBitmap.getWidth());
         backgroundX = blendWrapped(pastBackgroundX, backgroundX, amount, bgDayBitmap.getWidth());
         for (int i = 0; i < pipes.size(); i++) {
@@ -3217,6 +3359,7 @@ class GameView extends View implements Choreographer.FrameCallback {
     private void restoreMotion() {
         birdX = keptBirdX;
         birdY = keptBirdY;
+        birdRotation = keptBirdRotation;
         groundX = keptGroundX;
         backgroundX = keptBackgroundX;
         for (int i = 0; i < pipes.size(); i++) {
@@ -4148,6 +4291,7 @@ class GameView extends View implements Choreographer.FrameCallback {
         touchHeld = false;
         flapKeyHeld = false;
         flapAltKeyHeld = false;
+        padKeyHeld = false;
         stepAccumulator = 0f;
         motionValid = false;
         shakeTimer = 0f;
@@ -4422,10 +4566,27 @@ class GameView extends View implements Choreographer.FrameCallback {
     }
 
     void askFirstName() {
-        if (boardHost == null || !Leaderboard.configured() || nameOverlayOpen) return;
+        if (boardHost == null || nameOverlayOpen) return;
+        if (!Leaderboard.configured()) {
+            if (!filmMode && highScore == 0 && !prefs.getBoolean(KEY_PHYSICS_CHOSEN, false)) boardHost.askPhysics();
+            return;
+        }
         boolean taken = Leaderboard.nameTaken(prefs);
         if (!taken && (Leaderboard.asked(prefs) || !Leaderboard.name(prefs).isEmpty())) return;
-        boardHost.askName(taken && !Leaderboard.nameRefused(prefs) ? Leaderboard.name(prefs) : "", true, name -> boardRefreshPending = true);
+        final boolean fresh = !taken && Leaderboard.name(prefs).isEmpty() && !prefs.getBoolean(KEY_PHYSICS_CHOSEN, false);
+        boardHost.askName(taken && !Leaderboard.nameRefused(prefs) ? Leaderboard.name(prefs) : "", true, name -> {
+            boardRefreshPending = true;
+            if (fresh && boardHost != null) postDelayed(() -> {
+                if (boardHost != null && !prefs.getBoolean(KEY_PHYSICS_CHOSEN, false)) boardHost.askPhysics();
+            }, 220);
+        });
+    }
+
+    void physicsChosen(boolean classic) {
+        if (gameState == GameState.HOME) resetGame();
+        else loadSettings();
+        SettingsActivity.ActivityLog.add(getContext(), "SETTINGS", classic ? "Chose Classic physics" : "Chose Default physics");
+        invalidate();
     }
 
     private void openBoardAfterBest() {
@@ -4980,7 +5141,7 @@ class GameView extends View implements Choreographer.FrameCallback {
     }
 
     private void boardHaptic(int kind, float strength) {
-        if (!settingHapticFeedbackEnabled || filmMode) return;
+        if (!settingHapticFeedbackEnabled || filmMode || (feel != null && !feel.allows(Feel.TICK))) return;
         if (boardHapticMode < 0) boardHapticMode = pickBoardHaptics();
         if (boardHapticMode == 2 || (boardHapticMode == 1 && kind != HAPTIC_TICK)) {
             try {
@@ -5083,7 +5244,7 @@ class GameView extends View implements Choreographer.FrameCallback {
         if (Leaderboard.nameRefused(prefs)) return "Your name isn't allowed. Tap NAME to choose another";
         if (Leaderboard.nameTaken(prefs)) return "Your name is taken. Tap NAME to choose another";
         if (Leaderboard.name(prefs).isEmpty()) return "Tap NAME to choose a name";
-        if (!settingBoardAutoPost) return "Posting is off in Settings > System";
+        if (!settingBoardAutoPost) return "Posting is off in Settings > Leaderboard";
         if (boardData.verifying && !boardShowAll) return "Verifying your latest run...";
         long sinceVerdict = Leaderboard.now() - boardData.verdictTime;
         if (!boardShowAll && boardData.verdictTime > 0 && sinceVerdict > -600000L && sinceVerdict < 86400000L && boardData.verdictScore > 0) {
@@ -6075,6 +6236,12 @@ class GameView extends View implements Choreographer.FrameCallback {
         shakeTimer = duration;
     }
 
+    void feel(int kind) {
+        if (feel == null || (filmMode && !filmFeel)) return;
+        if (kind == Feel.FLAP && settingAutopilotEnabled) return;
+        feel.play(kind);
+    }
+
     private void triggerThunderHaptic() {
         if (!settingHapticFeedbackEnabled || vibrator == null || (filmMode && !filmFeel)) return;
         long[] pattern = {0, 30, 40, 30, 40, 80, 20, 100};
@@ -6466,14 +6633,16 @@ class GameView extends View implements Choreographer.FrameCallback {
                 break;
             case TRANSITION_TO_WAITING:
                 if (isFadingOut) drawHomeScreen(canvas);
-                else drawCenteredBitmap(canvas, getReadyBitmap, -(int) (getPlayableHeight() * 0.15));
+                else drawGetReady(canvas, 255);
                 break;
             case WAITING:
-                drawCenteredBitmap(canvas, getReadyBitmap, -(int) (getPlayableHeight() * 0.15));
+                drawGetReady(canvas, 255);
                 break;
             case PLAYING:
                 int scoreCenterY = systemBarTop + (int) (getPlayableHeight() * 0.15);
-                drawScoreWithImages(canvas, score, screenWidth / 2, scoreCenterY);
+                float readyLeft = 1f - (float) ((clock - roundStartClock) / READY_FADE_SEC);
+                if (readyLeft > 0f) drawGetReady(canvas, Math.round(255f * Math.min(1f, readyLeft)));
+                if (settingShowScore) drawScoreWithImages(canvas, score, screenWidth / 2, scoreCenterY);
                 drawLives(canvas, scoreCenterY + numberBitmaps[0].getHeight() / 2f + 6f * scale);
                 if (settingPauseButtonEnabled && !isPaused) drawPauseButton(canvas);
                 break;
@@ -6656,10 +6825,10 @@ class GameView extends View implements Choreographer.FrameCallback {
         float panelRightEdge = panelX + panelWidth - (22 * scale * scaleCorrection);
         float scoreY = panelY + (SCORE_PANEL_CURRENT_SCORE_Y_OFFSET * scale * scaleCorrection);
         float highScoreY = panelY + (SCORE_PANEL_HIGH_SCORE_Y_OFFSET * scale * scaleCorrection);
-        drawScoreWithImagesRightAligned(canvas, displayedScore, panelRightEdge, scoreY, smallNumberBitmaps, scaleCorrection);
+        drawPanelDigits(canvas, displayedScore, panelRightEdge, scoreY, scaleCorrection);
         boolean countUpFinished = displayedScore == score;
         int shownBest = isNewBest && !countUpFinished ? previousBest : highScore;
-        drawScoreWithImagesRightAligned(canvas, shownBest, panelRightEdge, highScoreY, smallNumberBitmaps, scaleCorrection);
+        drawPanelDigits(canvas, shownBest, panelRightEdge, highScoreY, scaleCorrection);
 
         if (isNewBest && countUpFinished && newLabelBitmap != null) {
             float labelX = panelX + SCORE_PANEL_NEW_X_OFFSET * scale * scaleCorrection;
@@ -6746,15 +6915,40 @@ class GameView extends View implements Choreographer.FrameCallback {
     }
 
     private void drawScoreWithImages(Canvas canvas, int number, int x, int y) {
+        drawScoreWithImages(canvas, number, x, y, pixelPaint);
+    }
+
+    private void drawScoreWithImages(Canvas canvas, int number, int x, int y, Paint paint) {
         int count = splitDigits(number);
+        float overlap = Math.round(SCORE_DIGIT_OVERLAP * scale);
         float totalWidth = 0;
         for (int i = 0; i < count; i++) totalWidth += numberBitmaps[digitBuffer[i]].getWidth();
+        totalWidth -= overlap * (count - 1);
 
-        float currentX = x - (totalWidth / 2f);
+        float currentX = Math.round(x - (totalWidth / 2f));
         for (int i = count - 1; i >= 0; i--) {
             Bitmap digitBitmap = numberBitmaps[digitBuffer[i]];
-            canvas.drawBitmap(digitBitmap, currentX, y - (digitBitmap.getHeight() / 2f), pixelPaint);
-            currentX += digitBitmap.getWidth();
+            canvas.drawBitmap(digitBitmap, currentX, y - (digitBitmap.getHeight() / 2f), paint);
+            currentX += digitBitmap.getWidth() - overlap;
+        }
+    }
+
+    private void drawPanelDigits(Canvas canvas, int number, float rightX, float bottomY, float scaleCorrection) {
+        if (panelNumberBitmaps[0] == null) {
+            drawScoreWithImagesRightAligned(canvas, number, rightX, bottomY, smallNumberBitmaps, scaleCorrection);
+            return;
+        }
+        int count = splitDigits(number);
+        float gap = PANEL_DIGIT_GAP * scale * scaleCorrection;
+        float currentX = rightX;
+        for (int i = 0; i < count; i++) {
+            Bitmap digitBitmap = panelNumberBitmaps[digitBuffer[i]];
+            float digitWidth = digitBitmap.getWidth() * scaleCorrection;
+            float digitHeight = digitBitmap.getHeight() * scaleCorrection;
+            currentX -= digitWidth;
+            scoreDigitDestRect.set(currentX, bottomY - digitHeight, currentX + digitWidth, bottomY);
+            canvas.drawBitmap(digitBitmap, null, scoreDigitDestRect, pixelPaint);
+            currentX -= gap;
         }
     }
 
@@ -6773,6 +6967,51 @@ class GameView extends View implements Choreographer.FrameCallback {
             scoreDigitDestRect.set(currentX, y - digitHeight, currentX + digitWidth, y);
             canvas.drawBitmap(digitBitmap, null, scoreDigitDestRect, paint);
         }
+    }
+
+    private void drawGetReady(Canvas canvas, int alpha) {
+        if (alpha <= 0) return;
+        readyPaint.setAlpha(alpha);
+        float scoreCenterY = systemBarTop + (int) (getPlayableHeight() * 0.15);
+        float scoreBottom = scoreCenterY + numberBitmaps[0].getHeight() / 2f;
+        float scaleCorrection = fitToWidth(getReadyBitmap.getWidth());
+        float width = getReadyBitmap.getWidth() * scaleCorrection;
+        float height = getReadyBitmap.getHeight() * scaleCorrection;
+        float left = (screenWidth - width) / 2f;
+        float top = (systemBarTop + (groundTopY() - systemBarTop) / 2f) - height / 2f - (int) (getPlayableHeight() * 0.15) * scaleCorrection;
+        boolean guide = false;
+        float tutorialLeft = 0f, tutorialTop = 0f, tutorialWidth = 0f, tutorialHeight = 0f;
+        if (tutorialBitmap != null && !settingUpsideDownEnabled) {
+            float fit = fitToWidth(tutorialBitmap.getWidth());
+            tutorialWidth = tutorialBitmap.getWidth() * fit;
+            tutorialHeight = tutorialBitmap.getHeight() * fit;
+            tutorialLeft = Math.round((screenWidth - tutorialWidth) / 2f);
+            tutorialTop = Math.round(waitingBirdAnchorY() - TUTORIAL_ABOVE_BIRD * scale * fit);
+            guide = tutorialTop >= scoreBottom && tutorialTop + tutorialHeight <= groundTopY();
+        }
+        if (guide) {
+            float room = tutorialTop - scoreBottom - height;
+            top = room >= 0f ? scoreBottom + room * READY_SPACE_ABOVE : tutorialTop - height;
+            top = Math.max(top, scoreBottom);
+        } else {
+            top = Math.max(top, scoreBottom);
+        }
+        top = Math.round(top);
+        readyDestRect.set(left, top, left + width, top + height);
+        if (settingShowGetReady) canvas.drawBitmap(getReadyBitmap, null, readyDestRect, readyPaint);
+        if (guide && settingShowTapGuide) {
+            readyDestRect.set(tutorialLeft, tutorialTop, tutorialLeft + tutorialWidth, tutorialTop + tutorialHeight);
+            canvas.drawBitmap(tutorialBitmap, null, readyDestRect, readyPaint);
+        }
+        if (gameState != GameState.PLAYING && settingShowScore) {
+            drawScoreWithImages(canvas, 0, screenWidth / 2, (int) scoreCenterY, readyPaint);
+        }
+    }
+
+    private float waitingBirdAnchorY() {
+        if (settingStartHeight == DEFAULT_START_HEIGHT) return playAreaCenterY();
+        float share = 1f - Math.max(10, Math.min(90, settingStartHeight)) / 100f;
+        return systemBarTop + (getPlayableHeight() - groundHeight) * share;
     }
 
     private void drawCenteredBitmap(Canvas canvas, Bitmap bitmap, int yOffset) {
@@ -6905,13 +7144,14 @@ class GameView extends View implements Choreographer.FrameCallback {
     }
 
     private void refreshHeld() {
-        isScreenPressed = touchHeld || flapKeyHeld || flapAltKeyHeld;
+        isScreenPressed = touchHeld || flapKeyHeld || flapAltKeyHeld || padKeyHeld;
     }
 
     void releaseHeldInput() {
         touchHeld = false;
         flapKeyHeld = false;
         flapAltKeyHeld = false;
+        padKeyHeld = false;
         secondaryClickHeld = false;
         refreshHeld();
         if (keyButtonCode != KeyEvent.KEYCODE_UNKNOWN) cancelButtonPress();
@@ -6919,11 +7159,12 @@ class GameView extends View implements Choreographer.FrameCallback {
 
     boolean onGameKey(int keyCode, KeyEvent event, boolean down) {
         if (!isReady || !settingKeyboardEnabled || keyCode == KeyEvent.KEYCODE_UNKNOWN || event == null || nameOverlayOpen) return false;
-        boolean flapKey = keyCode == keyFlap || keyCode == keyFlapAlt;
-        boolean playKey = keyCode == keyPlay;
-        boolean settingsKey = keyCode == keySettings;
         boolean running = gameState == GameState.PLAYING;
-        boolean pauseKey = keyCode == keyPause || (keyCode == KeyEvent.KEYCODE_ESCAPE && running);
+        boolean flapKey = keyCode == keyFlap || keyCode == keyFlapAlt || keyCode == KeyEvent.KEYCODE_BUTTON_A;
+        boolean playKey = keyCode == keyPlay || (keyPlay == KeyEvent.KEYCODE_ENTER && keyCode == KeyEvent.KEYCODE_NUMPAD_ENTER)
+                || (keyCode == KeyEvent.KEYCODE_BUTTON_START && !running);
+        boolean settingsKey = keyCode == keySettings;
+        boolean pauseKey = keyCode == keyPause || ((keyCode == KeyEvent.KEYCODE_ESCAPE || keyCode == KeyEvent.KEYCODE_BUTTON_START) && running);
         if (boardOpen) {
             boolean closes = flapKey || playKey || keyCode == KeyEvent.KEYCODE_ESCAPE || keyCode == KeyEvent.KEYCODE_ENTER;
             if (closes && down && event.getRepeatCount() == 0) closeBoard();
@@ -7002,6 +7243,7 @@ class GameView extends View implements Choreographer.FrameCallback {
     private void holdKey(int keyCode, boolean held) {
         if (keyCode == keyFlap) flapKeyHeld = held;
         else if (keyCode == keyFlapAlt) flapAltKeyHeld = held;
+        else if (keyCode == KeyEvent.KEYCODE_BUTTON_A) padKeyHeld = held;
         refreshHeld();
     }
 
@@ -7009,6 +7251,14 @@ class GameView extends View implements Choreographer.FrameCallback {
         if (gameState != GameState.PLAYING) return;
         if (isPaused) resumeFromPause();
         else pauseGame();
+        feel(Feel.PAUSE);
+    }
+
+    boolean pauseForBack() {
+        if (filmMode || !isReady || gameState != GameState.PLAYING || isPaused) return false;
+        pauseGame();
+        feel(Feel.PAUSE);
+        return true;
     }
 
     private void resumeFromPause() {
@@ -7040,12 +7290,16 @@ class GameView extends View implements Choreographer.FrameCallback {
             handleGameplayTap();
         } else if (gameState == GameState.PLAYING && settingPauseButtonEnabled && pauseButtonRect.contains(x, y)) {
             pauseGame();
+            feel(Feel.PAUSE);
         } else {
             handleGameplayTap();
         }
 
         applyButtonTargets();
-        if (pressedButtonRect != null) invalidate();
+        if (pressedButtonRect != null) {
+            feel(Feel.PRESS);
+            invalidate();
+        }
     }
 
     private void applyButtonTargets() {
@@ -7106,6 +7360,7 @@ class GameView extends View implements Choreographer.FrameCallback {
         touchHeld = false;
         flapKeyHeld = false;
         flapAltKeyHeld = false;
+        padKeyHeld = false;
         refreshHeld();
         stopWeatherSounds();
         invalidate();
@@ -7114,6 +7369,7 @@ class GameView extends View implements Choreographer.FrameCallback {
     private void onFingerUp(int x, int y) {
         Rect button = pressedButtonRect;
         if (button != null && button.contains(x, y)) {
+            if (gameState == GameState.HOME || gameState == GameState.PANEL_SLIDING) feel(Feel.BUTTON);
             if (gameState == GameState.HOME) {
                 playSound(soundSwooshing);
                 if (button == playButtonRect) {
@@ -7184,10 +7440,11 @@ class GameView extends View implements Choreographer.FrameCallback {
         birdVelocityY = flapVelocityPerSec;
         roundFlaps++;
         kickTilt();
+        pastBirdX = birdX;
+        pastBirdY = birdY;
+        pastBirdRotation = birdRotation;
         playSound(soundWing);
-        if (settingHapticFeedbackEnabled && !settingAutopilotEnabled && (!filmMode || filmFeel)) {
-            performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY);
-        }
+        feel(Feel.FLAP);
         lastFlapTime = clock;
     }
 
@@ -7327,6 +7584,11 @@ class GameView extends View implements Choreographer.FrameCallback {
             }
         }
         startLoop();
+    }
+
+    void focusLost() {
+        releaseHeldInput();
+        if (!filmMode && settingAutoPauseEnabled && gameState == GameState.PLAYING && !isPaused) pauseGame();
     }
 
     public void pause() {
@@ -8090,6 +8352,264 @@ class Pipe {
     }
 }
 
+final class PhysicsPanel extends FrameLayout {
+
+    interface Listener {
+        void chose(boolean classic);
+    }
+
+    static final float WIDTH_UNITS = 200f;
+
+    private int marked = -1;
+    private final NamePanel.Card card;
+    private final TextView title;
+    private final TextView message;
+    private final NamePanel.PixelButton standard;
+    private final NamePanel.PixelButton classic;
+    private final TextView standardNote;
+    private final TextView classicNote;
+    private final LinearLayout choices;
+    private Listener listener;
+    private float unit = -1f;
+    private boolean closing;
+
+    PhysicsPanel(Context context, Typeface face) {
+        super(context);
+        card = new NamePanel.Card(context);
+        card.setGravity(Gravity.CENTER_HORIZONTAL);
+        title = text(context, face, NamePanel.ORANGE);
+        title.setText("PICK YOUR PHYSICS");
+        message = text(context, face, NamePanel.DARK);
+        message.setText("How should the bird fly? You can change it anytime in Settings > Classic.");
+        standard = new NamePanel.PixelButton(context, "DEFAULT", face);
+        classic = new NamePanel.PixelButton(context, "CLASSIC", face);
+        standardNote = text(context, face, 0xB3543847);
+        standardNote.setText("Smooth and modern");
+        classicNote = text(context, face, 0xB3543847);
+        classicNote.setText("Like the 2013 original");
+        choices = new LinearLayout(context);
+        choices.setOrientation(LinearLayout.HORIZONTAL);
+        choices.setGravity(Gravity.CENTER);
+        choices.addView(option(context, standard, standardNote), new LinearLayout.LayoutParams(1, LayoutParams.WRAP_CONTENT));
+        choices.addView(option(context, classic, classicNote), new LinearLayout.LayoutParams(1, LayoutParams.WRAP_CONTENT));
+        card.addView(title, new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
+        card.addView(message, new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
+        card.addView(choices, new LinearLayout.LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT));
+        addView(card, new FrameLayout.LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT, Gravity.CENTER));
+        setBackgroundColor(0x33000000);
+        setClickable(true);
+        setVisibility(GONE);
+        standard.setOnClickListener(v -> choose(false));
+        classic.setOnClickListener(v -> choose(true));
+    }
+
+    private static TextView text(Context context, Typeface face, int color) {
+        TextView view = new TextView(context);
+        view.setTypeface(face);
+        view.setTextColor(color);
+        view.setGravity(Gravity.CENTER);
+        view.setIncludeFontPadding(false);
+        return view;
+    }
+
+    private static LinearLayout option(Context context, NamePanel.PixelButton button, TextView note) {
+        LinearLayout column = new LinearLayout(context);
+        column.setOrientation(LinearLayout.VERTICAL);
+        column.setGravity(Gravity.CENTER_HORIZONTAL);
+        column.addView(button, new LinearLayout.LayoutParams(1, 1));
+        column.addView(note, new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
+        return column;
+    }
+
+    @Override
+    protected void onMeasure(int widthSpec, int heightSpec) {
+        int width = MeasureSpec.getSize(widthSpec);
+        int height = MeasureSpec.getSize(heightSpec);
+        if (width > 0 && height > 0) fit(width, height);
+        super.onMeasure(widthSpec, heightSpec);
+    }
+
+    private void fit(int width, int height) {
+        float roomWidth = width * 0.92f;
+        float roomHeight = height * 0.86f;
+        float value = Math.max(0.5f, Math.min(width / 252f, height / 360f) * 0.95f);
+        value = Math.min(value, roomWidth / (WIDTH_UNITS + 4f));
+        for (int pass = 0; pass < 3; pass++) {
+            applyUnit(value);
+            card.measure(MeasureSpec.makeMeasureSpec(Math.round(roomWidth), MeasureSpec.AT_MOST),
+                    MeasureSpec.makeMeasureSpec(0, MeasureSpec.UNSPECIFIED));
+            float shrink = Math.min(roomWidth / Math.max(1, card.getMeasuredWidth()), roomHeight / Math.max(1, card.getMeasuredHeight()));
+            if (shrink >= 0.995f) return;
+            value *= shrink * 0.98f;
+        }
+        applyUnit(value);
+    }
+
+    private static LinearLayout.LayoutParams params(View view) {
+        android.view.ViewGroup.LayoutParams current = view.getLayoutParams();
+        if (current instanceof LinearLayout.LayoutParams) return (LinearLayout.LayoutParams) current;
+        return new LinearLayout.LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT);
+    }
+
+    private void applyUnit(float value) {
+        if (!(value > 0f) || Math.abs(value - unit) < 0.002f * value) return;
+        unit = value;
+        card.unit = unit;
+        int side = Math.round(10f * unit);
+        card.setPadding(side, Math.round(9f * unit), side, Math.round(10f * unit));
+        card.setMinimumWidth(Math.round(WIDTH_UNITS * unit));
+        title.setTextSize(TypedValue.COMPLEX_UNIT_PX, 13f * unit);
+        message.setTextSize(TypedValue.COMPLEX_UNIT_PX, 6.5f * unit);
+        message.setLineSpacing(1.5f * unit, 1f);
+        LinearLayout.LayoutParams messageParams = params(message);
+        messageParams.width = Math.round((WIDTH_UNITS - 20f) * unit);
+        messageParams.topMargin = Math.round(5f * unit);
+        message.setLayoutParams(messageParams);
+        LinearLayout.LayoutParams rowParams = params(choices);
+        rowParams.topMargin = Math.round(9f * unit);
+        choices.setLayoutParams(rowParams);
+        int column = Math.round(82f * unit);
+        int gap = Math.round(4f * unit);
+        for (int i = 0; i < choices.getChildCount(); i++) {
+            View child = choices.getChildAt(i);
+            LinearLayout.LayoutParams params = params(child);
+            params.width = column;
+            params.leftMargin = gap;
+            params.rightMargin = gap;
+            child.setLayoutParams(params);
+        }
+        for (NamePanel.PixelButton button : new NamePanel.PixelButton[] {standard, classic}) {
+            button.unit = unit;
+            LinearLayout.LayoutParams params = params(button);
+            params.width = Math.round(74f * unit);
+            params.height = Math.round(24f * unit);
+            button.setLayoutParams(params);
+            button.invalidate();
+        }
+        for (TextView note : new TextView[] {standardNote, classicNote}) {
+            note.setTextSize(TypedValue.COMPLEX_UNIT_PX, 5.5f * unit);
+            note.setLineSpacing(1f * unit, 1f);
+            LinearLayout.LayoutParams params = params(note);
+            params.topMargin = Math.round(4f * unit);
+            note.setLayoutParams(params);
+        }
+        card.invalidate();
+    }
+
+    void open(Listener listener) {
+        this.listener = listener;
+        closing = false;
+        View parent = (View) getParent();
+        if (parent != null && parent.getWidth() > 0 && parent.getHeight() > 0) fit(parent.getWidth(), parent.getHeight());
+        setVisibility(VISIBLE);
+        requestLayout();
+        setAlpha(0f);
+        animate().cancel();
+        animate().alpha(1f).setDuration(180).start();
+        float travel = Math.max(1f, unit) * 16f;
+        card.animate().cancel();
+        card.setScaleX(0.96f);
+        card.setScaleY(0.96f);
+        card.setTranslationY(travel);
+        card.animate().scaleX(1f).scaleY(1f).translationY(0f).setStartDelay(40).setDuration(280)
+                .setInterpolator(new DecelerateInterpolator(1.8f)).withLayer().start();
+        mark(-1);
+    }
+
+    boolean isOpen() {
+        return getVisibility() == VISIBLE && !closing;
+    }
+
+    private void mark(int which) {
+        marked = which;
+        standard.setMarked(which == 0);
+        classic.setMarked(which == 1);
+    }
+
+    boolean key(KeyEvent event) {
+        int code = event.getKeyCode();
+        boolean down = event.getAction() == KeyEvent.ACTION_DOWN;
+        boolean first = down && event.getRepeatCount() == 0;
+        switch (code) {
+            case KeyEvent.KEYCODE_DPAD_LEFT:
+            case KeyEvent.KEYCODE_DPAD_RIGHT:
+            case KeyEvent.KEYCODE_TAB:
+            case KeyEvent.KEYCODE_DPAD_UP:
+            case KeyEvent.KEYCODE_DPAD_DOWN:
+                if (down) {
+                    int next;
+                    if (code == KeyEvent.KEYCODE_DPAD_LEFT) next = 0;
+                    else if (code == KeyEvent.KEYCODE_DPAD_RIGHT) next = 1;
+                    else next = marked < 0 ? (code == KeyEvent.KEYCODE_TAB && event.isShiftPressed() ? 1 : 0) : 1 - marked;
+                    if (next != marked) {
+                        mark(next);
+                        hint();
+                    }
+                }
+                return true;
+            case KeyEvent.KEYCODE_D:
+                if (first) press(false);
+                return true;
+            case KeyEvent.KEYCODE_C:
+                if (first) press(true);
+                return true;
+            case KeyEvent.KEYCODE_ENTER:
+            case KeyEvent.KEYCODE_NUMPAD_ENTER:
+            case KeyEvent.KEYCODE_SPACE:
+            case KeyEvent.KEYCODE_DPAD_CENTER:
+            case KeyEvent.KEYCODE_BUTTON_A:
+                if (first) {
+                    if (marked < 0) {
+                        mark(0);
+                        hint();
+                    } else {
+                        press(marked == 1);
+                    }
+                }
+                return true;
+            case KeyEvent.KEYCODE_ESCAPE:
+            case KeyEvent.KEYCODE_BUTTON_B:
+                if (first) press(false);
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    private void hint() {
+        Context context = getContext();
+        if (context instanceof MainActivity) ((MainActivity) context).feel(SettingsActivity.Feel.TICK);
+    }
+
+    private void press(boolean pickClassic) {
+        NamePanel.PixelButton button = button(pickClassic);
+        mark(pickClassic ? 1 : 0);
+        button.performClick();
+    }
+
+    void choose(boolean pickClassic) {
+        if (!isOpen()) return;
+        Listener chosen = listener;
+        listener = null;
+        closing = true;
+        float travel = Math.max(1f, unit) * 12f;
+        card.animate().cancel();
+        card.animate().scaleX(0.97f).scaleY(0.97f).translationY(travel).setStartDelay(0).setDuration(160)
+                .setInterpolator(new AccelerateInterpolator(1.4f)).withLayer().start();
+        animate().cancel();
+        animate().alpha(0f).setDuration(180).withEndAction(() -> {
+            if (!closing) return;
+            closing = false;
+            setVisibility(GONE);
+        }).start();
+        if (chosen != null) chosen.chose(pickClassic);
+    }
+
+    NamePanel.PixelButton button(boolean pickClassic) {
+        return pickClassic ? classic : standard;
+    }
+}
+
 final class NamePanel extends FrameLayout {
 
     interface Listener {
@@ -8155,6 +8675,7 @@ final class NamePanel extends FrameLayout {
         private final RectF shape = new RectF();
         private String label;
         private boolean down;
+        private boolean marked;
         float unit = 1f;
 
         PixelButton(Context context, String label, Typeface face) {
@@ -8177,6 +8698,37 @@ final class NamePanel extends FrameLayout {
             return label;
         }
 
+        void setMarked(boolean marked) {
+            if (this.marked == marked) return;
+            this.marked = marked;
+            invalidate();
+        }
+
+        @Override
+        public boolean performClick() {
+            Context context = getContext();
+            if (isEnabled() && context instanceof MainActivity) ((MainActivity) context).feel(SettingsActivity.Feel.BUTTON);
+            return super.performClick();
+        }
+
+        @Override
+        public void onHoverChanged(boolean hovered) {
+            super.onHoverChanged(hovered);
+            invalidate();
+        }
+
+        @Override
+        protected void onFocusChanged(boolean gainFocus, int direction, Rect previous) {
+            super.onFocusChanged(gainFocus, direction, previous);
+            invalidate();
+        }
+
+        @Override
+        protected void drawableStateChanged() {
+            super.drawableStateChanged();
+            invalidate();
+        }
+
         @Override
         public boolean onTouchEvent(MotionEvent event) {
             if (!isEnabled()) return false;
@@ -8197,18 +8749,25 @@ final class NamePanel extends FrameLayout {
 
         @Override
         protected void onDraw(Canvas canvas) {
-            float drop = down ? unit * 1.5f : 0f;
+            float drop = down || isPressed() ? unit * 1.5f : 0f;
             int alpha = isEnabled() ? 255 : 120;
+            boolean lit = isEnabled() && (marked || isFocused() || isHovered());
             paint.setColor(DARK);
             paint.setAlpha(alpha);
             shape.set(0, unit * 1.5f, getWidth(), getHeight());
             canvas.drawRoundRect(shape, unit * 3f, unit * 3f, paint);
             shape.set(0, drop, getWidth(), getHeight() - unit * 1.5f + drop);
             canvas.drawRoundRect(shape, unit * 3f, unit * 3f, paint);
-            paint.setColor(Color.WHITE);
+            paint.setColor(lit ? ORANGE : Color.WHITE);
             paint.setAlpha(alpha);
             shape.inset(unit * 1.5f, unit * 1.5f);
             canvas.drawRoundRect(shape, unit * 2f, unit * 2f, paint);
+            if (lit) {
+                paint.setColor(Color.WHITE);
+                paint.setAlpha(alpha);
+                shape.inset(unit * 1.2f, unit * 1.2f);
+                canvas.drawRoundRect(shape, unit * 1.5f, unit * 1.5f, paint);
+            }
             text.setColor(ORANGE);
             text.setAlpha(alpha);
             text.setTextSize(unit * 9f);
@@ -8298,7 +8857,7 @@ final class NamePanel extends FrameLayout {
         this.listener = listener;
         busy = false;
         title.setText(firstTime ? "CHOOSE A NAME" : "YOUR NAME");
-        message.setText(firstTime ? "Shown on the online leaderboard. Fair rounds post automatically; turn that off in Settings > System." : "");
+        message.setText(firstTime ? "Shown on the online leaderboard. Fair rounds post automatically; turn that off in Settings > Leaderboard." : "");
         message.setVisibility(firstTime ? VISIBLE : GONE);
         cancel.setVisibility(firstTime ? GONE : VISIBLE);
         field.setEnabled(true);

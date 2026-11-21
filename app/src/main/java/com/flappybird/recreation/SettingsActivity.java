@@ -34,6 +34,9 @@ import android.graphics.drawable.GradientDrawable;
 import android.graphics.drawable.RippleDrawable;
 import android.net.Uri;
 import android.os.Build;
+import android.os.SystemClock;
+import android.os.VibrationEffect;
+import android.os.Vibrator;
 import android.app.Activity;
 import android.app.ActivityManager;
 import android.content.res.Configuration;
@@ -53,6 +56,7 @@ import android.view.Choreographer;
 import android.view.ContextThemeWrapper;
 import android.view.Gravity;
 import android.view.HapticFeedbackConstants;
+import android.view.MotionEvent;
 import android.view.KeyEvent;
 import android.view.View;
 import android.view.ViewGroup;
@@ -143,6 +147,9 @@ public class SettingsActivity extends AppCompatActivity {
     public static final String PREF_WING_ANIMATION_ENABLED = "pref_wing_animation_enabled";
     public static final String PREF_PIPE_COLOR = "pref_pipe_color";
     public static final String PREF_HIDE_SETTINGS_ICON = "pref_hide_settings_icon";
+    public static final String PREF_SHOW_TAP_GUIDE = "pref_show_tap_guide";
+    public static final String PREF_SHOW_GET_READY = "pref_show_get_ready";
+    public static final String PREF_SHOW_SCORE = "pref_show_score";
     public static final String PREF_RAINBOW_BIRD_ENABLED = "pref_rainbow_bird_enabled";
     public static final String PREF_GAMEOVER_OPACITY = "pref_gameover_opacity_percent";
     public static final String PREF_GAME_SPEED = "pref_game_speed";
@@ -165,6 +172,12 @@ public class SettingsActivity extends AppCompatActivity {
     public static final String PREF_REVERSE_PIPES_ENABLED = "pref_reverse_pipes_enabled";
     public static final String PREF_SETTINGS_DISCLAIMER_SHOWN = "pref_settings_disclaimer_shown";
     public static final String PREF_HAPTIC_FEEDBACK_ENABLED = "pref_haptic_feedback_enabled";
+    public static final String PREF_HAPTIC_STRENGTH = "pref_haptic_strength";
+    public static final String PREF_HAPTIC_FLAP = "pref_haptic_flap";
+    public static final String PREF_HAPTIC_SCORE = "pref_haptic_score";
+    public static final String PREF_HAPTIC_CRASH = "pref_haptic_crash";
+    public static final String PREF_HAPTIC_BEST = "pref_haptic_best";
+    public static final String PREF_HAPTIC_MENUS = "pref_haptic_menus";
     public static final String PREF_BIRD_TRAIL_ENABLED = "pref_bird_trail_enabled";
     public static final String PREF_GHOST_MODE_ENABLED = "pref_ghost_mode_enabled";
     public static final String PREF_PIPE_SPEED_VARIATION = "pref_pipe_speed_variation";
@@ -213,6 +226,8 @@ public class SettingsActivity extends AppCompatActivity {
     public static final String PREF_TILT_SPEED = "pref_tilt_speed";
     public static final String PREF_SCORE_POINT = "pref_score_point";
     public static final String PREF_PIXEL_STEPS_ENABLED = "pref_pixel_steps_enabled";
+    public static final String PREF_ORIGINAL_MOTION_ENABLED = "pref_original_motion_enabled";
+    public static final String KEY_PHYSICS_CHOSEN = "physicsChosen";
     public static final String PREF_FIXED_STEP_RATE = "pref_fixed_step_rate";
     public static final String PREF_FIXED_STEP_TIMING = "pref_fixed_step_timing";
     public static final String PREF_FRAME_RATE_LIMIT = "pref_frame_rate_limit";
@@ -222,6 +237,7 @@ public class SettingsActivity extends AppCompatActivity {
     public static final String PREF_REPLAY_FPS = "pref_replay_fps";
     public static final String PREF_REPLAY_QUALITY = "pref_replay_quality";
     public static final String PREF_REPLAY_SOUND = "pref_replay_sound";
+    public static final String PREF_REPLAY_CREDIT = "pref_replay_credit";
     public static final String PREF_REPLAY_MODE = "pref_replay_mode";
     public static final String PREF_TILT_STYLE = "pref_tilt_style";
     public static final String PREF_FLAP_LIMIT_ENABLED = "pref_flap_limit_enabled";
@@ -260,6 +276,9 @@ public class SettingsActivity extends AppCompatActivity {
     public static final boolean DEFAULT_WING_ANIMATION_ENABLED = true;
     public static final int DEFAULT_PIPE_COLOR = 0;
     public static final boolean DEFAULT_HIDE_SETTINGS_ICON = false;
+    public static final boolean DEFAULT_SHOW_TAP_GUIDE = true;
+    public static final boolean DEFAULT_SHOW_GET_READY = true;
+    public static final boolean DEFAULT_SHOW_SCORE = true;
     public static final boolean DEFAULT_RAINBOW_BIRD_ENABLED = false;
     public static final int DEFAULT_GAMEOVER_OPACITY = 5;
     public static final float DEFAULT_GAME_SPEED = 1.0f;
@@ -281,6 +300,12 @@ public class SettingsActivity extends AppCompatActivity {
     public static final boolean DEFAULT_UPSIDE_DOWN_ENABLED = false;
     public static final boolean DEFAULT_REVERSE_PIPES_ENABLED = false;
     public static final boolean DEFAULT_HAPTIC_FEEDBACK_ENABLED = true;
+    public static final int DEFAULT_HAPTIC_STRENGTH = 1;
+    public static final boolean DEFAULT_HAPTIC_FLAP = true;
+    public static final boolean DEFAULT_HAPTIC_SCORE = true;
+    public static final boolean DEFAULT_HAPTIC_CRASH = true;
+    public static final boolean DEFAULT_HAPTIC_BEST = true;
+    public static final boolean DEFAULT_HAPTIC_MENUS = true;
     public static final boolean DEFAULT_BIRD_TRAIL_ENABLED = false;
     public static final boolean DEFAULT_GHOST_MODE_ENABLED = false;
     public static final float DEFAULT_PIPE_SPEED_VARIATION = 0.0f;
@@ -329,6 +354,7 @@ public class SettingsActivity extends AppCompatActivity {
     public static final float DEFAULT_TILT_SPEED = 1.0f;
     public static final int DEFAULT_SCORE_POINT = 0;
     public static final boolean DEFAULT_PIXEL_STEPS_ENABLED = false;
+    public static final boolean DEFAULT_ORIGINAL_MOTION_ENABLED = false;
     public static final int DEFAULT_FIXED_STEP_RATE = 60;
     public static final int DEFAULT_FIXED_STEP_TIMING = 0;
     public static final int DEFAULT_FRAME_RATE_LIMIT = 0;
@@ -383,6 +409,7 @@ public class SettingsActivity extends AppCompatActivity {
     public static final int DEFAULT_REPLAY_FPS = 60;
     public static final int DEFAULT_REPLAY_QUALITY = 1;
     public static final boolean DEFAULT_REPLAY_SOUND = true;
+    public static final boolean DEFAULT_REPLAY_CREDIT = true;
     public static final int DEFAULT_REPLAY_MODE = 0;
     static final int REPLAY_MODE_RECENT = 0;
     static final int REPLAY_MODE_BEST = 1;
@@ -592,6 +619,239 @@ public class SettingsActivity extends AppCompatActivity {
         } catch (Exception e) {
             return "unknown";
         }
+    }
+
+    public static final class Feel {
+        public static final int FLAP = 0, SCORE = 1, GOLDEN = 2, CRASH = 3, LIFE = 4, LAND = 5, BEST = 6, MEDAL = 7,
+                BUTTON = 8, TICK = 9, PAUSE = 10, TOGGLE = 11, CONFIRM = 12, REJECT = 13, PRESS = 14;
+        private static final int KINDS = 15;
+        private static final float[] STRENGTHS = {0.55f, 0.8f, 1f};
+        private static final int VIEW_ONLY = 0, PREDEFINED = 1, COMPOSED = 2, AMPLITUDE = 3, SIMPLE = 4;
+
+        private final Vibrator vibrator;
+        private final View view;
+        private final Object[] effects = new Object[KINDS * STRENGTHS.length];
+        private int mode = -1;
+        private boolean thud, lowTick, rise;
+        private boolean on = DEFAULT_HAPTIC_FEEDBACK_ENABLED, flap = DEFAULT_HAPTIC_FLAP, score = DEFAULT_HAPTIC_SCORE,
+                crash = DEFAULT_HAPTIC_CRASH, best = DEFAULT_HAPTIC_BEST, menus = DEFAULT_HAPTIC_MENUS;
+        private int strength = DEFAULT_HAPTIC_STRENGTH;
+
+        public Feel(Vibrator vibrator, View view) {
+            this.vibrator = vibrator;
+            this.view = view;
+        }
+
+        public Feel(Context context, View view) {
+            Vibrator found = null;
+            try {
+                if (context != null) found = (Vibrator) context.getSystemService(Context.VIBRATOR_SERVICE);
+            } catch (RuntimeException ignored) {
+            }
+            this.vibrator = found;
+            this.view = view;
+        }
+
+        public void load(Map<String, ?> prefs) {
+            set(flagOf(prefs, PREF_HAPTIC_FEEDBACK_ENABLED, DEFAULT_HAPTIC_FEEDBACK_ENABLED), intOf(prefs, PREF_HAPTIC_STRENGTH, DEFAULT_HAPTIC_STRENGTH),
+                    flagOf(prefs, PREF_HAPTIC_FLAP, DEFAULT_HAPTIC_FLAP), flagOf(prefs, PREF_HAPTIC_SCORE, DEFAULT_HAPTIC_SCORE),
+                    flagOf(prefs, PREF_HAPTIC_CRASH, DEFAULT_HAPTIC_CRASH), flagOf(prefs, PREF_HAPTIC_BEST, DEFAULT_HAPTIC_BEST),
+                    flagOf(prefs, PREF_HAPTIC_MENUS, DEFAULT_HAPTIC_MENUS));
+        }
+
+        public void set(boolean on, int strength, boolean flap, boolean score, boolean crash, boolean best, boolean menus) {
+            this.on = on;
+            this.strength = Math.max(0, Math.min(STRENGTHS.length - 1, strength));
+            this.flap = flap;
+            this.score = score;
+            this.crash = crash;
+            this.best = best;
+            this.menus = menus;
+        }
+
+        private static boolean flagOf(Map<String, ?> prefs, String key, boolean fallback) {
+            Object value = prefs == null ? null : prefs.get(key);
+            return value instanceof Boolean ? (Boolean) value : fallback;
+        }
+
+        private static int intOf(Map<String, ?> prefs, String key, int fallback) {
+            Object value = prefs == null ? null : prefs.get(key);
+            return value instanceof Number ? ((Number) value).intValue() : fallback;
+        }
+
+        public boolean enabled() {
+            return on;
+        }
+
+        public boolean allows(int kind) {
+            if (!on) return false;
+            switch (kind) {
+                case FLAP: return flap;
+                case SCORE: case GOLDEN: return score;
+                case CRASH: case LIFE: case LAND: return crash;
+                case BEST: case MEDAL: return best;
+                default: return menus;
+            }
+        }
+
+        public void play(int kind) {
+            if (kind < 0 || kind >= KINDS || !allows(kind)) return;
+            if (mode < 0) mode = pickMode();
+            if (mode != VIEW_ONLY) {
+                VibrationEffect effect = mode == SIMPLE ? null : effect(kind);
+                try {
+                    if (effect != null) {
+                        vibrator.vibrate(effect);
+                        return;
+                    }
+                    if (mode == SIMPLE && simple(kind)) return;
+                } catch (RuntimeException e) {
+                    mode = VIEW_ONLY;
+                }
+            }
+            if (view != null) view.performHapticFeedback(viewFeedback(kind));
+        }
+
+        private int pickMode() {
+            if (vibrator == null) return VIEW_ONLY;
+            try {
+                if (!vibrator.hasVibrator()) return VIEW_ONLY;
+                if (Build.VERSION.SDK_INT >= 30 && vibrator.areAllPrimitivesSupported(VibrationEffect.Composition.PRIMITIVE_CLICK,
+                        VibrationEffect.Composition.PRIMITIVE_TICK)) {
+                    rise = vibrator.areAllPrimitivesSupported(VibrationEffect.Composition.PRIMITIVE_QUICK_RISE);
+                    if (Build.VERSION.SDK_INT >= 31) {
+                        thud = vibrator.areAllPrimitivesSupported(VibrationEffect.Composition.PRIMITIVE_THUD);
+                        lowTick = vibrator.areAllPrimitivesSupported(VibrationEffect.Composition.PRIMITIVE_LOW_TICK);
+                    }
+                    return COMPOSED;
+                }
+                if (Build.VERSION.SDK_INT >= 29) return PREDEFINED;
+                if (Build.VERSION.SDK_INT >= 26 && vibrator.hasAmplitudeControl()) return AMPLITUDE;
+                return SIMPLE;
+            } catch (RuntimeException e) {
+                return VIEW_ONLY;
+            }
+        }
+
+        private VibrationEffect effect(int kind) {
+            int slot = kind * STRENGTHS.length + strength;
+            VibrationEffect effect = (VibrationEffect) effects[slot];
+            if (effect == null) {
+                float level = STRENGTHS[strength];
+                if (mode == COMPOSED) effect = composed(kind, level);
+                else if (mode == PREDEFINED) effect = predefined(kind, strength);
+                else if (mode == AMPLITUDE) effect = waveform(kind, level);
+                effects[slot] = effect;
+            }
+            return effect;
+        }
+
+        private static float clamp(float value) {
+            return Math.max(0.05f, Math.min(1f, value));
+        }
+
+        private VibrationEffect composed(int kind, float s) {
+            VibrationEffect.Composition c = VibrationEffect.startComposition();
+            int click = VibrationEffect.Composition.PRIMITIVE_CLICK;
+            int tick = VibrationEffect.Composition.PRIMITIVE_TICK;
+            switch (kind) {
+                case FLAP: c.addPrimitive(click, clamp(0.85f * s)); break;
+                case SCORE: c.addPrimitive(tick, clamp(0.45f * s)); break;
+                case GOLDEN: c.addPrimitive(tick, clamp(0.5f * s)).addPrimitive(tick, clamp(0.85f * s), 40); break;
+                case CRASH:
+                    if (thud) c.addPrimitive(VibrationEffect.Composition.PRIMITIVE_THUD, clamp(1f * s)).addPrimitive(click, clamp(0.5f * s), 20);
+                    else c.addPrimitive(click, clamp(1f * s)).addPrimitive(tick, clamp(0.6f * s), 30);
+                    break;
+                case LIFE: c.addPrimitive(click, clamp(0.9f * s)).addPrimitive(tick, clamp(0.5f * s), 70); break;
+                case LAND:
+                    if (lowTick) c.addPrimitive(VibrationEffect.Composition.PRIMITIVE_LOW_TICK, clamp(0.9f * s));
+                    else c.addPrimitive(tick, clamp(0.6f * s));
+                    break;
+                case BEST:
+                    if (rise) c.addPrimitive(VibrationEffect.Composition.PRIMITIVE_QUICK_RISE, clamp(0.7f * s)).addPrimitive(click, clamp(1f * s), 20);
+                    else c.addPrimitive(click, clamp(0.6f * s)).addPrimitive(click, clamp(1f * s), 70);
+                    break;
+                case MEDAL: c.addPrimitive(click, clamp(0.8f * s)).addPrimitive(tick, clamp(0.5f * s), 60).addPrimitive(tick, clamp(0.35f * s), 60); break;
+                case BUTTON: c.addPrimitive(click, clamp(0.55f * s)); break;
+                case PRESS: c.addPrimitive(tick, clamp(0.4f * s)); break;
+                case PAUSE: c.addPrimitive(tick, clamp(0.6f * s)).addPrimitive(tick, clamp(0.4f * s), 50); break;
+                case TOGGLE: c.addPrimitive(click, clamp(0.5f * s)); break;
+                case CONFIRM: c.addPrimitive(click, clamp(0.5f * s)).addPrimitive(click, clamp(0.85f * s), 60); break;
+                case REJECT: c.addPrimitive(tick, clamp(0.7f * s)).addPrimitive(tick, clamp(0.7f * s), 60).addPrimitive(tick, clamp(0.7f * s), 60); break;
+                default: c.addPrimitive(tick, clamp(0.35f * s)); break;
+            }
+            return c.compose();
+        }
+
+        private static VibrationEffect predefined(int kind, int strength) {
+            boolean light = strength == 0;
+            int id;
+            switch (kind) {
+                case CRASH: id = light ? VibrationEffect.EFFECT_CLICK : VibrationEffect.EFFECT_HEAVY_CLICK; break;
+                case LIFE: case BEST: case REJECT: id = light ? VibrationEffect.EFFECT_CLICK : VibrationEffect.EFFECT_DOUBLE_CLICK; break;
+                case FLAP: case BUTTON: case TOGGLE: case CONFIRM: case MEDAL: case LAND:
+                    id = light ? VibrationEffect.EFFECT_TICK : VibrationEffect.EFFECT_CLICK; break;
+                default: id = VibrationEffect.EFFECT_TICK; break;
+            }
+            return VibrationEffect.createPredefined(id);
+        }
+
+        private static int amplitude(float value) {
+            return Math.max(1, Math.min(255, Math.round(value * 255f)));
+        }
+
+        private static VibrationEffect waveform(int kind, float s) {
+            switch (kind) {
+                case FLAP: return VibrationEffect.createOneShot(14, amplitude(0.55f * s));
+                case SCORE: return VibrationEffect.createOneShot(8, amplitude(0.35f * s));
+                case GOLDEN: return VibrationEffect.createWaveform(new long[] {0, 8, 40, 10}, new int[] {0, amplitude(0.4f * s), 0, amplitude(0.65f * s)}, -1);
+                case CRASH: return VibrationEffect.createWaveform(new long[] {0, 30, 20, 30}, new int[] {0, amplitude(s), 0, amplitude(0.5f * s)}, -1);
+                case LIFE: return VibrationEffect.createWaveform(new long[] {0, 20, 60, 12}, new int[] {0, amplitude(0.85f * s), 0, amplitude(0.5f * s)}, -1);
+                case LAND: return VibrationEffect.createOneShot(18, amplitude(0.6f * s));
+                case BEST: return VibrationEffect.createWaveform(new long[] {0, 12, 40, 25}, new int[] {0, amplitude(0.5f * s), 0, amplitude(s)}, -1);
+                case MEDAL: return VibrationEffect.createWaveform(new long[] {0, 18, 60, 10, 60, 8},
+                        new int[] {0, amplitude(0.8f * s), 0, amplitude(0.5f * s), 0, amplitude(0.35f * s)}, -1);
+                case PAUSE: return VibrationEffect.createWaveform(new long[] {0, 8, 50, 8}, new int[] {0, amplitude(0.5f * s), 0, amplitude(0.35f * s)}, -1);
+                case REJECT: return VibrationEffect.createWaveform(new long[] {0, 10, 60, 10, 60, 10},
+                        new int[] {0, amplitude(0.6f * s), 0, amplitude(0.6f * s), 0, amplitude(0.6f * s)}, -1);
+                case BUTTON: case TOGGLE: case CONFIRM: return VibrationEffect.createOneShot(12, amplitude(0.5f * s));
+                default: return VibrationEffect.createOneShot(6, amplitude(0.3f * s));
+            }
+        }
+
+        @SuppressWarnings("deprecation")
+        private boolean simple(int kind) {
+            switch (kind) {
+                case CRASH: vibrator.vibrate(strength == 0 ? 20 : 35); return true;
+                case LIFE: vibrator.vibrate(new long[] {0, 20, 60, 12}, -1); return true;
+                case BEST: vibrator.vibrate(new long[] {0, 12, 40, 25}, -1); return true;
+                case MEDAL: vibrator.vibrate(18); return true;
+                default: return false;
+            }
+        }
+
+        private static int viewFeedback(int kind) {
+            switch (kind) {
+                case CRASH: return HapticFeedbackConstants.LONG_PRESS;
+                case CONFIRM: return Build.VERSION.SDK_INT >= 30 ? HapticFeedbackConstants.CONFIRM : HapticFeedbackConstants.VIRTUAL_KEY;
+                case REJECT: return Build.VERSION.SDK_INT >= 30 ? HapticFeedbackConstants.REJECT : HapticFeedbackConstants.LONG_PRESS;
+                case SCORE: case TICK: case GOLDEN: case PAUSE: case LAND: case PRESS: return HapticFeedbackConstants.CLOCK_TICK;
+                case TOGGLE: return HapticFeedbackConstants.KEYBOARD_TAP;
+                default: return HapticFeedbackConstants.VIRTUAL_KEY;
+            }
+        }
+    }
+
+    public static String[] videoCredit(Context context) {
+        String version = null;
+        try {
+            version = context.getPackageManager().getPackageInfo(context.getPackageName(), 0).versionName;
+        } catch (Exception ignored) {
+        }
+        version = version == null ? "" : version.trim();
+        while (version.startsWith("v") || version.startsWith("V")) version = version.substring(1).trim();
+        String line = (version.isEmpty() ? "" : "V" + version + " ") + "by " + MADE_BY + " \u00B7 Unofficial";
+        return new String[] {APP_NAME, line};
     }
 
     public static String deviceSummary(Context context) {
@@ -2153,14 +2413,17 @@ public class SettingsActivity extends AppCompatActivity {
             + "# Type default as a value to go back to the default.\n"
             + "# Settings you delete keep their current value.\n";
     private static final String CLASSIC_SUMMARY = "Matches the flight, pipes and scoring of the 2013 Android game";
-    private static final int TAB_COUNT = 14;
+    private static final int TAB_COUNT = 15;
     private static final int CLASSIC_PAGE = 13;
     private static final int ABOUT_PAGE = 10;
     private static final int SCORING_PAGE = 11;
     private static final int LEADERBOARD_PAGE = 12;
     public static final String PROJECT_URL = "https://github.com/FlappyRecreator/FlappyB64bitAndroid";
     private static final String MADE_BY = "Breathe";
-    private static final int ADVANCED_PAGE = 7;
+    public static final String APP_NAME = "Flappy Bird Recreation";
+    private static final int SOUND_PAGE = 7;
+    private static final int CONTROLS_PAGE = 6;
+    private static final int REPLAYS_PAGE = 14;
     private static final int PRESETS_PAGE = 8;
     private static final int ALL_PAGE = 9;
     private static final int[] CRASH_FLASH_COLORS = {0xFFFFFFFF, 0xFFFF3B30, 0xFFFFD23F, 0xFF000000};
@@ -2205,6 +2468,8 @@ public class SettingsActivity extends AppCompatActivity {
     private static final int COLOR_SNACKBAR_ACTION = 0xFF7A5900;
     private static final int COLOR_ON_ACCENT = 0xFF101522;
 
+    private static final int[] TAB_ORDER = {ALL_PAGE, CLASSIC_PAGE, 0, 1, 2, 3, SCORING_PAGE, 5, 4, SOUND_PAGE, CONTROLS_PAGE,
+            REPLAYS_PAGE, LEADERBOARD_PAGE, PRESETS_PAGE, ABOUT_PAGE};
     private static final int[] TAB_IDS = {
             R.id.tab_bird, R.id.tab_world, R.id.tab_pipes, R.id.tab_physics,
             R.id.tab_effects, R.id.tab_modes, R.id.tab_system, R.id.tab_presets};
@@ -2216,6 +2481,7 @@ public class SettingsActivity extends AppCompatActivity {
     private final TextView[] tabs = new TextView[TAB_COUNT];
     private final View[] pages = new View[TAB_COUNT];
     private final ChipStyle[] tabStyles = new ChipStyle[TAB_COUNT];
+    private final List<TextView> intros = new ArrayList<>();
     private final TextView[] slotSummaries = new TextView[PROFILE_COUNT];
     private final Button[] slotLoadButtons = new Button[PROFILE_COUNT];
     private final Button[] slotClearButtons = new Button[PROFILE_COUNT];
@@ -2456,20 +2722,40 @@ public class SettingsActivity extends AppCompatActivity {
         TextView presetsTab = findViewById(R.id.tab_presets);
         for (int i = 0; i < TAB_COUNT; i++) {
             final int index = i;
-            if (i == ADVANCED_PAGE) tabs[i] = createTab("Advanced", presetsTab, presetsTab);
+            if (i == SOUND_PAGE) tabs[i] = createTab("Sound", presetsTab, presetsTab);
+            else if (i == REPLAYS_PAGE) tabs[i] = createTab("Replays", presetsTab, presetsTab);
             else if (i == ALL_PAGE) tabs[i] = createTab("All", presetsTab, tabs[0]);
             else if (i == ABOUT_PAGE) tabs[i] = createTab("About", presetsTab, null);
             else if (i == SCORING_PAGE) tabs[i] = createTab("Scoring", presetsTab, tabs[4]);
-            else if (i == LEADERBOARD_PAGE) tabs[i] = createTab("Leaderboard", presetsTab, tabs[ADVANCED_PAGE]);
-            else if (i == CLASSIC_PAGE) tabs[i] = createTab("Classic", presetsTab, tabs[ADVANCED_PAGE]);
-            else tabs[i] = findViewById(TAB_IDS[i < ADVANCED_PAGE ? i : i - 1]);
+            else if (i == LEADERBOARD_PAGE) tabs[i] = createTab("Leaderboard", presetsTab, presetsTab);
+            else if (i == CLASSIC_PAGE) tabs[i] = createTab("Classic", presetsTab, presetsTab);
+            else tabs[i] = findViewById(TAB_IDS[i < SOUND_PAGE ? i : i - 1]);
             tabStyles[i] = new ChipStyle(tabs[i], COLOR_ROW, COLOR_PRIMARY, COLOR_ON_VARIANT, COLOR_ON_PRIMARY,
                     dp(12), dp(20), 0, 0);
             tabs[i].setOnClickListener(v -> {
                 if (searching) closeSearch();
+                if (currentPage != index) feel().play(Feel.TICK);
                 selectPage(index, true);
             });
         }
+
+        tabs[4].setText("Screen");
+        tabs[CONTROLS_PAGE].setText("Controls");
+        ViewGroup bar = (ViewGroup) presetsTab.getParent();
+        for (int index : TAB_ORDER) bar.removeView(tabs[index]);
+        for (int index : TAB_ORDER) bar.addView(tabs[index]);
+        for (int i = 0; i < TAB_ORDER.length; i++) {
+            final int index = TAB_ORDER[i];
+            tabs[index].setFocusable(true);
+            tabs[index].setContentDescription(tabs[index].getText() + " settings");
+        }
+        categoryScroll.setOnGenericMotionListener((view, event) -> {
+            if (event.getActionMasked() != MotionEvent.ACTION_SCROLL) return false;
+            float amount = event.getAxisValue(MotionEvent.AXIS_HSCROLL) - event.getAxisValue(MotionEvent.AXIS_VSCROLL);
+            if (amount == 0f) return false;
+            categoryScroll.smoothScrollBy(Math.round(amount * dp(48)), 0);
+            return true;
+        });
 
         ViewCompat.setOnApplyWindowInsetsListener(root, (view, windowInsets) -> {
             Insets safe = windowInsets.getInsets(
@@ -2552,6 +2838,54 @@ public class SettingsActivity extends AppCompatActivity {
         getOnBackPressedDispatcher().addCallback(this, searchBack);
     }
 
+    @Override
+    public boolean dispatchKeyEvent(KeyEvent event) {
+        if (event.getAction() == KeyEvent.ACTION_DOWN && shortcut(event)) return true;
+        return super.dispatchKeyEvent(event);
+    }
+
+    private boolean shortcut(KeyEvent event) {
+        if (tabs[0] == null || scrollView == null) return false;
+        int code = event.getKeyCode();
+        boolean ctrl = event.isCtrlPressed();
+        View focus = getCurrentFocus();
+        boolean typing = focus instanceof EditText && focus.getVisibility() == View.VISIBLE;
+        if (ctrl && code == KeyEvent.KEYCODE_F || !typing && !ctrl && code == KeyEvent.KEYCODE_SLASH) {
+            if (searching) {
+                searchField.requestFocus();
+                searchField.selectAll();
+            } else {
+                openSearch();
+            }
+            return true;
+        }
+        if (ctrl && (code == KeyEvent.KEYCODE_TAB || code == KeyEvent.KEYCODE_PAGE_DOWN || code == KeyEvent.KEYCODE_PAGE_UP)
+                || code == KeyEvent.KEYCODE_BUTTON_R1 || code == KeyEvent.KEYCODE_BUTTON_L1) {
+            boolean back = code == KeyEvent.KEYCODE_PAGE_UP || code == KeyEvent.KEYCODE_BUTTON_L1
+                    || code == KeyEvent.KEYCODE_TAB && event.isShiftPressed();
+            stepPage(back ? -1 : 1);
+            return true;
+        }
+        if (typing) return false;
+        int height = Math.max(1, scrollView.getHeight() - dp(64));
+        switch (code) {
+            case KeyEvent.KEYCODE_PAGE_DOWN: scrollView.smoothScrollBy(0, height); return true;
+            case KeyEvent.KEYCODE_PAGE_UP: scrollView.smoothScrollBy(0, -height); return true;
+            case KeyEvent.KEYCODE_MOVE_HOME: scrollView.smoothScrollTo(0, 0); return true;
+            case KeyEvent.KEYCODE_MOVE_END: scrollView.smoothScrollTo(0, Math.max(0, content.getHeight())); return true;
+            default: return false;
+        }
+    }
+
+    private void stepPage(int direction) {
+        if (searching) closeSearch();
+        int at = 0;
+        for (int i = 0; i < TAB_ORDER.length; i++) if (TAB_ORDER[i] == currentPage) at = i;
+        int next = TAB_ORDER[(at + direction + TAB_ORDER.length) % TAB_ORDER.length];
+        feel().play(Feel.TICK);
+        selectPage(next, true);
+    }
+
     private void openSearch() {
         if (searching) return;
         searching = true;
@@ -2576,6 +2910,7 @@ public class SettingsActivity extends AppCompatActivity {
         searchBack.setEnabled(false);
         hideKeyboard();
         searchField.setText("");
+        searchField.clearFocus();
         searchField.setVisibility(View.GONE);
         titleView.setVisibility(View.VISIBLE);
         searchButton.setImageDrawable(new IconDrawable(IconDrawable.SEARCH, dp(22), dp(2.5f), COLOR_ON));
@@ -2653,6 +2988,7 @@ public class SettingsActivity extends AppCompatActivity {
             pages[page].setAlpha(1f);
             pages[page].setTranslationY(0f);
         }
+        for (TextView intro : intros) intro.setVisibility(View.GONE);
         noResults.setText("No settings match \"" + searchQuery.trim() + "\"");
         noResults.setVisibility(found == 0 ? View.VISIBLE : View.GONE);
         styleAllGroups();
@@ -2759,6 +3095,7 @@ public class SettingsActivity extends AppCompatActivity {
             String text = all && owner != ALL_PAGE ? pageName(owner) + "  /  " + title : title;
             groupLabels.get(group).setText(text.toUpperCase(Locale.US));
         }
+        for (TextView intro : intros) intro.setVisibility(all || searching ? View.GONE : View.VISIBLE);
         currentPage = page;
         if (page == ABOUT_PAGE) refreshAbout();
         scrollView.scrollTo(0, 0);
@@ -2882,8 +3219,78 @@ public class SettingsActivity extends AppCompatActivity {
     private static final int MATCH = ViewGroup.LayoutParams.MATCH_PARENT;
     private static final int WRAP = ViewGroup.LayoutParams.WRAP_CONTENT;
     private static final int COLOR_ERROR = 0xFFFF8A80;
-    private static final String[] PIPE_COLOR_NAMES = {"Green", "Red", "Blue", "Yellow", "White", "Pink", "Black", "Purple", "Orange"};
-    private static final int[] PIPE_COLORS = {0xFF73BF2E, 0xFFD05050, 0xFF6080E0, 0xFFE0E060, 0xFFF2F2F2, 0xFFE879E8, 0xFF505050, 0xFF9040D0, 0xFFE89030};
+    public static final String[] PIPE_COLOR_NAMES = {"Green", "Red", "Blue", "Yellow", "White", "Pink", "Black", "Purple", "Orange",
+            "Teal", "Sky", "Mint", "Brown", "Navy", "Wine"};
+    private static final int[] PIPE_COLORS = {0xFF73BF2E, 0xFFCF5B55, 0xFF638ED4, 0xFFDCC357, 0xFFE6E9EA, 0xFFDD84C7, 0xFF484B51, 0xFF9566CA,
+            0xFFDD8D4C, 0xFF58B9AC, 0xFF8AC7EA, 0xFF83D2AC, 0xFFAC815B, 0xFF4F5E9E, 0xFFA14A62};
+    public static final int PIPE_COLOR_COUNT = 15;
+    public static final int CLASSIC_PIPE_COLOR_COUNT = 9;
+    private static final int PIPE_OUTLINE = 0x543847;
+    private static final int[][] PIPE_TINTS = {
+            null,
+            {0xFF9C8A, 0xA8262A, PIPE_OUTLINE},
+            {0xA8D4FF, 0x2A55B0, PIPE_OUTLINE},
+            {0xFFF6A0, 0xC09A1C, PIPE_OUTLINE},
+            {0xF4F6F2, 0xA4ACB4, PIPE_OUTLINE},
+            {0xFFC4F0, 0xC24FA6, PIPE_OUTLINE},
+            {0x7A7E86, 0x1F2126, 0x101114},
+            {0xD9B0FF, 0x5E2A9E, PIPE_OUTLINE},
+            {0xFFD08A, 0xC2561A, PIPE_OUTLINE},
+            {0x9FF2E2, 0x1E8A80, PIPE_OUTLINE},
+            {0xD2F2FF, 0x4FA3D9, PIPE_OUTLINE},
+            {0xD8FFE8, 0x3DAE7A, PIPE_OUTLINE},
+            {0xE8C59A, 0x7A4A28, 0x3A2418},
+            {0x8FA4E8, 0x1B2462, 0x121530},
+            {0xE48A9E, 0x6B1530, 0x3A0E1C}};
+
+    public static ColorFilter pipeColorFilter(int index) {
+        if (index <= 0 || index >= PIPE_TINTS.length) return null;
+        int[] tint = PIPE_TINTS[index];
+        return new ColorMatrixColorFilter(new ColorMatrix(pipeTintMatrix(tint[0], tint[1], tint[2])));
+    }
+
+    static float[] pipeTintMatrix(int light, int dark, int outline) {
+        double[] darkFrom = channels(0x558022);
+        double[] along = minus(channels(0xE4FD8B), darkFrom);
+        double[] across = minus(channels(PIPE_OUTLINE), darkFrom);
+        double[] rest = {along[1] * across[2] - along[2] * across[1], along[2] * across[0] - along[0] * across[2], along[0] * across[1] - along[1] * across[0]};
+        double[] darkTo = channels(dark);
+        double[] alongTo = minus(channels(light), darkTo);
+        double[] acrossTo = minus(channels(outline), darkTo);
+        double[][] from = {{along[0], across[0], rest[0]}, {along[1], across[1], rest[1]}, {along[2], across[2], rest[2]}};
+        double[][] inverse = invert3(from);
+        float[] out = new float[20];
+        for (int r = 0; r < 3; r++) {
+            double[] to = {alongTo[r], acrossTo[r], 0};
+            double offset = darkTo[r];
+            for (int c = 0; c < 3; c++) {
+                double value = to[0] * inverse[0][c] + to[1] * inverse[1][c] + to[2] * inverse[2][c];
+                out[r * 5 + c] = (float) value;
+                offset -= value * darkFrom[c];
+            }
+            out[r * 5 + 4] = (float) offset;
+        }
+        out[18] = 1f;
+        return out;
+    }
+
+    private static double[] channels(int color) {
+        return new double[] {(color >> 16) & 0xFF, (color >> 8) & 0xFF, color & 0xFF};
+    }
+
+    private static double[] minus(double[] a, double[] b) {
+        return new double[] {a[0] - b[0], a[1] - b[1], a[2] - b[2]};
+    }
+
+    private static double[][] invert3(double[][] m) {
+        double a = m[0][0], b = m[0][1], c = m[0][2], d = m[1][0], e = m[1][1], f = m[1][2], g = m[2][0], h = m[2][1], i = m[2][2];
+        double co0 = e * i - f * h, co1 = f * g - d * i, co2 = d * h - e * g;
+        double det = a * co0 + b * co1 + c * co2;
+        return new double[][] {
+                {co0 / det, (c * h - b * i) / det, (b * f - c * e) / det},
+                {co1 / det, (a * i - c * g) / det, (c * d - a * f) / det},
+                {co2 / det, (b * g - a * h) / det, (a * e - b * d) / det}};
+    }
 
     private final Map<String, View> rowViews = new HashMap<>();
     private final Map<String, TextView> summaries = new HashMap<>();
@@ -2954,12 +3361,24 @@ public class SettingsActivity extends AppCompatActivity {
         return page;
     }
 
+    private void pageIntro(LinearLayout page, String text) {
+        TextView intro = newText(text, 14, COLOR_ON_VARIANT, null);
+        intro.setLineSpacing(dp(2), 1f);
+        LinearLayout.LayoutParams params = linear(MATCH, WRAP);
+        params.setMarginStart(dp(8));
+        params.setMarginEnd(dp(8));
+        params.topMargin = dp(4);
+        page.addView(intro, params);
+        intros.add(intro);
+    }
+
     private LinearLayout addGroup(LinearLayout page, String title) {
         TextView label = newText(title.toUpperCase(Locale.US), 12, COLOR_PRIMARY, pixelBold);
         label.setLetterSpacing(0.12f);
         LinearLayout.LayoutParams labelParams = linear(WRAP, WRAP);
         labelParams.setMarginStart(dp(8));
-        labelParams.topMargin = dp(page.getChildCount() == 0 ? 6 : 24);
+        boolean first = page.getChildCount() == 0;
+        labelParams.topMargin = dp(first ? 6 : page.getChildCount() == 1 && intros.contains(page.getChildAt(0)) ? 18 : 24);
         labelParams.bottomMargin = dp(10);
         page.addView(label, labelParams);
 
@@ -3169,8 +3588,18 @@ public class SettingsActivity extends AppCompatActivity {
         actionRow(quick, "button_reset_all_quick", "Reset to defaults",
                 "Puts every setting back to normal. Your high score and saved setups are kept", COLOR_PRIMARY);
 
-        LinearLayout page = addPage(0);
-        LinearLayout group = addGroup(page, "Look");
+        LinearLayout page;
+        LinearLayout group;
+        page = addPage(CLASSIC_PAGE);
+        pageIntro(page, "One tap to play like the 2013 original, and a check of every setting it changes");
+        group = addGroup(page, "Classic feel");
+        actionRow(group, "button_classic_feel", "Use classic feel", CLASSIC_SUMMARY, COLOR_PRIMARY);
+        actionRow(group, "button_standard_feel", "Back to standard feel", "Puts every setting below back to its default", COLOR_ON);
+        valueRow(group, "row_classic_status", "Matching Classic feel", "Each setting below shows its Classic value", "0/0");
+
+        page = addPage(0);
+        pageIntro(page, "How the bird looks, how big it is, where it flies and how it tilts");
+        group = addGroup(page, "Look");
         choiceRow(group, "row_bird_color", "Color", "Yellow", "Blue", "Red", "Random");
         sliderRow(group, "row_bird_hue", "Tint", "Shifts the bird around the color wheel", "0 deg");
         toggleRow(group, "row_rainbow_bird", "Rainbow bird", "Cycles through every color in flight");
@@ -3194,6 +3623,7 @@ public class SettingsActivity extends AppCompatActivity {
         sliderRow(group, "row_tilt_speed", "Tilt speed", null, "1x");
 
         page = addPage(1);
+        pageIntro(page, "The sky behind the game and the weather in it");
         group = addGroup(page, "Sky");
         toggleRow(group, "row_day_night_cycle", "Day and night cycle", "Slowly fades from day to night and back");
         sliderRow(group, "row_day_night_length", "Cycle length", "Time for one full day and night", "120 s");
@@ -3206,6 +3636,7 @@ public class SettingsActivity extends AppCompatActivity {
         sliderRow(group, "row_mega_strike_score", "Mega strike", "Score that calls down the big one", "350");
 
         page = addPage(2);
+        pageIntro(page, "How pipes look, how far apart they are and how they move");
         group = addGroup(page, "Look");
         swatchRow(group, "row_pipe_color", "Color", PIPE_COLORS, PIPE_COLOR_NAMES);
         toggleRow(group, "row_random_pipe_colors", "Random colors", "Every pipe picks its own color");
@@ -3225,6 +3656,7 @@ public class SettingsActivity extends AppCompatActivity {
         sliderRow(group, "row_golden_pipe_bonus", "Bonus", "Extra points for passing one", "+10");
 
         page = addPage(3);
+        pageIntro(page, "How the bird flies and falls, how fast the game runs and how it gets harder");
         group = addGroup(page, "Flight");
         sliderRow(group, "row_gravity", "Gravity", null, "1x");
         sliderRow(group, "row_jump", "Flap strength", null, "1x");
@@ -3242,8 +3674,17 @@ public class SettingsActivity extends AppCompatActivity {
         sliderRow(group, "row_ramp_top_speed", "Top speed", "Where the speeding up stops", "3x");
         sliderRow(group, "row_gap_shrink", "Gap shrinks", "Tighter for every 10 points you score", "0%");
         sliderRow(group, "row_ramp_min_gap", "Smallest gap", "Where the shrinking stops", "55%");
+        group = addGroup(page, "Timing");
+        toggleRow(group, "row_original_motion", "Original motion",
+                "Flies exactly like the original's 60 steps a second, drawn smoothly at your screen's full refresh rate");
+        toggleRow(group, "row_fixed_step", "Fixed-step physics", "Moves the game in fixed steps instead of once per screen refresh. Smoothest left off");
+        choiceRowWithNote(group, "row_fixed_step_rate", "Step rate", "Steps per second. Classic feel uses 60", "30 Hz", "60 Hz", "120 Hz");
+        choiceRowWithNote(group, "row_fixed_step_timing", "Step timing",
+                "Smooth matches steps to your screen and draws the motion in between. Original is the v1.5.1 timing", "Smooth", "Original");
+        toggleRow(group, "row_pixel_steps", "Whole-pixel movement", "The bird moves a whole number of game pixels per step");
 
         page = addPage(SCORING_PAGE);
+        pageIntro(page, "How points are counted and what each medal takes");
         group = addGroup(page, "Points");
         sliderRow(group, "row_score_multiplier", "Points per pipe", null, "1");
         choiceRow(group, "row_score_point", "Point is scored at the pipe's", "Start", "Middle", "End", "Classic");
@@ -3253,22 +3694,8 @@ public class SettingsActivity extends AppCompatActivity {
         sliderRow(group, "row_medal_gold", "Gold", null, "30");
         sliderRow(group, "row_medal_platinum", "Platinum", null, "40");
 
-        page = addPage(4);
-        group = addGroup(page, "Screen");
-        toggleRow(group, "row_screen_shake", "Screen shake", "Rattles the screen on crashes and thunder");
-        sliderRow(group, "row_screen_shake_strength", "Shake strength", null, "1x");
-        toggleRow(group, "row_motion_blur", "Motion blur", "Smears fast movement like a camera");
-        sliderRow(group, "row_motion_blur_strength", "Blur strength", null, "1x");
-        group = addGroup(page, "Game over");
-        sliderRow(group, "row_opacity", "Screen dimming", "How dark it gets behind the score panel", "5%");
-        group = addGroup(page, "Crash flash");
-        toggleRow(group, "row_crash_flash", "Crash flash", "Flashes the screen when the bird hits something");
-        choiceRow(group, "row_crash_flash_color", "Flash color", "White", "Red", "Yellow", "Black");
-        sliderRow(group, "row_crash_flash_strength", "Brightness", null, "100%");
-        sliderRow(group, "row_crash_flash_length", "Length", "How long the flash takes to fade", "170 ms");
-        choiceRow(group, "row_crash_flash_fade", "Fade", "Even", "Sharp");
-
         page = addPage(5);
+        pageIntro(page, "Cheats and twists for fun rounds. Turning any of them on keeps scores off the leaderboard");
         group = addGroup(page, "Cheats");
         toggleRow(group, "row_no_clip", "God mode", "Nothing can kill the bird");
         toggleRow(group, "row_god_fall", "Fall out to end the run", "Leaving the screen for too long ends the round, so the score still counts");
@@ -3282,15 +3709,51 @@ public class SettingsActivity extends AppCompatActivity {
         toggleRow(group, "row_upside_down", "Upside down", "Flips the whole world over");
         toggleRow(group, "row_reverse_pipes", "Reverse pipes", "Pipes come from the left instead");
 
-        page = addPage(6);
-        group = addGroup(page, "Sound and vibration");
+        page = addPage(4);
+        pageIntro(page, "Effects, what shows on screen during a round, and smoothness");
+        group = addGroup(page, "Effects");
+        toggleRow(group, "row_screen_shake", "Screen shake", "Rattles the screen on crashes and thunder");
+        sliderRow(group, "row_screen_shake_strength", "Shake strength", null, "1x");
+        toggleRow(group, "row_motion_blur", "Motion blur", "Smears fast movement like a camera");
+        sliderRow(group, "row_motion_blur_strength", "Blur strength", null, "1x");
+        group = addGroup(page, "Crash flash");
+        toggleRow(group, "row_crash_flash", "Crash flash", "Flashes the screen when the bird hits something");
+        choiceRow(group, "row_crash_flash_color", "Flash color", "White", "Red", "Yellow", "Black");
+        sliderRow(group, "row_crash_flash_strength", "Brightness", null, "100%");
+        sliderRow(group, "row_crash_flash_length", "Length", "How long the flash takes to fade", "170 ms");
+        choiceRow(group, "row_crash_flash_fade", "Fade", "Even", "Sharp");
+        group = addGroup(page, "Game over");
+        sliderRow(group, "row_opacity", "Screen dimming", "How dark it gets behind the score panel", "5%");
+        group = addGroup(page, "On screen");
+        toggleRow(group, "row_hide_settings_icon", "Hide settings button", "The top right corner still opens settings");
+        toggleRow(group, "row_classic_menu", "Original menu buttons", "Rate button on the home screen and a leaderboard button after a crash");
+        toggleRow(group, "row_show_get_ready", "Get Ready sign", "Shown before each round starts");
+        toggleRow(group, "row_show_tap_guide", "Tap guide", "The tap hint under the bird before each round");
+        toggleRow(group, "row_show_score", "Score while playing", "Turn off to play without watching the count. Your score still shows after the round");
+        group = addGroup(page, "Performance");
+        choiceRowWithNote(group, "row_frame_rate_limit", "Frame rate limit", "Lower limits save battery. Unlimited follows your screen",
+                "Unlimited", "30", "60", "90", "120");
+        group = addGroup(page, "Debug");
+        toggleRow(group, "row_show_fps", "FPS counter", "Shows frames per second in the top left corner");
+        toggleRow(group, "row_show_hitboxes", "Show hitboxes", "Outlines everything that can collide");
+
+        page = addPage(SOUND_PAGE);
+        pageIntro(page, "Sound effects, volume and vibration");
+        group = addGroup(page, "Sound");
         toggleRow(group, "row_sound", "Sound effects", "Flaps, points, crashes and weather");
         sliderRow(group, "row_sound_volume", "Effects volume", null, "100%");
         sliderRow(group, "row_weather_volume", "Weather volume", "Rain and storm loops", "100%");
-        toggleRow(group, "row_haptic_feedback", "Vibration", "A light tap with every flap");
-        group = addGroup(page, "Pausing");
-        toggleRow(group, "row_pause_button", "Pause button", "Shows a pause button while you play");
-        toggleRow(group, "row_auto_pause", "Pause when you leave", "Freezes the round until you tap again");
+        group = addGroup(page, "Vibration");
+        toggleRow(group, "row_haptic_feedback", "Vibration", "Feel flaps, points, crashes and buttons. Phones without a motor skip it");
+        choiceRow(group, "row_haptic_strength", "Strength", "Light", "Normal", "Strong");
+        toggleRow(group, "row_haptic_flap", "Flaps", "A short click every time the bird flaps");
+        toggleRow(group, "row_haptic_score", "Points", "A soft tick for each pipe, and a sparkle for golden ones");
+        toggleRow(group, "row_haptic_crash", "Crashes", "A thud when you hit something, and a bump when you land");
+        toggleRow(group, "row_haptic_best", "New best and medals", "A little celebration on the score screen");
+        toggleRow(group, "row_haptic_menus", "Buttons and menus", "Clicks for buttons, switches and sliders, and ticks on the leaderboard");
+
+        page = addPage(6);
+        pageIntro(page, "Keyboard, mouse and pausing. Works with USB and Bluetooth keyboards and on PC emulators");
         group = addGroup(page, "Keyboard and mouse");
         toggleRow(group, "row_keyboard", "Keyboard controls", "Play with a USB or Bluetooth keyboard");
         keyRow(group, "row_key_flap", "Flap", "Also presses Play on the menus", DEFAULT_KEY_FLAP);
@@ -3300,27 +3763,27 @@ public class SettingsActivity extends AppCompatActivity {
         keyRow(group, "row_key_settings", "Open settings", "From the home and score screens", DEFAULT_KEY_SETTINGS);
         toggleRow(group, "row_right_click_pause", "Right click pauses", "Right mouse button pauses and resumes a run");
         toggleRow(group, "row_hide_cursor", "Hide the mouse pointer", "Hidden during a run until you move the mouse");
-        group = addGroup(page, "Interface");
-        toggleRow(group, "row_hide_settings_icon", "Hide settings button", "The top right corner still opens settings");
-        toggleRow(group, "row_classic_menu", "Original menu buttons", "Rate button on the home screen and a leaderboard button after a crash");
-        group = addGroup(page, "Replays");
+        group = addGroup(page, "Pausing");
+        toggleRow(group, "row_pause_button", "Pause button", "Shows a pause button while you play");
+        toggleRow(group, "row_auto_pause", "Pause when you leave", "Freezes the round until you tap again");
+
+        page = addPage(REPLAYS_PAGE);
+        pageIntro(page, "Watch your rounds again and save them as videos");
+        group = addGroup(page, "Watch");
         actionRow(group, "button_replays", "Watch replays", "Watch your rounds again or save them as videos", COLOR_PRIMARY);
+        group = addGroup(page, "Recording");
         toggleRow(group, "row_replay_enabled", "Record replays", "Quietly saves your rounds. Uses almost no battery or storage");
         choiceRowWithNote(group, "row_replay_mode", "Replays to keep", "Best only keeps your top round until you beat it", "Latest", "Best only");
         choiceRow(group, "row_replay_keep", "Rounds kept", "1", "3", "5", "10");
+        group = addGroup(page, "Videos");
         choiceRow(group, "row_replay_resolution", "Video size", "Full", "1080p", "720p");
         choiceRow(group, "row_replay_fps", "Video frame rate", "30 fps", "60 fps");
         choiceRow(group, "row_replay_quality", "Video quality", "High", "Very high", "Best");
         toggleRow(group, "row_replay_sound", "Sound in videos", "Mixes the game's sounds into saved videos");
-        group = addGroup(page, "Performance");
-        choiceRowWithNote(group, "row_frame_rate_limit", "Frame rate limit", "Lower limits save battery. Unlimited follows your screen",
-                "Unlimited", "30", "60", "90", "120");
-        group = addGroup(page, "Debug and bug reports");
-        toggleRow(group, "row_show_fps", "FPS counter", "Shows frames per second in the top left corner");
-        toggleRow(group, "row_show_hitboxes", "Show hitboxes", "Outlines everything that can collide");
-        toggleRow(group, "row_activity_log_enabled", "Activity log", "Records rounds, changes and crashes for bug reports. Turning it off is not recommended");
+        toggleRow(group, "row_replay_credit", "Credit on videos", "A small Flappy Bird Recreation tag with the version and an unofficial note in the corner");
 
         page = addPage(LEADERBOARD_PAGE);
+        pageIntro(page, "Your name, posting scores and how the leaderboard looks");
         group = addGroup(page, "Posting scores");
         toggleRow(group, "row_board_auto_post", "Post scores automatically", "Fair rounds go to the online leaderboard when you're connected");
         actionRow(group, "button_board_name", "Leaderboard name", "Not set", COLOR_ON);
@@ -3331,23 +3794,8 @@ public class SettingsActivity extends AppCompatActivity {
         choiceRow(group, "row_board_tab", "Leaderboard opens on", "All time", "Weekly");
         choiceRow(group, "row_board_size", "Scores shown on the leaderboard", "10", "25", "50", "100");
 
-        page = addPage(ADVANCED_PAGE);
-        group = addGroup(page, "Classic feel");
-        actionRow(group, "button_classic_tab", "Classic settings", "Classic feel and every setting it changes, in one tab", COLOR_PRIMARY);
-        group = addGroup(page, "Timing");
-        toggleRow(group, "row_fixed_step", "Fixed-step physics", "Moves the game in fixed steps instead of once per screen refresh");
-        choiceRowWithNote(group, "row_fixed_step_rate", "Step rate", "Steps per second. Classic feel uses 60", "30 Hz", "60 Hz", "120 Hz");
-        choiceRowWithNote(group, "row_fixed_step_timing", "Step timing",
-                "Smooth matches steps to your screen and draws the motion in between. Original is the v1.5.1 timing", "Smooth", "Original");
-        toggleRow(group, "row_pixel_steps", "Whole-pixel movement", "The bird moves a whole number of game pixels per step");
-
-        page = addPage(CLASSIC_PAGE);
-        group = addGroup(page, "Classic feel");
-        actionRow(group, "button_classic_feel", "Use classic feel", CLASSIC_SUMMARY, COLOR_PRIMARY);
-        actionRow(group, "button_standard_feel", "Back to standard feel", "Puts every setting below back to its default", COLOR_ON);
-        valueRow(group, "row_classic_status", "Matching Classic feel", "Each setting below shows its Classic value", "0/0");
-
         page = addPage(PRESETS_PAGE);
+        pageIntro(page, "Save, share and reset your setup, and send a bug report");
         group = addGroup(page, "Saved setups");
         for (int slot = 1; slot <= PROFILE_COUNT; slot++) slotRow(group, slot);
         group = addGroup(page, "Quick actions");
@@ -3363,6 +3811,7 @@ public class SettingsActivity extends AppCompatActivity {
         actionRow(group, "button_edit_text", "Edit as text", "See and change every setting at once, past the slider limits", COLOR_ON);
         group = addGroup(page, "Help and bug reports");
         actionRow(group, "button_activity_log", "Activity log", "Every round, setting change and error, ready to send with a bug report", COLOR_ON);
+        toggleRow(group, "row_activity_log_enabled", "Activity log", "Records rounds, changes and crashes for bug reports. Turning it off is not recommended");
 
         buildAboutPage();
         content.removeView(noResults);
@@ -3400,7 +3849,8 @@ public class SettingsActivity extends AppCompatActivity {
         LinearLayout respect = addRow(group, "about_respect", false, 16, 16);
         addTexts(respect, "about_respect", "Flappy Bird",
                 "Flappy Bird was created by Dong Nguyen and released by .GEARS Studios in 2013. All credit for the original idea, "
-                        + "design, characters, artwork and sounds belongs to its creator, and the Flappy Bird name belongs to its rightful owner.\n\n"
+                        + "design, characters, artwork and sounds belongs to its creator. Flappy Bird is a trademark of its owner, used here only to "
+                        + "describe the game this app recreates.\n\n"
                         + "This recreation was made out of deep respect and admiration for the original game. It is a free, non-commercial fan project "
                         + "and is not affiliated with, endorsed by or connected to the original creator or the owner of the Flappy Bird name.\n\n"
                         + "If the creator or the owner of the name or assets has any concern, the project will be taken down, "
@@ -3457,7 +3907,7 @@ public class SettingsActivity extends AppCompatActivity {
 
     private String leaderboardEntry() {
         String name = Leaderboard.name(prefs);
-        if (name.isEmpty()) return "No name set. Choose one in Settings > System";
+        if (name.isEmpty()) return "No name set. Choose one in Settings > Leaderboard";
         int best = Leaderboard.best(prefs);
         int posted = Leaderboard.posted(prefs);
         String text = name + "  \u00B7  all-time " + posted + "  \u00B7  this week " + Leaderboard.weekPosted(prefs);
@@ -3611,7 +4061,7 @@ public class SettingsActivity extends AppCompatActivity {
                 rowView("row_mega_strike_score"));
 
         pipeColor = new ChoiceSetting(PREF_PIPE_COLOR, DEFAULT_PIPE_COLOR, rowView("row_pipe_color"),
-                new int[]{0, 1, 2, 3, 4, 5, 6, 7, 8},
+                new int[]{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14},
                 PIPE_COLORS, PIPE_COLOR_NAMES);
         randomPipeColors = toggle(PREF_RANDOM_PIPE_COLORS_ENABLED, DEFAULT_RANDOM_PIPE_COLORS_ENABLED, rowView("row_random_pipe_colors"));
         times(PREF_PIPE_WIDTH, DEFAULT_PIPE_WIDTH, 0.25f, 3f, 0.1f, 10f, rowView("row_pipe_width"));
@@ -3668,6 +4118,7 @@ public class SettingsActivity extends AppCompatActivity {
         pair(PREF_CRASH_FLASH_FADE, DEFAULT_CRASH_FLASH_FADE, "row_crash_flash_fade");
 
         fixedStep = toggle(PREF_FIXED_STEP_ENABLED, DEFAULT_FIXED_STEP_ENABLED, rowView("row_fixed_step"));
+        toggle(PREF_ORIGINAL_MOTION_ENABLED, DEFAULT_ORIGINAL_MOTION_ENABLED, rowView("row_original_motion"));
         maxFall = times(PREF_MAX_FALL_SPEED, DEFAULT_MAX_FALL_SPEED, 0f, 4f, 0f, 10f, rowView("row_max_fall_speed"));
         maxFall.zeroLabel = "Off";
         toggle(PREF_PIXEL_STEPS_ENABLED, DEFAULT_PIXEL_STEPS_ENABLED, rowView("row_pixel_steps")).randomizable = false;
@@ -3710,11 +4161,22 @@ public class SettingsActivity extends AppCompatActivity {
         vibration = toggle(PREF_HAPTIC_FEEDBACK_ENABLED, DEFAULT_HAPTIC_FEEDBACK_ENABLED, rowView("row_haptic_feedback"));
         vibration.note = "felt in the game";
         vibration.randomizable = false;
+        ChoiceSetting hapticStrength = new ChoiceSetting(PREF_HAPTIC_STRENGTH, DEFAULT_HAPTIC_STRENGTH, rowView("row_haptic_strength"),
+                new int[]{0, 1, 2}, new int[]{COLOR_SKY, COLOR_PRIMARY, 0xFFFC7858}, null);
+        hapticStrength.randomizable = false;
+        toggle(PREF_HAPTIC_FLAP, DEFAULT_HAPTIC_FLAP, rowView("row_haptic_flap")).randomizable = false;
+        toggle(PREF_HAPTIC_SCORE, DEFAULT_HAPTIC_SCORE, rowView("row_haptic_score")).randomizable = false;
+        toggle(PREF_HAPTIC_CRASH, DEFAULT_HAPTIC_CRASH, rowView("row_haptic_crash")).randomizable = false;
+        toggle(PREF_HAPTIC_BEST, DEFAULT_HAPTIC_BEST, rowView("row_haptic_best")).randomizable = false;
+        toggle(PREF_HAPTIC_MENUS, DEFAULT_HAPTIC_MENUS, rowView("row_haptic_menus")).randomizable = false;
         toggle(PREF_PAUSE_BUTTON_ENABLED, DEFAULT_PAUSE_BUTTON_ENABLED, rowView("row_pause_button")).randomizable = false;
         ToggleSetting autoPause = toggle(PREF_AUTO_PAUSE_ENABLED, DEFAULT_AUTO_PAUSE_ENABLED, rowView("row_auto_pause"));
         autoPause.note = "applies in the game";
         autoPause.randomizable = false;
         toggle(PREF_HIDE_SETTINGS_ICON, DEFAULT_HIDE_SETTINGS_ICON, rowView("row_hide_settings_icon")).randomizable = false;
+        toggle(PREF_SHOW_GET_READY, DEFAULT_SHOW_GET_READY, rowView("row_show_get_ready")).randomizable = false;
+        toggle(PREF_SHOW_TAP_GUIDE, DEFAULT_SHOW_TAP_GUIDE, rowView("row_show_tap_guide")).randomizable = false;
+        toggle(PREF_SHOW_SCORE, DEFAULT_SHOW_SCORE, rowView("row_show_score")).randomizable = false;
         ToggleSetting classicMenu = toggle(PREF_CLASSIC_MENU_ENABLED, DEFAULT_CLASSIC_MENU_ENABLED, rowView("row_classic_menu"));
         classicMenu.note = "shown on the home and score screens";
         classicMenu.randomizable = false;
@@ -3782,6 +4244,7 @@ public class SettingsActivity extends AppCompatActivity {
         replayQuality.randomizable = false;
         ToggleSetting replaySound = toggle(PREF_REPLAY_SOUND, DEFAULT_REPLAY_SOUND, rowView("row_replay_sound"));
         replaySound.randomizable = false;
+        toggle(PREF_REPLAY_CREDIT, DEFAULT_REPLAY_CREDIT, rowView("row_replay_credit")).randomizable = false;
         rowView("button_replays").setOnClickListener(v -> openReplays());
         rowView("button_replays_quick").setOnClickListener(v -> openReplays());
         rowView("button_board_rules").setOnClickListener(v -> showScoreRules());
@@ -3821,13 +4284,14 @@ public class SettingsActivity extends AppCompatActivity {
             field.setSelection(field.getText() == null ? 0 : field.getText().length());
         }
         layout.addView(field, new LinearLayout.LayoutParams(MATCH, ViewGroup.LayoutParams.WRAP_CONTENT));
+        styleNameField(layout, field, density);
         FrameLayout box = new FrameLayout(themed);
         int side = Math.round(24 * density);
         box.setPadding(side, Math.round(8 * density), side, 0);
         box.addView(layout, new FrameLayout.LayoutParams(MATCH, ViewGroup.LayoutParams.WRAP_CONTENT));
         String message = firstTime
                 ? "This name appears on the online leaderboard next to your scores.\n\nFair rounds are posted automatically when you're online, "
-                + "along with an anonymous ID. You can turn that off in Settings > System, or remove your entry in Settings > About."
+                + "along with an anonymous ID. You can turn that off in Settings > Leaderboard, or remove your entry in Settings > About."
                 : "Shown on the online leaderboard next to your scores.";
         MaterialAlertDialogBuilder builder = new MaterialAlertDialogBuilder(themed)
                 .setTitle(firstTime ? "Choose your name" : "Leaderboard name")
@@ -3887,6 +4351,14 @@ public class SettingsActivity extends AppCompatActivity {
             return true;
         });
         dialog.setOnShowListener(shown -> {
+            int[][] states = {{-android.R.attr.state_enabled}, {}};
+            ColorStateList buttonText = new ColorStateList(states, new int[] {0x61E8ECF6, COLOR_PRIMARY});
+            for (int type : new int[] {AlertDialog.BUTTON_POSITIVE, AlertDialog.BUTTON_NEGATIVE}) {
+                Button button = dialog.getButton(type);
+                if (button == null) continue;
+                button.setTextColor(buttonText);
+                if (button instanceof MaterialButton) ((MaterialButton) button).setRippleColor(ColorStateList.valueOf(COLOR_PRIMARY_RIPPLE));
+            }
             Button positive = dialog.getButton(AlertDialog.BUTTON_POSITIVE);
             if (positive != null) {
                 positive.setOnClickListener(view -> submit.run());
@@ -3897,6 +4369,28 @@ public class SettingsActivity extends AppCompatActivity {
         if (dialog.getWindow() != null) dialog.getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_STATE_VISIBLE);
         dialog.show();
         return dialog;
+    }
+
+    private static void styleNameField(TextInputLayout layout, TextInputEditText field, float density) {
+        int[][] focus = {{android.R.attr.state_focused}, {}};
+        layout.setBoxBackgroundColor(COLOR_HIGH);
+        layout.setBoxStrokeColorStateList(new ColorStateList(focus, new int[] {COLOR_PRIMARY, COLOR_OUTLINE}));
+        layout.setHintTextColor(ColorStateList.valueOf(COLOR_PRIMARY));
+        layout.setDefaultHintTextColor(ColorStateList.valueOf(COLOR_ON_VARIANT));
+        layout.setHelperTextColor(ColorStateList.valueOf(COLOR_ON_VARIANT));
+        layout.setCounterTextColor(ColorStateList.valueOf(COLOR_ON_VARIANT));
+        layout.setEndIconTintList(ColorStateList.valueOf(COLOR_ON_VARIANT));
+        field.setTextColor(COLOR_ON);
+        field.setHighlightColor(COLOR_SELECTION);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            GradientDrawable cursor = new GradientDrawable();
+            cursor.setColor(COLOR_PRIMARY);
+            cursor.setSize(Math.max(1, Math.round(2 * density)), Math.round(20 * density));
+            field.setTextCursorDrawable(cursor);
+            field.setTextSelectHandle(tinted(field.getTextSelectHandle()));
+            field.setTextSelectHandleLeft(tinted(field.getTextSelectHandleLeft()));
+            field.setTextSelectHandleRight(tinted(field.getTextSelectHandleRight()));
+        }
     }
 
     private void refreshBoardName() {
@@ -3963,6 +4457,47 @@ public class SettingsActivity extends AppCompatActivity {
     private NumberSetting whole(String key, int defaultValue, int sliderMin, int sliderMax, int step, int min, int max, int unit,
                                 View rowId) {
         return new NumberSetting(key, defaultValue, true, sliderMin, sliderMax, step, min, max, unit, rowId);
+    }
+
+    private Feel settingsFeel;
+    private long sliderFeltAt;
+
+    private void syncFeel() {
+        if (settingsFeel == null) settingsFeel = new Feel(this, root);
+        if (settingsByKey.get(PREF_HAPTIC_MENUS) == null) {
+            settingsFeel.load(prefs.getAll());
+            return;
+        }
+        settingsFeel.set(flag(PREF_HAPTIC_FEEDBACK_ENABLED), option(PREF_HAPTIC_STRENGTH), flag(PREF_HAPTIC_FLAP), flag(PREF_HAPTIC_SCORE),
+                flag(PREF_HAPTIC_CRASH), flag(PREF_HAPTIC_BEST), flag(PREF_HAPTIC_MENUS));
+    }
+
+    private Feel feel() {
+        if (settingsFeel == null) syncFeel();
+        return settingsFeel;
+    }
+
+    private static int feelSample(String key) {
+        if (key.equals(PREF_HAPTIC_FLAP)) return Feel.FLAP;
+        if (key.equals(PREF_HAPTIC_SCORE)) return Feel.GOLDEN;
+        if (key.equals(PREF_HAPTIC_CRASH)) return Feel.CRASH;
+        if (key.equals(PREF_HAPTIC_BEST)) return Feel.BEST;
+        return Feel.TOGGLE;
+    }
+
+    private void feelChange(Setting setting) {
+        if (setting == vibration && vibration.value) settingsFeel.play(Feel.CONFIRM);
+        else if (setting.key.equals(PREF_HAPTIC_STRENGTH)) settingsFeel.play(Feel.CRASH);
+        else if (setting.key.startsWith("pref_haptic_") && setting instanceof ToggleSetting && ((ToggleSetting) setting).value) settingsFeel.play(feelSample(setting.key));
+        else if (setting instanceof ToggleSetting) settingsFeel.play(Feel.TOGGLE);
+        else settingsFeel.play(Feel.TICK);
+    }
+
+    private void feelSlider(boolean landmark) {
+        long now = SystemClock.uptimeMillis();
+        if (!landmark && now - sliderFeltAt < 45L) return;
+        sliderFeltAt = now;
+        feel().play(landmark ? Feel.PRESS : Feel.TICK);
     }
 
     private boolean flag(String key) {
@@ -4071,9 +4606,8 @@ public class SettingsActivity extends AppCompatActivity {
                 showCaption("Activity log: on");
             });
         }
-        if (setting == vibration && vibration.value) {
-            root.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY);
-        }
+        syncFeel();
+        if (!(setting instanceof NumberSetting)) feelChange(setting);
         if (setting == movingPipes && movingPipes.value) {
             extra = "sample shown, starts at score " + Math.round(number(PREF_PIPE_MOVE_TIER_1_SCORE));
         }
@@ -4125,6 +4659,8 @@ public class SettingsActivity extends AppCompatActivity {
                 rowOf(PREF_FIXED_STEP_RATE), rowOf(PREF_FIXED_STEP_TIMING),
                 rowOf(PREF_RAMP_TOP_SPEED), rowOf(PREF_RAMP_MIN_GAP),
                 rowOf(PREF_SOUND_VOLUME), rowOf(PREF_WEATHER_VOLUME),
+                rowOf(PREF_HAPTIC_STRENGTH), rowOf(PREF_HAPTIC_FLAP), rowOf(PREF_HAPTIC_SCORE),
+                rowOf(PREF_HAPTIC_CRASH), rowOf(PREF_HAPTIC_BEST), rowOf(PREF_HAPTIC_MENUS),
                 rowOf(PREF_KEY_FLAP), rowOf(PREF_KEY_FLAP_ALT), rowOf(PREF_KEY_PAUSE),
                 rowOf(PREF_KEY_PLAY), rowOf(PREF_KEY_SETTINGS),
                 rowOf(PREF_GOD_FALL_ENABLED), rowOf(PREF_GOD_FALL_SECONDS),
@@ -4142,6 +4678,8 @@ public class SettingsActivity extends AppCompatActivity {
                 fixedStep.value, fixedStep.value,
                 number(PREF_SPEED_RAMP) > 0f, number(PREF_GAP_SHRINK) > 0f,
                 sound.value, sound.value,
+                vibration.value, vibration.value, vibration.value,
+                vibration.value, vibration.value, vibration.value,
                 keyboard.value, keyboard.value, keyboard.value,
                 keyboard.value, keyboard.value,
                 flag(PREF_NO_CLIP_ENABLED), flag(PREF_NO_CLIP_ENABLED) && flag(PREF_GOD_FALL_ENABLED),
@@ -4329,7 +4867,6 @@ public class SettingsActivity extends AppCompatActivity {
 
         rowView("button_classic_feel").setOnClickListener(v -> applyBulkChange(this::applyClassicFeel, "Classic feel applied"));
         rowView("button_standard_feel").setOnClickListener(v -> applyBulkChange(this::applyStandardFeel, "Standard feel restored"));
-        rowView("button_classic_tab").setOnClickListener(v -> selectPage(CLASSIC_PAGE, true));
         rowView("button_export_settings").setOnClickListener(v -> startExport());
         rowView("button_import_settings").setOnClickListener(v -> startImport());
         rowView("button_share_settings").setOnClickListener(v -> shareSettings());
@@ -4502,8 +5039,9 @@ public class SettingsActivity extends AppCompatActivity {
 
     private boolean isPersonal(Setting setting) {
         String key = setting.key;
-        return key.equals(PREF_SOUND_ENABLED) || key.equals(PREF_HAPTIC_FEEDBACK_ENABLED)
+        return key.equals(PREF_SOUND_ENABLED) || key.equals(PREF_HAPTIC_FEEDBACK_ENABLED) || key.startsWith("pref_haptic_")
                 || key.equals(PREF_HIDE_SETTINGS_ICON) || key.equals(PREF_PAUSE_BUTTON_ENABLED)
+                || key.equals(PREF_SHOW_TAP_GUIDE) || key.equals(PREF_SHOW_GET_READY) || key.equals(PREF_SHOW_SCORE)
                 || key.equals(PREF_AUTO_PAUSE_ENABLED) || key.equals(PREF_SOUND_VOLUME)
                 || key.equals(PREF_WEATHER_VOLUME) || key.equals(PREF_SHOW_FPS) || key.equals(PREF_SHOW_HITBOXES)
                 || key.equals(PREF_CLASSIC_MENU_ENABLED) || key.equals(PREF_KEYBOARD_ENABLED)
@@ -4543,10 +5081,9 @@ public class SettingsActivity extends AppCompatActivity {
             {"Bird", PREF_TILT_STYLE, TILT_STYLE_CLASSIC},
             {"Bird", PREF_MAX_TILT_UP, (float) CLASSIC_TILT_UP},
             {"Bird", PREF_MAX_TILT_DOWN, (float) CLASSIC_TILT_DOWN},
-            {"Timing", PREF_FIXED_STEP_ENABLED, true},
-            {"Timing", PREF_FIXED_STEP_RATE, DEFAULT_FIXED_STEP_RATE},
-            {"Timing", PREF_FIXED_STEP_TIMING, DEFAULT_FIXED_STEP_TIMING},
-            {"Timing", PREF_PIXEL_STEPS_ENABLED, true},
+            {"Timing", PREF_ORIGINAL_MOTION_ENABLED, true},
+            {"Timing", PREF_FIXED_STEP_ENABLED, false},
+            {"Timing", PREF_PIXEL_STEPS_ENABLED, false},
             {"Look", PREF_BG_SCROLL_SPEED, 0f},
             {"Look", PREF_GAMEOVER_OPACITY, 0f},
             {"Look", PREF_SCREEN_SHAKE_ENABLED, false},
@@ -4555,6 +5092,20 @@ public class SettingsActivity extends AppCompatActivity {
             {"Look", PREF_CRASH_FLASH_FADE, FLASH_FADE_SHARP},
             {"Scoring", PREF_SCORE_POINT, SCORE_POINT_CLASSIC},
     };
+
+    private static final Set<String> CLASSIC_WHOLE = new HashSet<>(Arrays.asList(PREF_BIRD_POSITION, PREF_START_HEIGHT,
+            PREF_MAX_TILT_UP, PREF_MAX_TILT_DOWN, PREF_CRASH_FLASH_LENGTH, PREF_GAMEOVER_OPACITY));
+
+    static void writeClassicFeel(SharedPreferences.Editor editor) {
+        for (Object[] entry : CLASSIC_VALUES) {
+            String key = (String) entry[1];
+            Object value = entry[2];
+            if (value instanceof Boolean) editor.putBoolean(key, (Boolean) value);
+            else if (value instanceof Integer) editor.putInt(key, (Integer) value);
+            else if (CLASSIC_WHOLE.contains(key)) editor.putInt(key, Math.round((Float) value));
+            else editor.putFloat(key, (Float) value);
+        }
+    }
 
     private void setClassicValue(String key, Object value) {
         if (value instanceof Boolean) setFlag(key, (Boolean) value);
@@ -5888,13 +6439,13 @@ public class SettingsActivity extends AppCompatActivity {
                 if (snapped == value) return;
                 value = snapped;
                 renderPill();
-                if (isDefault()) view.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK);
+                feelSlider(isDefault());
                 onUserChange(NumberSetting.this);
             });
             slider.addOnSliderTouchListener(new Slider.OnSliderTouchListener() {
                 @Override
                 public void onStartTrackingTouch(Slider view) {
-                    view.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK);
+                    feel().play(Feel.PRESS);
                 }
 
                 @Override
@@ -6714,7 +7265,6 @@ public class SettingsActivity extends AppCompatActivity {
         private static final int SOURCE_HEIGHT = 512;
         private static final int MIN_HEIGHT_PX = 48;
         private static final int MAX_PIPES = 40;
-        private static final int PIPE_COLOR_COUNT = 9;
         private static final int TRAIL_LENGTH = 15;
         private static final int HUE_STEPS = 120;
         private static final int MAX_BLUR_SAMPLES = 8;
@@ -6915,14 +7465,7 @@ public class SettingsActivity extends AppCompatActivity {
             hitboxPaint.setStyle(Paint.Style.STROKE);
             hitboxPaint.setColor(COLOR_SKY);
 
-            pipeFilters[1] = new PorterDuffColorFilter(0xFFD05050, PorterDuff.Mode.MULTIPLY);
-            pipeFilters[2] = new PorterDuffColorFilter(0xFF6080E0, PorterDuff.Mode.MULTIPLY);
-            pipeFilters[3] = new PorterDuffColorFilter(0xFFE0E060, PorterDuff.Mode.MULTIPLY);
-            pipeFilters[4] = new PorterDuffColorFilter(0xFFFFFFFF, PorterDuff.Mode.SRC_ATOP);
-            pipeFilters[5] = new PorterDuffColorFilter(0xFFE879E8, PorterDuff.Mode.MULTIPLY);
-            pipeFilters[6] = new PorterDuffColorFilter(0xFF505050, PorterDuff.Mode.MULTIPLY);
-            pipeFilters[7] = new PorterDuffColorFilter(0xFF9040D0, PorterDuff.Mode.MULTIPLY);
-            pipeFilters[8] = new PorterDuffColorFilter(0xFFE89030, PorterDuff.Mode.MULTIPLY);
+            for (int i = 0; i < PIPE_COLOR_COUNT; i++) pipeFilters[i] = pipeColorFilter(i);
         }
 
         private void loadSprites() {
