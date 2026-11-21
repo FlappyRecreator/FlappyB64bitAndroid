@@ -35,9 +35,15 @@ public class ValueAnimator extends Animator {
     public void addUpdateListener(AnimatorUpdateListener l) { listeners.add(l); }
     public Object getAnimatedValue() { return current; }
     public float getAnimatedFraction() { return 1f; }
-    public void start() { current = values[values.length - 1]; for (AnimatorUpdateListener l : listeners) l.onAnimationUpdate(this); for (AnimatorListener l : new java.util.ArrayList<>(simListeners)) l.onAnimationEnd(this); }
-    public void cancel() {}
-    public boolean isRunning() { return false; }
+    public static volatile boolean simHold; public static final List<ValueAnimator> SIM_HELD = java.util.Collections.synchronizedList(new ArrayList<>());
+    private boolean simRunning;
+    public void start() { if (simHold) { simRunning = true; SIM_HELD.add(this); current = values[0]; for (AnimatorUpdateListener l : listeners) l.onAnimationUpdate(this); return; } simFinish(); }
+    private void simFinish() { simRunning = false; current = values[values.length - 1]; for (AnimatorUpdateListener l : listeners) l.onAnimationUpdate(this); for (AnimatorListener l : new java.util.ArrayList<>(simListeners)) l.onAnimationEnd(this); }
+    public void simStep(float fraction) { current = values[0] + (values[values.length - 1] - values[0]) * fraction; for (AnimatorUpdateListener l : listeners) l.onAnimationUpdate(this); }
+    public static void simStepAll(float fraction) { for (ValueAnimator a : new ArrayList<>(SIM_HELD)) a.simStep(fraction); }
+    public static void simFinishAll() { for (int round = 0; round < 50 && !SIM_HELD.isEmpty(); round++) { List<ValueAnimator> copy = new ArrayList<>(SIM_HELD); SIM_HELD.clear(); for (ValueAnimator a : copy) if (a.simRunning) a.simFinish(); } }
+    public void cancel() { if (!simRunning) return; simRunning = false; SIM_HELD.remove(this); for (AnimatorListener l : new java.util.ArrayList<>(simListeners)) l.onAnimationCancel(this); for (AnimatorListener l : new java.util.ArrayList<>(simListeners)) l.onAnimationEnd(this); }
+    public boolean isRunning() { return simRunning; }
 }
 === FILE: android/app/Activity.java
 package android.app;
@@ -81,7 +87,7 @@ public class Activity extends Context {
     public void setContentView(View view) { simRoot = view; }
     public View getCurrentFocus() { return View.SIM_CURRENT_FOCUS; }
     public int simTransitions; public void overridePendingTransition(int enter, int exit) { simTransitions++; }
-    public boolean dispatchKeyEvent(android.view.KeyEvent event) { return false; }
+    public boolean dispatchKeyEvent(android.view.KeyEvent event) { return event.getAction() == android.view.KeyEvent.ACTION_DOWN ? onKeyDown(event.getKeyCode(), event) : onKeyUp(event.getKeyCode(), event); }
     public boolean simDestroyed;
     public boolean isDestroyed() { return simDestroyed; }
     public static String[] simAskedPermissions;
@@ -301,8 +307,22 @@ public class AssetFileDescriptor implements java.io.Closeable {
 === FILE: android/content/res/ColorStateList.java
 package android.content.res;
 public class ColorStateList {
-    public ColorStateList(int[][] states, int[] colors) { if (states.length != colors.length) throw new IllegalArgumentException("states and colors must match"); }
+    private final int[][] states; private final int[] colors;
+    public ColorStateList(int[][] states, int[] colors) { if (states.length != colors.length) throw new IllegalArgumentException("states and colors must match"); this.states = states; this.colors = colors; }
     public static ColorStateList valueOf(int color) { return new ColorStateList(new int[][] { {} }, new int[] { color }); }
+    public int getColorForState(int[] set, int fallback) {
+        for (int i = 0; i < states.length; i++) {
+            boolean match = true;
+            for (int want : states[i]) {
+                boolean has = false;
+                for (int got : set) if (got == Math.abs(want)) has = true;
+                if (want > 0 ? !has : has) match = false;
+            }
+            if (match) return colors[i];
+        }
+        return fallback;
+    }
+    public int getDefaultColor() { return getColorForState(new int[0], colors.length > 0 ? colors[0] : 0); }
 }
 === FILE: android/content/res/Configuration.java
 package android.content.res;
@@ -351,6 +371,7 @@ public final class Bitmap {
     public void setDensity(int d) { density = d; }
     public static Bitmap simDecoded(int w, int h) { Bitmap b = new Bitmap(w, h, false); b.density = SIM_RESOURCE_DENSITY; return b; }
     public static Bitmap createBitmap(int w, int h, Config c) { return new Bitmap(w, h, true); }
+    public static int simFromPixels; public static Bitmap createBitmap(int[] colors, int w, int h, Config c) { if (colors == null) throw new NullPointerException(); if (w <= 0 || h <= 0 || colors.length < w * h) throw new IllegalArgumentException("colors too small"); simFromPixels++; return new Bitmap(w, h, false); }
     public static int simErases; public void eraseColor(int c) { if (isRecycled()) throw new IllegalStateException("recycled"); simErases++; }
     public static Bitmap createBitmap(Bitmap src, int x, int y, int w, int h) { return createBitmap(src, x, y, w, h, null, false); }
     public static Bitmap createBitmap(Bitmap src, int x, int y, int w, int h, Matrix m, boolean filter) {
@@ -418,12 +439,12 @@ public class Canvas {
     private static void check(Bitmap b) { if (b == null) throw new NullPointerException("bitmap == null"); if (b.isRecycled()) throw new RuntimeException("Canvas: trying to use a recycled bitmap"); }
     private static void use(Paint p) { if (p == null) throw new NullPointerException("paint == null"); ops++; if (p.maskFilter != null) blurOps++; }
     private static void opt(Paint p) { ops++; if (p != null && p.maskFilter != null) blurOps++; }
-    public void drawBitmap(Bitmap b, float l, float t, Paint p) { check(b); nan(l, t); opt(p); if (simDensity != 0 && b.getDensity() != 0 && simDensity != b.getDensity()) SIM_DENSITY_SCALED++; }
+    public void drawBitmap(Bitmap b, float l, float t, Paint p) { check(b); nan(l, t); opt(p); if (simDensity != 0 && b.getDensity() != 0 && simDensity != b.getDensity()) SIM_DENSITY_SCALED++; if (simDraws != null) simDraws.add(new Object[] {b, new float[] {l, t, l + b.getWidth(), t + b.getHeight()}, p == null ? 255 : p.getAlpha()}); }
     public static java.util.List<Object[]> simDraws;
     public void drawRoundRect(RectF r, float rx, float ry, Paint p) { use(p); nan(r.left, r.top); nan(r.right, r.bottom); }
     public static final java.util.List<String> simTexts = new java.util.ArrayList<>();
     public void drawText(String t, float x, float y, Paint p) { use(p); nan(x, y); if (t == null) throw new NullPointerException("text"); simTexts.add(t); }
-    public void drawBitmap(Bitmap b, Rect src, RectF dst, Paint p) { check(b); if (dst == null) throw new NullPointerException(); nan(dst.left, dst.top); nan(dst.right, dst.bottom); opt(p); if (simDraws != null) simDraws.add(new Object[] {b, new float[] {dst.left, dst.top, dst.right, dst.bottom}}); }
+    public void drawBitmap(Bitmap b, Rect src, RectF dst, Paint p) { check(b); if (dst == null) throw new NullPointerException(); nan(dst.left, dst.top); nan(dst.right, dst.bottom); opt(p); if (simDraws != null) simDraws.add(new Object[] {b, new float[] {dst.left, dst.top, dst.right, dst.bottom}, p == null ? 255 : p.getAlpha()}); }
     public void drawBitmap(Bitmap b, Rect src, Rect dst, Paint p) { check(b); if (dst == null) throw new NullPointerException(); opt(p); }
     public void drawBitmap(Bitmap b, Matrix m, Paint p) { check(b); if (m == null) throw new NullPointerException(); opt(p); }
     public void drawRect(float l, float t, float r, float b, Paint p) { nan(l, t); nan(r, b); use(p); }
@@ -474,10 +495,10 @@ package android.graphics;
 public class ColorFilter { public static long allocCount; public ColorFilter() { allocCount++; } }
 === FILE: android/graphics/ColorMatrix.java
 package android.graphics;
-public class ColorMatrix { public ColorMatrix() {} public void reset() {} public void setRotate(int axis, float degrees) { if (axis < 0 || axis > 2) throw new RuntimeException(); } public void setSaturation(float s) {} }
+public class ColorMatrix { public final float[] simArray = new float[20]; public ColorMatrix() {} public ColorMatrix(float[] src) { if (src.length < 20) throw new ArrayIndexOutOfBoundsException(); System.arraycopy(src, 0, simArray, 0, 20); } public void reset() {} public void setRotate(int axis, float degrees) { if (axis < 0 || axis > 2) throw new RuntimeException(); } public void setSaturation(float s) {} }
 === FILE: android/graphics/ColorMatrixColorFilter.java
 package android.graphics;
-public class ColorMatrixColorFilter extends ColorFilter { public ColorMatrixColorFilter(ColorMatrix m) { if (m == null) throw new NullPointerException(); } }
+public class ColorMatrixColorFilter extends ColorFilter { public final float[] simArray; public ColorMatrixColorFilter(ColorMatrix m) { if (m == null) throw new NullPointerException(); simArray = m.simArray.clone(); } }
 === FILE: android/graphics/DrawFilter.java
 package android.graphics;
 public class DrawFilter {}
@@ -510,7 +531,8 @@ public class Matrix {
 === FILE: android/graphics/Paint.java
 package android.graphics;
 public class Paint {
-    public static final int ANTI_ALIAS_FLAG = 1, FILTER_BITMAP_FLAG = 2;
+    public static final int ANTI_ALIAS_FLAG = 1, FILTER_BITMAP_FLAG = 2, SUBPIXEL_TEXT_FLAG = 128;
+    public float descent() { return getTextSize() * 0.21f; } public float ascent() { return -getTextSize() * 0.93f; }
     public enum Style { FILL, STROKE, FILL_AND_STROKE }
     public enum Cap { BUTT, ROUND, SQUARE }
     public enum Join { MITER, ROUND, BEVEL }
@@ -957,7 +979,8 @@ public abstract class VibrationEffect {
     public String simKind = "";
     static VibrationEffect sim(String kind) { VibrationEffect e = new VibrationEffect() {}; e.simKind = kind; return e; }
     public static VibrationEffect createWaveform(long[] timings, int repeat) { if (timings == null || timings.length == 0) throw new IllegalArgumentException(); return sim("waveform"); }
-    public static VibrationEffect createOneShot(long ms, int amplitude) { return sim("oneshot"); }
+    public static VibrationEffect createOneShot(long ms, int amplitude) { if (Build.VERSION.SDK_INT < 26) throw new NoSuchMethodError("createOneShot"); if (ms <= 0 || amplitude == 0 || amplitude < -1 || amplitude > 255) throw new IllegalArgumentException("oneshot"); return sim("oneshot"); }
+    public static VibrationEffect createWaveform(long[] timings, int[] amplitudes, int repeat) { if (Build.VERSION.SDK_INT < 26) throw new NoSuchMethodError("createWaveform"); if (timings == null || amplitudes == null || timings.length != amplitudes.length) throw new IllegalArgumentException("lengths"); for (int a : amplitudes) if (a < 0 || a > 255) throw new IllegalArgumentException("amplitude"); return sim("waveform"); }
     public static VibrationEffect createPredefined(int id) { if (Build.VERSION.SDK_INT < 29) throw new NoSuchMethodError("createPredefined"); return sim("predefined:" + id); }
     public static Composition startComposition() { if (Build.VERSION.SDK_INT < 30) throw new NoSuchMethodError("startComposition"); return new Composition(); }
     public static final class Composition {
@@ -974,7 +997,7 @@ package android.os;
 public class Vibrator {
     public static boolean simDenyPermission; public static int simVibrations; public static boolean simPrimitives = true;
     public static final java.util.List<String> SIM_KINDS = new java.util.ArrayList<>();
-    public boolean hasVibrator() { return true; }
+    public boolean hasVibrator() { return true; } public static boolean simAmplitude = true; public boolean hasAmplitudeControl() { return simAmplitude; }
     private void go() { if (simDenyPermission) throw new SecurityException("Requires VIBRATE permission"); simVibrations++; }
     public void vibrate(long ms) { go(); }
     public void vibrate(long[] pattern, int repeat) { go(); }
@@ -1124,7 +1147,7 @@ public class HapticFeedbackConstants { public static final int LONG_PRESS = 0, V
 package android.view;
 public class KeyEvent {
     public static final int ACTION_DOWN = 0, ACTION_UP = 1;
-    public static final int KEYCODE_UNKNOWN = 0, KEYCODE_SOFT_LEFT = 1, KEYCODE_SOFT_RIGHT = 2, KEYCODE_HOME = 3, KEYCODE_BACK = 4, KEYCODE_CALL = 5, KEYCODE_ENDCALL = 6, KEYCODE_0 = 7, KEYCODE_1 = 8, KEYCODE_2 = 9, KEYCODE_3 = 10, KEYCODE_4 = 11, KEYCODE_5 = 12, KEYCODE_6 = 13, KEYCODE_7 = 14, KEYCODE_8 = 15, KEYCODE_9 = 16, KEYCODE_STAR = 17, KEYCODE_POUND = 18, KEYCODE_DPAD_UP = 19, KEYCODE_DPAD_DOWN = 20, KEYCODE_DPAD_LEFT = 21, KEYCODE_DPAD_RIGHT = 22, KEYCODE_DPAD_CENTER = 23, KEYCODE_VOLUME_UP = 24, KEYCODE_VOLUME_DOWN = 25, KEYCODE_POWER = 26, KEYCODE_CAMERA = 27, KEYCODE_CLEAR = 28, KEYCODE_A = 29, KEYCODE_B = 30, KEYCODE_C = 31, KEYCODE_D = 32, KEYCODE_E = 33, KEYCODE_F = 34, KEYCODE_G = 35, KEYCODE_H = 36, KEYCODE_I = 37, KEYCODE_J = 38, KEYCODE_K = 39, KEYCODE_L = 40, KEYCODE_M = 41, KEYCODE_N = 42, KEYCODE_O = 43, KEYCODE_P = 44, KEYCODE_Q = 45, KEYCODE_R = 46, KEYCODE_S = 47, KEYCODE_T = 48, KEYCODE_U = 49, KEYCODE_V = 50, KEYCODE_W = 51, KEYCODE_X = 52, KEYCODE_Y = 53, KEYCODE_Z = 54, KEYCODE_COMMA = 55, KEYCODE_PERIOD = 56, KEYCODE_ALT_LEFT = 57, KEYCODE_ALT_RIGHT = 58, KEYCODE_SHIFT_LEFT = 59, KEYCODE_SHIFT_RIGHT = 60, KEYCODE_TAB = 61, KEYCODE_SPACE = 62, KEYCODE_SYM = 63, KEYCODE_EXPLORER = 64, KEYCODE_ENVELOPE = 65, KEYCODE_ENTER = 66, KEYCODE_DEL = 67, KEYCODE_GRAVE = 68, KEYCODE_MINUS = 69, KEYCODE_EQUALS = 70, KEYCODE_LEFT_BRACKET = 71, KEYCODE_RIGHT_BRACKET = 72, KEYCODE_BACKSLASH = 73, KEYCODE_SEMICOLON = 74, KEYCODE_APOSTROPHE = 75, KEYCODE_SLASH = 76, KEYCODE_AT = 77, KEYCODE_MENU = 82, KEYCODE_SEARCH = 84, KEYCODE_PAGE_UP = 92, KEYCODE_PAGE_DOWN = 93, KEYCODE_BUTTON_A = 96, KEYCODE_BUTTON_B = 97, KEYCODE_BUTTON_X = 99, KEYCODE_BUTTON_Y = 100, KEYCODE_BUTTON_START = 108, KEYCODE_ESCAPE = 111, KEYCODE_FORWARD_DEL = 112, KEYCODE_CTRL_LEFT = 113, KEYCODE_CTRL_RIGHT = 114, KEYCODE_CAPS_LOCK = 115, KEYCODE_MOVE_HOME = 122, KEYCODE_MOVE_END = 123, KEYCODE_INSERT = 124, KEYCODE_F1 = 131, KEYCODE_F2 = 132, KEYCODE_F3 = 133, KEYCODE_F4 = 134, KEYCODE_F5 = 135, KEYCODE_F6 = 136, KEYCODE_F7 = 137, KEYCODE_F8 = 138, KEYCODE_F9 = 139, KEYCODE_F10 = 140, KEYCODE_F11 = 141, KEYCODE_F12 = 142, KEYCODE_NUMPAD_0 = 144, KEYCODE_NUMPAD_ENTER = 160, KEYCODE_VOLUME_MUTE = 164, KEYCODE_APP_SWITCH = 187, KEYCODE_ASSIST = 219, KEYCODE_SLEEP = 223, KEYCODE_WAKEUP = 224, KEYCODE_VOICE_ASSIST = 231;
+    public static final int KEYCODE_UNKNOWN = 0, KEYCODE_SOFT_LEFT = 1, KEYCODE_SOFT_RIGHT = 2, KEYCODE_HOME = 3, KEYCODE_BACK = 4, KEYCODE_CALL = 5, KEYCODE_ENDCALL = 6, KEYCODE_0 = 7, KEYCODE_1 = 8, KEYCODE_2 = 9, KEYCODE_3 = 10, KEYCODE_4 = 11, KEYCODE_5 = 12, KEYCODE_6 = 13, KEYCODE_7 = 14, KEYCODE_8 = 15, KEYCODE_9 = 16, KEYCODE_STAR = 17, KEYCODE_POUND = 18, KEYCODE_DPAD_UP = 19, KEYCODE_DPAD_DOWN = 20, KEYCODE_DPAD_LEFT = 21, KEYCODE_DPAD_RIGHT = 22, KEYCODE_DPAD_CENTER = 23, KEYCODE_VOLUME_UP = 24, KEYCODE_VOLUME_DOWN = 25, KEYCODE_POWER = 26, KEYCODE_CAMERA = 27, KEYCODE_CLEAR = 28, KEYCODE_A = 29, KEYCODE_B = 30, KEYCODE_C = 31, KEYCODE_D = 32, KEYCODE_E = 33, KEYCODE_F = 34, KEYCODE_G = 35, KEYCODE_H = 36, KEYCODE_I = 37, KEYCODE_J = 38, KEYCODE_K = 39, KEYCODE_L = 40, KEYCODE_M = 41, KEYCODE_N = 42, KEYCODE_O = 43, KEYCODE_P = 44, KEYCODE_Q = 45, KEYCODE_R = 46, KEYCODE_S = 47, KEYCODE_T = 48, KEYCODE_U = 49, KEYCODE_V = 50, KEYCODE_W = 51, KEYCODE_X = 52, KEYCODE_Y = 53, KEYCODE_Z = 54, KEYCODE_COMMA = 55, KEYCODE_PERIOD = 56, KEYCODE_ALT_LEFT = 57, KEYCODE_ALT_RIGHT = 58, KEYCODE_SHIFT_LEFT = 59, KEYCODE_SHIFT_RIGHT = 60, KEYCODE_TAB = 61, KEYCODE_SPACE = 62, KEYCODE_SYM = 63, KEYCODE_EXPLORER = 64, KEYCODE_ENVELOPE = 65, KEYCODE_ENTER = 66, KEYCODE_DEL = 67, KEYCODE_GRAVE = 68, KEYCODE_MINUS = 69, KEYCODE_EQUALS = 70, KEYCODE_LEFT_BRACKET = 71, KEYCODE_RIGHT_BRACKET = 72, KEYCODE_BACKSLASH = 73, KEYCODE_SEMICOLON = 74, KEYCODE_APOSTROPHE = 75, KEYCODE_SLASH = 76, KEYCODE_AT = 77, KEYCODE_MENU = 82, KEYCODE_SEARCH = 84, KEYCODE_PAGE_UP = 92, KEYCODE_PAGE_DOWN = 93, KEYCODE_BUTTON_A = 96, KEYCODE_BUTTON_B = 97, KEYCODE_BUTTON_X = 99, KEYCODE_BUTTON_Y = 100, KEYCODE_BUTTON_L1 = 102, KEYCODE_BUTTON_R1 = 103, KEYCODE_BUTTON_START = 108, KEYCODE_ESCAPE = 111, KEYCODE_FORWARD_DEL = 112, KEYCODE_CTRL_LEFT = 113, KEYCODE_CTRL_RIGHT = 114, KEYCODE_CAPS_LOCK = 115, KEYCODE_MOVE_HOME = 122, KEYCODE_MOVE_END = 123, KEYCODE_INSERT = 124, KEYCODE_F1 = 131, KEYCODE_F2 = 132, KEYCODE_F3 = 133, KEYCODE_F4 = 134, KEYCODE_F5 = 135, KEYCODE_F6 = 136, KEYCODE_F7 = 137, KEYCODE_F8 = 138, KEYCODE_F9 = 139, KEYCODE_F10 = 140, KEYCODE_F11 = 141, KEYCODE_F12 = 142, KEYCODE_NUMPAD_0 = 144, KEYCODE_NUMPAD_ENTER = 160, KEYCODE_VOLUME_MUTE = 164, KEYCODE_APP_SWITCH = 187, KEYCODE_ASSIST = 219, KEYCODE_SLEEP = 223, KEYCODE_WAKEUP = 224, KEYCODE_VOICE_ASSIST = 231;
     public static final int KEYCODE_MEDIA_PLAY_PAUSE = 85, KEYCODE_MEDIA_STOP = 86, KEYCODE_MEDIA_REWIND = 89, KEYCODE_MEDIA_FAST_FORWARD = 90, KEYCODE_MEDIA_PLAY = 126, KEYCODE_MEDIA_PAUSE = 127;
     public static final int META_SHIFT_ON = 1, META_CTRL_ON = 0x1000;
     private final int action, code, repeat; private int meta;
@@ -1149,10 +1172,11 @@ public final class MotionEvent {
     public static final int ACTION_DOWN = 0, ACTION_UP = 1, ACTION_MOVE = 2, ACTION_CANCEL = 3, ACTION_OUTSIDE = 4, ACTION_POINTER_DOWN = 5, ACTION_POINTER_UP = 6;
     public static final int ACTION_MASK = 0xff, ACTION_POINTER_INDEX_MASK = 0xff00, ACTION_POINTER_INDEX_SHIFT = 8;
     public static final int ACTION_HOVER_MOVE = 7, ACTION_HOVER_ENTER = 9, ACTION_HOVER_EXIT = 10;
-    public static final int ACTION_SCROLL = 8, AXIS_VSCROLL = 9;
-    private float vscroll;
+    public static final int ACTION_SCROLL = 8, AXIS_VSCROLL = 9, AXIS_HSCROLL = 10;
+    private float vscroll, hscroll;
     public MotionEvent simScroll(float amount) { vscroll = amount; return this; }
-    public float getAxisValue(int axis) { return axis == AXIS_VSCROLL ? vscroll : 0f; }
+    public MotionEvent simHScroll(float amount) { hscroll = amount; return this; }
+    public float getAxisValue(int axis) { return axis == AXIS_VSCROLL ? vscroll : axis == AXIS_HSCROLL ? hscroll : 0f; }
     public static final int TOOL_TYPE_UNKNOWN = 0, TOOL_TYPE_FINGER = 1, TOOL_TYPE_MOUSE = 3, BUTTON_PRIMARY = 1, BUTTON_SECONDARY = 2, BUTTON_TERTIARY = 4;
     private int action; private float x, y; private int toolType = TOOL_TYPE_FINGER, buttons;
     public static MotionEvent obtain(long down, long time, int action, float x, float y, int meta) { MotionEvent e = new MotionEvent(); e.action = action; e.x = x; e.y = y; return e; }
@@ -1287,6 +1311,7 @@ public class View {
     public boolean postDelayed(Runnable r, long ms) { if (r == null) throw new NullPointerException(); simDelayed.add(r); return true; }
     public boolean removeCallbacks(Runnable r) { while (simDelayed.remove(r)) { } return true; }
     public static final java.util.List<Integer> SIM_HAPTIC_KINDS = new java.util.ArrayList<>();
+    public boolean hasOverlappingRendering() { return true; }
     public boolean performHapticFeedback(int c) { simHaptics++; SIM_HAPTIC_KINDS.add(c); return true; }
     public boolean performClick() { if (clickListener != null && enabled) { clickListener.onClick(this); return true; } return false; }
     public Display getDisplay() { return simAttached ? new Display() : null; }
@@ -1302,10 +1327,10 @@ public class View {
     public void setVisibility(int v) { if (v != VISIBLE && v != INVISIBLE && v != GONE) throw new IllegalArgumentException("visibility"); visibility = v; }
     public int getVisibility() { return visibility; }
     public boolean simWillNotDraw; public void setWillNotDraw(boolean w) { simWillNotDraw = w; }
-    public void clearFocus() { simFocused = false; }
+    public void clearFocus() { simFocused = false; if (SIM_CURRENT_FOCUS == this) SIM_CURRENT_FOCUS = null; }
     public static class MeasureSpec { public static final int UNSPECIFIED = 0, EXACTLY = 0x40000000, AT_MOST = 0x80000000;
         public static int makeMeasureSpec(int size, int mode) { return (size & 0x3FFFFFFF) | mode; } public static int getSize(int spec) { return spec & 0x3FFFFFFF; } public static int getMode(int spec) { return spec & 0xC0000000; } }
-    private int simMeasuredHeight; public static int simMeasures; public final void measure(int w, int h) { simMeasures++; simMeasuredHeight = simMeasure(MeasureSpec.getSize(w)); } public final int getMeasuredHeight() { return simMeasuredHeight; }
+    private int simMeasuredHeight; public static int simMeasures; public final void measure(int w, int h) { simMeasures++; simMeasuredHeight = simMeasure(MeasureSpec.getSize(w)); } public final int getMeasuredHeight() { return simMeasuredHeight; } public final int getMeasuredWidth() { return 0; } protected void onMeasure(int w, int h) {}
     public int simMeasure(int width) { ViewGroup.LayoutParams p = getLayoutParams(); return p != null && p.height > 0 ? p.height : padT + padB; }
     public void setAlpha(float a) { if (Float.isNaN(a)) throw new IllegalArgumentException("alpha NaN"); alpha = a; } public float getAlpha() { return alpha; }
     public void setScaleX(float s) { scaleX = s; } public void setScaleY(float s) { scaleY = s; } public float getScaleX() { return scaleX; } public float getScaleY() { return scaleY; }
@@ -1315,7 +1340,7 @@ public class View {
     public void setSelected(boolean s) { selected = s; } public boolean isSelected() { return selected; }
     public void setClickable(boolean c) { clickable = c; } public boolean isClickable() { return clickable; }
     public void setFocusable(boolean f) {} public void setFocusableInTouchMode(boolean f) {}
-    public boolean simFocused; public static View SIM_CURRENT_FOCUS; public boolean requestFocus() { if (SIM_CURRENT_FOCUS != null) SIM_CURRENT_FOCUS.simFocused = false; simFocused = true; SIM_CURRENT_FOCUS = this; return true; }
+    public boolean simFocused; public static View SIM_CURRENT_FOCUS; public boolean requestFocus() { if (SIM_CURRENT_FOCUS != null) SIM_CURRENT_FOCUS.simFocused = false; simFocused = true; SIM_CURRENT_FOCUS = this; return true; } public boolean isFocused() { return simFocused; }
     public android.os.IBinder getWindowToken() { return null; }
     public PointerIcon simPointerIcon; public void setPointerIcon(PointerIcon p) { simPointerIcon = p; }
     public boolean onHoverEvent(MotionEvent e) { return false; }
@@ -1345,6 +1370,14 @@ public class View {
     protected void onDetachedFromWindow() {}
     public boolean onTouchEvent(MotionEvent e) { return false; }
     public boolean onGenericMotionEvent(MotionEvent e) { return false; }
+    private boolean simHovered, simPressed;
+    public boolean isHovered() { return simHovered; } public void setHovered(boolean h) { if (simHovered != h) { simHovered = h; onHoverChanged(h); } } public void onHoverChanged(boolean h) {}
+    public boolean isPressed() { return simPressed; } public void setPressed(boolean p) { simPressed = p; drawableStateChanged(); } protected void drawableStateChanged() {}
+    protected void onFocusChanged(boolean gain, int direction, android.graphics.Rect previous) {}
+    public interface OnGenericMotionListener { boolean onGenericMotion(View v, MotionEvent e); }
+    private OnGenericMotionListener genericListener;
+    public void setOnGenericMotionListener(OnGenericMotionListener l) { genericListener = l; }
+    public boolean dispatchGenericMotionEvent(MotionEvent e) { if (genericListener != null && genericListener.onGenericMotion(this, e)) return true; return onGenericMotionEvent(e); }
     public void simLayout(int nw, int nh) { int ow = w, oh = h; w = nw; h = nh; if (nw != ow || nh != oh) onSizeChanged(nw, nh, ow, oh); for (OnLayoutChangeListener l : new ArrayList<>(layoutListeners)) l.onLayoutChange(this, 0, 0, nw, nh, 0, 0, ow, oh); }
     public void simDraw(Canvas c) { simInvalidated = false; onDraw(c); }
     public void simAttach() { simAttached = true; onAttachedToWindow(); }
@@ -1498,7 +1531,7 @@ public class HorizontalScrollView extends FrameLayout {
     public int simScrollX;
     public HorizontalScrollView(Context c) { super(c); }
     @Override protected void simLimit() { if (getChildCount() > 0) throw new IllegalStateException("HorizontalScrollView can host only one direct child"); }
-    public final void smoothScrollTo(int x, int y) { simScrollX = x; }
+    public final void smoothScrollTo(int x, int y) { simScrollX = x; } public void smoothScrollBy(int x, int y) { simScrollX = Math.max(0, simScrollX + x); }
     public void scrollTo(int x, int y) { simScrollX = x; }
 }
 === FILE: android/widget/ImageView.java
@@ -1572,7 +1605,7 @@ public class TextView extends View {
     public interface OnEditorActionListener { boolean onEditorAction(TextView v, int actionId, android.view.KeyEvent event); }
     public OnEditorActionListener simEditorAction; public void setOnEditorActionListener(OnEditorActionListener l) { simEditorAction = l; }
     public CharSequence getText() { return text; }
-    public void setTextColor(int c) { simTextColor = c; }
+    public void setTextColor(int c) { simTextColor = c; } public android.content.res.ColorStateList simTextColors; public void setTextColor(android.content.res.ColorStateList c) { simTextColors = c; simTextColor = c == null ? 0 : c.getDefaultColor(); }
     public void setHint(CharSequence h) {}
     public void setInputType(int t) {}
     public void setSingleLine() {} public void setSingleLine(boolean s) {}
@@ -1589,7 +1622,7 @@ public class TextView extends View {
     public void setLetterSpacing(float f) {} public void setAllCaps(boolean c) {} public void setMaxLines(int m) {} public void setMinWidth(int w) {} public void setMaxWidth(int w) {}
     public void setEllipsize(android.text.TextUtils.TruncateAt t) {}
     public void setMinHeight(int h) {}
-    public void setLineSpacing(float add, float mult) {}
+    public void setLineSpacing(float add, float mult) {} public void setIncludeFontPadding(boolean include) {}
 }
 === FILE: android/widget/Toast.java
 package android.widget;
@@ -1623,6 +1656,8 @@ package androidx.activity;
 public final class OnBackPressedDispatcher {
     private final java.util.List<OnBackPressedCallback> callbacks = new java.util.ArrayList<>();
     public void addCallback(Object owner, OnBackPressedCallback cb) { if (cb == null) throw new NullPointerException(); callbacks.add(cb); }
+    public void onBackPressed() { if (!simDispatch()) simFallback++; }
+    public static int simFallback;
     public boolean simDispatch() { for (int i = callbacks.size() - 1; i >= 0; i--) { OnBackPressedCallback cb = callbacks.get(i); if (cb.isEnabled()) { cb.handleOnBackPressed(); return true; } } return false; }
 }
 === FILE: androidx/annotation/NonNull.java
@@ -1758,6 +1793,7 @@ public class NestedScrollView extends FrameLayout {
     @Override protected void simLimit() { if (getChildCount() > 0) throw new IllegalStateException("ScrollView can host only one direct child"); }
     public void scrollTo(int x, int y) { simScrollY = y; }
     public final void smoothScrollTo(int x, int y) { simScrollY = y; }
+    public final void smoothScrollBy(int x, int y) { simScrollY = Math.max(0, simScrollY + y); }
 }
 === FILE: com/google/android/material/button/MaterialButton.java
 package com.google.android.material.button;
@@ -1873,6 +1909,11 @@ public class TextInputLayout extends android.widget.LinearLayout {
     public void setHint(CharSequence h) { simHint = h; } public void setHelperText(CharSequence h) { simHelper = h; }
     public void setCounterEnabled(boolean b) { simCounter = b; } public void setCounterMaxLength(int m) { simCounterMax = m; }
     public void setEndIconMode(int m) { simEndIcon = m; } public void setError(CharSequence e) { simError = e; } public CharSequence getError() { return simError; }
+    public int simBoxBackground; public android.content.res.ColorStateList simBoxStroke, simHintColor, simDefaultHint, simHelperColor, simCounterColor, simEndIconTint;
+    public void setBoxBackgroundColor(int c) { simBoxBackground = c; } public void setBoxStrokeColorStateList(android.content.res.ColorStateList c) { simBoxStroke = c; }
+    public void setHintTextColor(android.content.res.ColorStateList c) { simHintColor = c; } public void setDefaultHintTextColor(android.content.res.ColorStateList c) { simDefaultHint = c; }
+    public void setHelperTextColor(android.content.res.ColorStateList c) { simHelperColor = c; } public void setCounterTextColor(android.content.res.ColorStateList c) { simCounterColor = c; }
+    public void setEndIconTintList(android.content.res.ColorStateList c) { simEndIconTint = c; }
 }
 === FILE: org/json/JSONArray.java
 package org.json;
