@@ -38,7 +38,9 @@ import android.os.SystemClock;
 import android.os.VibrationEffect;
 import android.os.Vibrator;
 import android.app.Activity;
+import android.app.UiModeManager;
 import android.app.ActivityManager;
+import android.content.pm.PackageManager;
 import android.content.res.Configuration;
 import android.os.PowerManager;
 import android.os.Bundle;
@@ -60,6 +62,8 @@ import android.view.MotionEvent;
 import android.view.KeyEvent;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.Display;
+import android.view.Window;
 import android.view.WindowManager;
 import android.view.inputmethod.EditorInfo;
 import android.view.inputmethod.InputMethodManager;
@@ -265,6 +269,7 @@ public class SettingsActivity extends AppCompatActivity {
     public static final String PREF_RIGHT_CLICK_PAUSES = "pref_right_click_pauses";
     public static final String PREF_HIDE_CURSOR = "pref_hide_cursor";
     public static final String PREF_BOARD_AUTO_POST = "pref_board_auto_post";
+    public static final String PREF_DAILY_CHALLENGES = "pref_daily_challenges";
     public static final String PREF_BOARD_SHOW_STATUS = "pref_board_show_status";
     public static final String PREF_BOARD_OPEN_ON_BEST = "pref_board_open_on_best";
     public static final String PREF_BOARD_TAB = "pref_board_tab";
@@ -302,7 +307,7 @@ public class SettingsActivity extends AppCompatActivity {
     public static final boolean DEFAULT_HAPTIC_FEEDBACK_ENABLED = true;
     public static final int DEFAULT_HAPTIC_STRENGTH = 1;
     public static final boolean DEFAULT_HAPTIC_FLAP = true;
-    public static final boolean DEFAULT_HAPTIC_SCORE = true;
+    public static final boolean DEFAULT_HAPTIC_SCORE = false;
     public static final boolean DEFAULT_HAPTIC_CRASH = true;
     public static final boolean DEFAULT_HAPTIC_BEST = true;
     public static final boolean DEFAULT_HAPTIC_MENUS = true;
@@ -398,9 +403,10 @@ public class SettingsActivity extends AppCompatActivity {
     public static final boolean DEFAULT_RIGHT_CLICK_PAUSES = true;
     public static final boolean DEFAULT_HIDE_CURSOR = true;
     public static final boolean DEFAULT_BOARD_AUTO_POST = true;
+    public static final boolean DEFAULT_DAILY_CHALLENGES = true;
     public static final boolean DEFAULT_BOARD_SHOW_STATUS = true;
     public static final boolean DEFAULT_BOARD_OPEN_ON_BEST = false;
-    public static final int DEFAULT_BOARD_TAB = 0;
+    public static final int DEFAULT_BOARD_TAB = 1;
     public static final int DEFAULT_BOARD_SIZE = 0;
     static final int[] BOARD_SIZES = {10, 25, 50, 100};
     public static final boolean DEFAULT_REPLAY_ENABLED = true;
@@ -505,6 +511,18 @@ public class SettingsActivity extends AppCompatActivity {
         if (rate != null && !(rate instanceof Integer && (Integer) rate == stepRate)) return PREF_FIXED_STEP_RATE;
         if (stepped && stepRate != DEFAULT_FIXED_STEP_RATE) return PREF_FIXED_STEP_RATE;
         return null;
+    }
+
+    static Map<String, Object> classicRuleValues() {
+        Map<String, Object> values = new java.util.TreeMap<>();
+        for (Object[] rule : fairRules()) {
+            if (rule[2] != null) values.put((String) rule[0], rule[2]);
+        }
+        return values;
+    }
+
+    static boolean samePref(Object stored, Object wanted) {
+        return sameValue(stored, wanted);
     }
 
     public static int fairPlayMode(Map<String, ?> stored) {
@@ -852,6 +870,42 @@ public class SettingsActivity extends AppCompatActivity {
         while (version.startsWith("v") || version.startsWith("V")) version = version.substring(1).trim();
         String line = (version.isEmpty() ? "" : "V" + version + " ") + "by " + MADE_BY + " \u00B7 Unofficial";
         return new String[] {APP_NAME, line};
+    }
+
+    public static void preferSmoothDisplay(Activity activity) {
+        if (activity == null || Build.VERSION.SDK_INT < Build.VERSION_CODES.M) return;
+        try {
+            if (bigScreen(activity)) return;
+            Window window = activity.getWindow();
+            if (window == null) return;
+            Display display = window.getDecorView().getDisplay();
+            if (display == null) return;
+            Display.Mode current = display.getMode();
+            Display.Mode best = current;
+            for (Display.Mode mode : display.getSupportedModes()) {
+                boolean sameResolution = mode.getPhysicalWidth() == current.getPhysicalWidth()
+                        && mode.getPhysicalHeight() == current.getPhysicalHeight();
+                if (sameResolution && mode.getRefreshRate() > best.getRefreshRate()) best = mode;
+            }
+            WindowManager.LayoutParams params = window.getAttributes();
+            if (params.preferredDisplayModeId == best.getModeId()) return;
+            params.preferredDisplayModeId = best.getModeId();
+            window.setAttributes(params);
+        } catch (RuntimeException ignored) {
+        }
+    }
+
+    public static boolean bigScreen(Context context) {
+        try {
+            PackageManager manager = context.getPackageManager();
+            if (manager.hasSystemFeature("android.software.leanback") || manager.hasSystemFeature("android.hardware.type.television")
+                    || manager.hasSystemFeature("android.hardware.type.pc")) return true;
+            UiModeManager ui = (UiModeManager) context.getSystemService(Context.UI_MODE_SERVICE);
+            int type = ui == null ? 0 : ui.getCurrentModeType();
+            return type == Configuration.UI_MODE_TYPE_TELEVISION || type == Configuration.UI_MODE_TYPE_DESK;
+        } catch (RuntimeException e) {
+            return false;
+        }
     }
 
     public static String deviceSummary(Context context) {
@@ -1218,6 +1272,8 @@ public class SettingsActivity extends AppCompatActivity {
             boolean verified;
             long time;
             String version = "";
+            String[] look;
+            Object lookCache;
 
             String versionLabel() {
                 return version.isEmpty() ? OLD_VERSION : "V" + version;
@@ -1803,6 +1859,7 @@ public class SettingsActivity extends AppCompatActivity {
             store(context).edit().putBoolean(KEY_ASKED, true).apply();
         }
 
+        static final long SESSION_LATE_NS = 2500000000L;
         private static final Set<Long> brokenSeeds = new LinkedHashSet<>();
         private static final java.util.concurrent.atomic.AtomicInteger heartbeatsWaiting = new java.util.concurrent.atomic.AtomicInteger();
 
@@ -1829,7 +1886,7 @@ public class SettingsActivity extends AppCompatActivity {
 
         static void heartbeat(final Context context, final long seed, final int index, final int kind, final String code) {
             final SharedPreferences store = store(context);
-            if (!ready(store)) {
+            if (!configured() || roundBroken(seed)) {
                 breakRound(seed);
                 return;
             }
@@ -1857,16 +1914,32 @@ public class SettingsActivity extends AppCompatActivity {
         }
 
         static void startSession(final Context context, final long seed) {
+            startSession(context, seed, false);
+        }
+
+        static void startSession(final Context context, final long seed, final boolean anyone) {
             final SharedPreferences store = store(context);
-            if (!ready(store)) {
+            if (!(anyone ? configured() : ready(store))) {
                 breakRound(seed);
                 return;
             }
             final Context app = app(context);
+            final long asked = System.nanoTime();
             worker().execute(() -> {
+                if (System.nanoTime() - asked > SESSION_LATE_NS) {
+                    breakRound(seed);
+                    log(app, "A round started while the last run was still uploading, so it can't be checked");
+                    return;
+                }
                 try {
                     String token = token(store, false);
-                    if (!name(store).equals(text(store, KEY_NAME_SENT))) ensureEntry(app, store, token);
+                    if (!name(store).isEmpty() && !name(store).equals(text(store, KEY_NAME_SENT))) {
+                        try {
+                            ensureEntry(app, store, token);
+                        } catch (NameTaken e) {
+                            if (!anyone) throw e;
+                        }
+                    }
                     String session = new JSONObject().put("t", serverTime()).put("r", Long.toString(seed)).toString();
                     try {
                         request("PUT", path("sessions", uid(store), token) + "&print=silent", session, JSON_TYPE);
@@ -1963,6 +2036,8 @@ public class SettingsActivity extends AppCompatActivity {
                 log(app, "Score " + score + " posted to the " + (score > allTime ? "all-time and weekly" : "weekly") + " leaderboard"
                         + (classic ? " (Classic)" : ""));
                 status = POSTED;
+                final String styleToken = token;
+                fetchPool().execute(() -> styleEntries(store, styleToken));
             }
             if (replay != null && wantsReplay(store, score) && sendReplay(app, store, token, score, classic, replay, version)) {
                 status = VERIFYING;
@@ -1970,14 +2045,15 @@ public class SettingsActivity extends AppCompatActivity {
             return status;
         }
 
-        private static boolean sendReplay(Context app, SharedPreferences store, String token, int score, boolean classic, Replay replay,
-                int version) throws IOException, JSONException {
+        private static JSONObject runEntry(Context app, SharedPreferences store, String token, int score, boolean classic, Replay replay,
+                int version, String what) throws IOException, JSONException {
             String user = uid(store);
             JSONObject session = parse(request("GET", path("sessions", user, token), null, null));
             String seed = Long.toString(replay.seed);
+            String label = what.substring(0, 1).toUpperCase(Locale.US) + what.substring(1);
             if (session == null || !seed.equals(string(session.opt("r"))) || number(session.opt("t")) <= 0) {
-                log(app, "Run of " + score + " was not sent for verification: its round was not registered with the leaderboard");
-                return false;
+                log(app, label + " was not sent for verification: its round was not registered with the leaderboard");
+                return null;
             }
             JSONObject stamps = new JSONObject();
             Object marks = session.opt("h");
@@ -1985,8 +2061,8 @@ public class SettingsActivity extends AppCompatActivity {
                 Object one = marks instanceof JSONArray ? ((JSONArray) marks).opt(i)
                         : marks instanceof JSONObject ? ((JSONObject) marks).opt(String.valueOf(i)) : null;
                 if (!(one instanceof JSONObject) || roundBroken(replay.seed)) {
-                    log(app, "Run of " + score + " was not sent for verification: the connection dropped during the round, so its timing can't be confirmed");
-                    return false;
+                    log(app, label + " was not sent for verification: the connection dropped during the round, so its timing can't be confirmed");
+                    return null;
                 }
                 JSONObject copy = new JSONObject();
                 copy.put("c", ((JSONObject) one).opt("c"));
@@ -1995,32 +2071,41 @@ public class SettingsActivity extends AppCompatActivity {
                 stamps.put(String.valueOf(i), copy);
             }
             if (replay.marks == 0) {
-                log(app, "Run of " + score + " was not sent for verification: it has no timing marks");
-                return false;
+                log(app, label + " was not sent for verification: it has no timing marks");
+                return null;
             }
             String data = replay.encode();
             if (data.length() > REPLAY_TEXT_MAX) {
-                log(app, "Run of " + score + " was too long to send for verification");
-                return false;
+                log(app, label + " was too long to send for verification");
+                return null;
             }
-            int thisWeek = week(now());
-            boolean allTime = score > replayBest(store);
             JSONObject entry = new JSONObject();
             entry.put("s", score);
             entry.put("c", classic);
             entry.put("r", seed);
             entry.put("st", number(session.opt("t")));
             entry.put("t", serverTime());
-            entry.put("w", thisWeek);
+            entry.put("w", week(now()));
             entry.put("v", version);
             if (!appVersionName.isEmpty()) entry.put("vn", appVersionName);
             entry.put("rv", replay.rules);
             entry.put("h", stamps);
             entry.put("d", data);
+            return entry;
+        }
+
+        private static boolean sendReplay(Context app, SharedPreferences store, String token, int score, boolean classic, Replay replay,
+                int version) throws IOException, JSONException {
+            String user = uid(store);
+            JSONObject entry = runEntry(app, store, token, score, classic, replay, version, "run of " + score);
+            if (entry == null) return false;
+            String data = string(entry.opt("d"));
+            int thisWeek = (int) number(entry.opt("w"));
+            boolean allTime = score > replayBest(store);
             String slot = allTime ? "a" : "w";
             String place = base() + "/replays/" + URLEncoder.encode(user, "UTF-8") + "/" + slot;
             String auth = "auth=" + URLEncoder.encode(token, "UTF-8");
-            long started = number(session.opt("t"));
+            long started = number(entry.opt("st"));
             try {
                 request("PUT", place + ".json?print=silent&" + auth, entry.toString(), JSON_TYPE);
             } catch (HttpError e) {
@@ -2053,7 +2138,326 @@ public class SettingsActivity extends AppCompatActivity {
             entry.verified = verified || (entry.score > 0 && raw.has("vs") && number(raw.opt("vs")) == entry.score);
             String version = string(raw.opt("vn"));
             entry.version = version.matches("[0-9][0-9A-Za-z._-]{0,15}") ? version : "";
+            entry.look = look(raw.opt("y"));
             return entry;
+        }
+
+        static final String STYLE_KINDS = "nbgai";
+
+        static String[] look(Object raw) {
+            if (!(raw instanceof JSONObject)) return null;
+            JSONObject style = (JSONObject) raw;
+            String[] ids = new String[5];
+            boolean any = false;
+            for (int i = 0; i < 5; i++) {
+                String id = string(style.opt(String.valueOf(STYLE_KINDS.charAt(i))));
+                if (id.length() >= 3 && id.length() <= 24 && id.charAt(0) == STYLE_KINDS.charAt(i) && id.matches("[a-z]_[a-z0-9]{1,22}")) {
+                    ids[i] = id;
+                    any = true;
+                }
+            }
+            return any ? ids : null;
+        }
+
+        static JSONObject styleJson(String[] ids) throws JSONException {
+            JSONObject style = new JSONObject();
+            if (ids == null) return style;
+            for (int i = 0; i < 5 && i < ids.length; i++) {
+                if (ids[i] != null && !ids[i].isEmpty()) style.put(String.valueOf(STYLE_KINDS.charAt(i)), ids[i]);
+            }
+            return style;
+        }
+
+        static final class Wallet {
+            int balance;
+            int earned;
+            long day = -1L;
+            String[] goals;
+            final int[] progress = new int[3];
+            int doneMask;
+            int streak;
+            long lastFull = -1L;
+            final Set<String> owned = new HashSet<>();
+            String[] style = new String[5];
+            long newsTime;
+            int newsGain;
+            int newsMask;
+            boolean newsOk = true;
+            String newsWhy = "";
+            String boughtItem = "";
+            boolean boughtOk;
+            long boughtTime;
+            String buying = "";
+            long fetchedAt;
+
+            int progressFor(long today, int slot) {
+                return day == today && slot >= 0 && slot < 3 ? progress[slot] : 0;
+            }
+
+            boolean doneFor(long today, int slot) {
+                return day == today && (doneMask & (1 << slot)) != 0;
+            }
+
+            int streakFor(long today) {
+                return lastFull == today || lastFull == today - 1 ? streak : 0;
+            }
+        }
+
+        private static final String KEY_COIN_SLOT = "coinSlot";
+        private static final String KEY_COIN_WEEK = "coinWeek";
+        private static final String KEY_COIN_WEEK_BEST = "coinWeekBest";
+
+        static int coinWeekBest(SharedPreferences store) {
+            Map<String, ?> all = store.getAll();
+            return whole(all, KEY_COIN_WEEK) == week(now()) ? whole(all, KEY_COIN_WEEK_BEST) : 0;
+        }
+
+        static void noteCoinWeekBest(SharedPreferences store, int score) {
+            int thisWeek = week(now());
+            if (score <= coinWeekBest(store)) return;
+            store.edit().putInt(KEY_COIN_WEEK, thisWeek).putInt(KEY_COIN_WEEK_BEST, score).apply();
+        }
+
+        static Wallet readWallet(JSONObject raw) {
+            Wallet wallet = new Wallet();
+            wallet.fetchedAt = now();
+            if (raw == null) return wallet;
+            wallet.balance = (int) Math.max(0L, Math.min(Challenges.MAX_BALANCE, number(raw.opt("b"))));
+            wallet.earned = (int) Math.max(0L, Math.min(Integer.MAX_VALUE, number(raw.opt("e"))));
+            wallet.streak = (int) Math.max(0L, Math.min(100000L, number(raw.opt("s"))));
+            wallet.lastFull = raw.has("l") ? number(raw.opt("l")) : -1L;
+            JSONObject daily = raw.optJSONObject("d");
+            if (daily != null) {
+                wallet.day = number(daily.opt("d"));
+                String goals = string(daily.opt("g"));
+                if (!goals.isEmpty()) {
+                    String[] ids = goals.split(",");
+                    if (ids.length == 3) wallet.goals = ids;
+                }
+                for (int i = 0; i < 3; i++) wallet.progress[i] = (int) Math.max(0L, Math.min(1000000L, number(daily.opt("p" + i))));
+                wallet.doneMask = (int) (number(daily.opt("m")) & 7L);
+            }
+            JSONObject owned = raw.optJSONObject("o");
+            if (owned != null) {
+                java.util.Iterator<String> keys = owned.keys();
+                while (keys.hasNext()) {
+                    String key = keys.next();
+                    if (Shop.validId(key)) wallet.owned.add(key);
+                }
+            }
+            String[] style = look(raw.opt("y"));
+            if (style != null) {
+                for (int i = 0; i < 5; i++) if (style[i] != null && wallet.owned.contains(style[i])) wallet.style[i] = style[i];
+            }
+            JSONObject news = raw.optJSONObject("n");
+            if (news != null) {
+                wallet.newsTime = number(news.opt("t"));
+                wallet.newsGain = (int) Math.max(0L, Math.min(100000L, number(news.opt("g"))));
+                wallet.newsMask = (int) (number(news.opt("m")) & 15L);
+                wallet.newsOk = !Boolean.FALSE.equals(news.opt("ok"));
+                wallet.newsWhy = string(news.opt("why"));
+                if (wallet.newsWhy.length() > 160) wallet.newsWhy = wallet.newsWhy.substring(0, 160);
+            }
+            JSONObject bought = raw.optJSONObject("r");
+            if (bought != null) {
+                wallet.boughtItem = string(bought.opt("i"));
+                wallet.boughtOk = Boolean.TRUE.equals(bought.opt("ok"));
+                wallet.boughtTime = number(bought.opt("t"));
+            }
+            return wallet;
+        }
+
+        static boolean coinsReady() {
+            return configured();
+        }
+
+        static void fetchWallet(final Context context, final Poster poster, final Callback<Wallet> callback) {
+            if (!configured()) {
+                finish(poster, callback, null, "Flight Coins are not set up in this build");
+                return;
+            }
+            final SharedPreferences store = store(context);
+            fetchPool().execute(() -> {
+                try {
+                    String token = token(store, false);
+                    String user = uid(store);
+                    JSONObject raw;
+                    try {
+                        raw = parse(request("GET", path("wallet", user, token), null, null));
+                    } catch (HttpError e) {
+                        if (e.code != 401) throw e;
+                        token = token(store, true);
+                        raw = parse(request("GET", path("wallet", user, token), null, null));
+                    }
+                    Wallet wallet = readWallet(raw);
+                    try {
+                        JSONObject buy = parse(request("GET", path("buy", user, token), null, null));
+                        if (buy != null) wallet.buying = string(buy.opt("i"));
+                    } catch (HttpError ignored) {
+                    }
+                    finish(poster, callback, wallet, null);
+                } catch (HttpError e) {
+                    finish(poster, callback, null, describe(e));
+                } catch (IOException | JSONException | RuntimeException e) {
+                    finish(poster, callback, null, NO_CONNECTION);
+                }
+            });
+        }
+
+        static void buy(final Context context, final String item, final Poster poster, final Callback<String> callback) {
+            if (!configured() || !Shop.validId(item)) {
+                finish(poster, callback, null, "That item can't be bought");
+                return;
+            }
+            final SharedPreferences store = store(context);
+            final Context app = app(context);
+            fetchPool().execute(() -> {
+                try {
+                    String token = token(store, false);
+                    String user = uid(store);
+                    String body = new JSONObject().put("i", item).put("t", serverTime()).toString();
+                    try {
+                        request("PUT", path("buy", user, token) + "&print=silent", body, JSON_TYPE);
+                    } catch (HttpError e) {
+                        if (e.code != 401) throw e;
+                        token = token(store, true);
+                        request("PUT", path("buy", user, token) + "&print=silent", body, JSON_TYPE);
+                    }
+                    try {
+                        request("PUT", base() + "/ping.json?print=silent&auth=" + URLEncoder.encode(token, "UTF-8"), serverTime().toString(), JSON_TYPE);
+                    } catch (IOException ignored) {
+                    }
+                    log(app, "Asked to buy " + item);
+                    finish(poster, callback, POSTED, null);
+                } catch (HttpError e) {
+                    log(app, "Buying " + item + " was refused (" + e.getMessage() + ")");
+                    finish(poster, callback, null, e.code == 401 || e.code == 403 ? "Wait a moment and try again" : describe(e));
+                } catch (IOException | JSONException | RuntimeException e) {
+                    finish(poster, callback, null, NO_CONNECTION);
+                }
+            });
+        }
+
+        static void equip(final Context context, final String[] style, final Poster poster, final Callback<String> callback) {
+            if (!configured()) {
+                finish(poster, callback, null, "Flight Coins are not set up in this build");
+                return;
+            }
+            final SharedPreferences store = store(context);
+            final Context app = app(context);
+            fetchPool().execute(() -> {
+                try {
+                    String token = token(store, false);
+                    String user = uid(store);
+                    JSONObject look = styleJson(style);
+                    String auth = "auth=" + URLEncoder.encode(token, "UTF-8");
+                    String place = base() + "/wallet/" + URLEncoder.encode(user, "UTF-8") + "/y.json?print=silent&" + auth;
+                    if (look.length() == 0) request("DELETE", place, null, null);
+                    else request("PUT", place, look.toString(), JSON_TYPE);
+                    for (String branch : new String[] {"scores", "weekly", "vscores", "vweekly"}) {
+                        String spot = base() + "/" + branch + "/" + URLEncoder.encode(user, "UTF-8") + "/y.json?print=silent&" + auth;
+                        try {
+                            if (look.length() == 0) request("DELETE", spot, null, null);
+                            else request("PUT", spot, look.toString(), JSON_TYPE);
+                        } catch (HttpError ignored) {
+                        }
+                    }
+                    finish(poster, callback, POSTED, null);
+                } catch (HttpError e) {
+                    log(app, "Changing your leaderboard style was refused (" + e.getMessage() + ")");
+                    finish(poster, callback, null, describe(e));
+                } catch (IOException | JSONException | RuntimeException e) {
+                    finish(poster, callback, null, NO_CONNECTION);
+                }
+            });
+        }
+
+        private static void styleEntries(SharedPreferences store, String token) {
+            try {
+                String user = uid(store);
+                JSONObject raw = parse(request("GET", path("wallet", user, token).replace(".json?", "/y.json?"), null, null));
+                if (raw == null || raw.length() == 0) return;
+                String auth = "auth=" + URLEncoder.encode(token, "UTF-8");
+                for (String branch : new String[] {"scores", "weekly"}) {
+                    try {
+                        request("PUT", base() + "/" + branch + "/" + URLEncoder.encode(user, "UTF-8") + "/y.json?print=silent&" + auth, raw.toString(), JSON_TYPE);
+                    } catch (HttpError ignored) {
+                    }
+                }
+            } catch (IOException | JSONException | RuntimeException ignored) {
+            }
+        }
+
+        static void claim(final Context context, final int score, final boolean classic, final Replay replay, final Poster poster,
+                final Callback<String> callback) {
+            if (!configured() || replay == null || score < 1 || score > MAX_SCORE) {
+                finish(poster, callback, null, "This round can't be checked");
+                return;
+            }
+            final SharedPreferences store = store(context);
+            final Context app = app(context);
+            worker().execute(() -> {
+                IOException lastError = null;
+                for (int attempt = 0; attempt < 3; attempt++) {
+                    if (attempt > 0) {
+                        try {
+                            Thread.sleep(retryDelayMs * attempt);
+                        } catch (InterruptedException e) {
+                            Thread.currentThread().interrupt();
+                            break;
+                        }
+                    }
+                    try {
+                        String token = token(store, false);
+                        JSONObject entry = runEntry(app, store, token, score, classic, replay, versionCode(app), "challenge run of " + score);
+                        if (entry == null) {
+                            finish(poster, callback, null, "This round can't be checked");
+                            return;
+                        }
+                        entry.put("q", true);
+                        String user = uid(store);
+                        String auth = "auth=" + URLEncoder.encode(token, "UTF-8");
+                        String slot = freeSlot(store, user, auth);
+                        String place = base() + "/replays/" + URLEncoder.encode(user, "UTF-8") + "/" + slot;
+                        request("PUT", place + ".json?print=silent&" + auth, entry.toString(), JSON_TYPE);
+                        try {
+                            request("PUT", base() + "/ping.json?print=silent&" + auth, serverTime().toString(), JSON_TYPE);
+                        } catch (IOException ignored) {
+                        }
+                        log(app, "Challenge run of " + score + " sent to be checked");
+                        finish(poster, callback, VERIFYING, null);
+                        return;
+                    } catch (HttpError e) {
+                        log(app, "Challenge run of " + score + " was not accepted (" + e.getMessage() + ")");
+                        finish(poster, callback, null, describe(e));
+                        return;
+                    } catch (IOException e) {
+                        lastError = e;
+                    } catch (JSONException | RuntimeException e) {
+                        finish(poster, callback, null, describe(e));
+                        return;
+                    }
+                }
+                log(app, "Challenge run of " + score + " could not be sent, no connection" + (lastError != null ? " (" + lastError.getMessage() + ")" : ""));
+                finish(poster, callback, null, NO_CONNECTION);
+            });
+        }
+
+        private static String freeSlot(SharedPreferences store, String user, String auth) {
+            int next = Math.max(0, whole(store.getAll(), KEY_COIN_SLOT));
+            try {
+                JSONObject taken = parse(request("GET", base() + "/replays/" + URLEncoder.encode(user, "UTF-8") + ".json?shallow=true&" + auth, null, null));
+                for (int i = 0; i < 8; i++) {
+                    int slot = (next + i) % 8;
+                    if (taken == null || !taken.has("x" + slot)) {
+                        next = slot;
+                        break;
+                    }
+                }
+            } catch (IOException | JSONException | RuntimeException ignored) {
+            }
+            store.edit().putInt(KEY_COIN_SLOT, (next + 1) % 8).apply();
+            return "x" + (next % 8);
         }
 
         private static List<Entry> list(JSONObject reply, boolean verified) {
@@ -2583,6 +2987,12 @@ public class SettingsActivity extends AppCompatActivity {
         applyPaneLayout(metrics.widthPixels, metrics.heightPixels);
 
         if (!isDisclaimerShown()) showDisclaimerDialog();
+    }
+
+    @Override
+    public void onAttachedToWindow() {
+        super.onAttachedToWindow();
+        preferSmoothDisplay(this);
     }
 
     @Override
@@ -3789,9 +4199,11 @@ public class SettingsActivity extends AppCompatActivity {
         actionRow(group, "button_board_name", "Leaderboard name", "Not set", COLOR_ON);
         actionRow(group, "button_board_rules", "What counts as a real score", "Checking your settings...", COLOR_ON);
         toggleRow(group, "row_board_show_status", "Show posting status", "A short note on the score screen says whether the round was posted");
+        group = addGroup(page, "Flight Coins");
+        toggleRow(group, "row_daily_challenges", "Daily challenges", "Earn Flight Coins from three new challenges every day when you're connected");
         group = addGroup(page, "Leaderboard screen");
         toggleRow(group, "row_board_open_on_best", "Open the leaderboard after a new best", "Shows where you placed when a posted score beats your best");
-        choiceRow(group, "row_board_tab", "Leaderboard opens on", "All time", "Weekly");
+        choiceRow(group, "row_board_tab", "Leaderboard opens on", "Weekly", "All time");
         choiceRow(group, "row_board_size", "Scores shown on the leaderboard", "10", "25", "50", "100");
 
         page = addPage(PRESETS_PAGE);
@@ -4201,6 +4613,9 @@ public class SettingsActivity extends AppCompatActivity {
         ToggleSetting autoPost = toggle(PREF_BOARD_AUTO_POST, DEFAULT_BOARD_AUTO_POST, rowView("row_board_auto_post"));
         autoPost.note = "used in the game";
         autoPost.randomizable = false;
+        ToggleSetting dailyChallenges = toggle(PREF_DAILY_CHALLENGES, DEFAULT_DAILY_CHALLENGES, rowView("row_daily_challenges"));
+        dailyChallenges.note = "used in the game";
+        dailyChallenges.randomizable = false;
         ToggleSetting showStatus = toggle(PREF_BOARD_SHOW_STATUS, DEFAULT_BOARD_SHOW_STATUS, rowView("row_board_show_status"));
         showStatus.note = "used in the game";
         showStatus.randomizable = false;
@@ -4208,7 +4623,7 @@ public class SettingsActivity extends AppCompatActivity {
         openOnBest.note = "used in the game";
         openOnBest.randomizable = false;
         ChoiceSetting boardTab = new ChoiceSetting(PREF_BOARD_TAB, DEFAULT_BOARD_TAB, rowView("row_board_tab"),
-                new int[]{0, 1}, new int[]{COLOR_PRIMARY, COLOR_SKY}, null);
+                new int[]{1, 0}, new int[]{COLOR_SKY, COLOR_PRIMARY}, null);
         boardTab.randomizable = false;
         ChoiceSetting stepRate = new ChoiceSetting(PREF_FIXED_STEP_RATE, DEFAULT_FIXED_STEP_RATE, rowView("row_fixed_step_rate"),
                 STEP_RATES, new int[]{COLOR_SKY, COLOR_PRIMARY, 0xFF9C8CFF}, null);

@@ -247,20 +247,7 @@ public class ReplayActivity extends AppCompatActivity implements Choreographer.F
     }
 
     private void requestHighestRefreshRate() {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) return;
-        Display display = getWindow().getDecorView().getDisplay();
-        if (display == null) return;
-        Display.Mode current = display.getMode();
-        Display.Mode best = current;
-        for (Display.Mode mode : display.getSupportedModes()) {
-            boolean sameResolution = mode.getPhysicalWidth() == current.getPhysicalWidth()
-                    && mode.getPhysicalHeight() == current.getPhysicalHeight();
-            if (sameResolution && mode.getRefreshRate() > best.getRefreshRate()) best = mode;
-        }
-        if (best.getModeId() == current.getModeId()) return;
-        WindowManager.LayoutParams params = getWindow().getAttributes();
-        params.preferredDisplayModeId = best.getModeId();
-        getWindow().setAttributes(params);
+        SettingsActivity.preferSmoothDisplay(this);
     }
 
     private void loadFonts() {

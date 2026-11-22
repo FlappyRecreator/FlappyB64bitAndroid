@@ -314,22 +314,7 @@ public class MainActivity extends AppCompatActivity implements GameView.BoardHos
     }
 
     private void requestHighestRefreshRate() {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) return;
-        Display display = getWindow().getDecorView().getDisplay();
-        if (display == null) return;
-
-        Display.Mode current = display.getMode();
-        Display.Mode best = current;
-        for (Display.Mode mode : display.getSupportedModes()) {
-            boolean sameResolution = mode.getPhysicalWidth() == current.getPhysicalWidth()
-                    && mode.getPhysicalHeight() == current.getPhysicalHeight();
-            if (sameResolution && mode.getRefreshRate() > best.getRefreshRate()) best = mode;
-        }
-        if (best.getModeId() == current.getModeId()) return;
-
-        WindowManager.LayoutParams params = getWindow().getAttributes();
-        params.preferredDisplayModeId = best.getModeId();
-        getWindow().setAttributes(params);
+        SettingsActivity.preferSmoothDisplay(this);
     }
 }
 
@@ -374,6 +359,8 @@ class GameView extends View implements Choreographer.FrameCallback {
     private static final float STATUS_FADE_OUT_SEC = 0.4f;
     private static final float RETURN_HOME_HOLD_SEC = 0.3f;
     private static final float BOARD_OPEN_SEC = 0.32f;
+    private static final float BOARD_SWITCH_SEC = 0.3f;
+    private static final float BOARD_PILL_SEC = 0.36f;
     private static final float BOARD_CLOSE_SEC = 0.18f;
     private static final int BOARD_TAB_IDLE = 0xFFC9C27E;
     private static final int BOARD_DIVIDER = 0x55543847;
@@ -816,6 +803,60 @@ class GameView extends View implements Choreographer.FrameCallback {
     private double roundActiveSeconds;
     private long roundRealStart, roundUptimeStart, roundPausedMs, pausedSince = -1L;
     private boolean settingBoardAutoPost = true;
+    private boolean settingDailyChallenges = true;
+    private int challengeTwist = -1;
+    private long challengeTwistDay = -1L;
+    private boolean roundChallenge;
+    private Leaderboard.Wallet wallet;
+    private boolean walletLoading, walletOffline, walletTried;
+    private int pendingMask;
+    private long pendingSince, pendingServerTime;
+    private float walletPollSec;
+    private String buyingItem;
+    private long buyingSince;
+    private String toastTitle, toastText;
+    private float toastAge = 99f;
+    private boolean toastCoin;
+    private final java.util.ArrayDeque<String[]> toastQueue = new java.util.ArrayDeque<>();
+    private boolean coinOpen, coinClosing;
+    private float coinAnim, coinTime, coinAlpha = 1f;
+    private int coinTab, coinKind;
+    private float coinScroll, coinScrollMax, coinFling, coinDragStartY, coinDragLastY;
+    private long coinDragLastTime;
+    private boolean coinDragArmed, coinDragging;
+    private final RectF coinPanel = new RectF();
+    private final RectF coinListRect = new RectF();
+    private final List<float[]> coinHits = new ArrayList<>();
+    private int coinHitCount;
+    private int coinPressAction, coinPressArg = -1;
+    private boolean coinGhost;
+    private final RectF coinRect = new RectF();
+    private float coinSwitchAge = 99f, coinSwitchScroll, coinKindAge = 99f, coinOpenAge = 99f, coinPill, coinKindPill;
+    private int coinSwitchFrom, coinKindFrom;
+    private final float[] coinBars = new float[3];
+    private final float[] coinBarTargets = new float[3];
+    private final float[] coinDonePop = {99f, 99f, 99f};
+    private int coinDoneSeen;
+    private float coinShown = -1f, coinBump = 99f;
+    private boolean coinCacheLoaded;
+    private long coinSeenDayCache = Long.MIN_VALUE, coinDoneDayCache = Long.MIN_VALUE;
+    private int coinBalanceCache, coinDoneCache;
+    private float twistCheckSec;
+    private Leaderboard.Entry coinSample;
+    private String coinPreview, coinConfirm, coinNote = "";
+    private float coinConfirmAge = 99f, coinNoteAge = 99f;
+    private final Rect coinButtonRect = new Rect();
+    private float coinBtnProgress, coinBtnTarget;
+    private final Rect twistChipRect = new Rect();
+    private Paint lookPaint;
+    private final Path lookPath = new Path();
+    private final Matrix lookMatrix = new Matrix();
+    private final Shader[] lookShaders = new Shader[Shop.ITEMS.length];
+    private final String[] coinBlocked = new String[3];
+    private float coinBlockedAge = 99f;
+    private long coinBlockedDay = -1L;
+    private int coinLabelValue = Integer.MIN_VALUE;
+    private String coinLabel = "";
     private boolean settingBoardShowStatus = true, settingBoardOpenOnBest;
     private int settingBoardTab;
     private int settingBoardSize = 10;
@@ -869,6 +910,13 @@ class GameView extends View implements Choreographer.FrameCallback {
     private Leaderboard.Entry boardPinned;
     private float boardAnim, boardAlpha = 1f;
     private int boardTab;
+    private float boardSwitchAge = 99f;
+    private int boardSwitchFromTab;
+    private boolean boardSwitchFromAll;
+    private float boardSwitchScroll;
+    private int boardSwitchDir;
+    private float boardPillFrom = -1f;
+    private float boardPillTo;
     private String boardNote = "";
     private Leaderboard.Board boardData = new Leaderboard.Board();
     private final RectF boardPanel = new RectF();
@@ -1180,7 +1228,8 @@ class GameView extends View implements Choreographer.FrameCallback {
     }
 
     private void loadSettings() {
-        Map<String, ?> stored = prefs.getAll();
+        if (!filmMode) readTwist();
+        Map<String, ?> stored = playPrefs();
         int storedBest = Math.max(0, intPref(stored, PREF_HIGH_SCORE, 0));
         if (storedBest != highScore) {
             highScore = storedBest;
@@ -1299,6 +1348,7 @@ class GameView extends View implements Choreographer.FrameCallback {
         fairBlocker = fairPlayBlocker(stored);
         currentFairMode = fairBlocker == null ? fairPlayMode(stored) : FAIR_NONE;
         settingBoardAutoPost = flagPref(stored, PREF_BOARD_AUTO_POST, DEFAULT_BOARD_AUTO_POST);
+        settingDailyChallenges = flagPref(stored, PREF_DAILY_CHALLENGES, DEFAULT_DAILY_CHALLENGES);
         settingBoardShowStatus = flagPref(stored, PREF_BOARD_SHOW_STATUS, DEFAULT_BOARD_SHOW_STATUS);
         settingBoardOpenOnBest = flagPref(stored, PREF_BOARD_OPEN_ON_BEST, DEFAULT_BOARD_OPEN_ON_BEST);
         settingBoardTab = intPref(stored, PREF_BOARD_TAB, DEFAULT_BOARD_TAB) == 1 ? 1 : 0;
@@ -2991,7 +3041,10 @@ class GameView extends View implements Choreographer.FrameCallback {
             }
         }
         roundEndCause = "";
-        round.append("; ").append(judgeRound(assists));
+        Leaderboard.Replay replay = takeReplay();
+        int weekBest = Leaderboard.coinWeekBest(prefs);
+        round.append("; ").append(judgeRound(assists, replay));
+        claimRound(replay, weekBest);
         SettingsActivity.ActivityLog.add(getContext(), "ROUND", round.toString());
         if (isNewBest) {
             SettingsActivity.ActivityLog.add(getContext(), "BEST", "New high score " + score + " (was " + previousBest + ")"
@@ -3078,12 +3131,1918 @@ class GameView extends View implements Choreographer.FrameCallback {
         if ((scoreCheck ^ scoreKey) != score || (pipesCheck ^ scoreKey) != roundPipes) roundTampered = true;
     }
 
+    private static final String KEY_TWIST = "challengeTwist";
+    private static final String KEY_TWIST_DAY = "challengeTwistDay";
+    private static final String KEY_COIN_BALANCE = "coinBalance";
+    private static final String KEY_COIN_SEEN_DAY = "coinSeenDay";
+    private static final String KEY_COIN_EARNED = "coinEarned";
+    private static final String KEY_COIN_DAY = "coinDay";
+    private static final String KEY_COIN_DONE = "coinDone";
+    private static final float WALLET_POLL_SEC = 6f;
+    private static final long PENDING_MAX_MS = 5L * 60000L;
+    private static final long BUY_MAX_MS = 4L * 60000L;
+    private static final float TOAST_SEC = 3.4f;
+    private static final float COIN_OPEN_SEC = 0.34f;
+    private static final float COIN_CLOSE_SEC = 0.2f;
+    private static final float CONFIRM_SEC = 3f;
+    private static final float COIN_SWITCH_SEC = 0.32f;
+    private static final float COIN_KIND_SEC = 0.24f;
+    private static final int COIN_GOLD = 0xFFFFC93C;
+    private static final int COIN_RIM = 0xFFE8A317;
+    private static final int COIN_SHADE = 0xFFC9811A;
+    private static final int[] TIER_COLORS = {0xFF5DBB4A, 0xFFF5A623, 0xFFE0533D};
+    private static final int HIT_CLOSE = 1;
+    private static final int HIT_TAB = 2;
+    private static final int HIT_KIND = 3;
+    private static final int HIT_PLAY = 4;
+    private static final int HIT_STOP = 5;
+    private static final int HIT_ITEM = 6;
+    private static final int HIT_ACTION = 7;
+    private static final int HIT_SETTINGS = 8;
+
+    private long today() {
+        return Challenges.day(Leaderboard.now());
+    }
+
+    private void readTwist() {
+        Map<String, ?> all = prefs.getAll();
+        Object twist = all.get(KEY_TWIST);
+        Object day = all.get(KEY_TWIST_DAY);
+        int value = twist instanceof Integer ? (Integer) twist : -1;
+        long when = day instanceof Long ? (Long) day : day instanceof Integer ? (Integer) day : -1L;
+        if (value <= Challenges.ANY || value >= Challenges.TWIST_NAMES.length || when != today()) {
+            challengeTwist = -1;
+            challengeTwistDay = -1L;
+            if (twist != null) prefs.edit().remove(KEY_TWIST).remove(KEY_TWIST_DAY).apply();
+            return;
+        }
+        challengeTwist = value;
+        challengeTwistDay = when;
+    }
+
+    private Map<String, ?> playPrefs() {
+        Map<String, ?> all = prefs.getAll();
+        if (filmMode || challengeTwist <= Challenges.ANY) return all;
+        Map<String, Object> merged = new HashMap<>(all);
+        merged.putAll(Challenges.overlay(challengeTwist));
+        return merged;
+    }
+
+    private Challenges.Goal[] todayGoals(long day) {
+        Challenges.Goal[] picked = Challenges.forDay(day);
+        if (wallet != null && wallet.day == day && wallet.goals != null) {
+            for (int i = 0; i < 3; i++) {
+                Challenges.Goal goal = Challenges.find(wallet.goals[i]);
+                picked[i] = goal != null && goal.tier == i ? goal : null;
+            }
+        }
+        return picked;
+    }
+
+    private void loadCoinCache() {
+        if (coinCacheLoaded) return;
+        coinCacheLoaded = true;
+        Map<String, ?> all = prefs.getAll();
+        Object seen = all.get(KEY_COIN_SEEN_DAY);
+        Object balance = all.get(KEY_COIN_BALANCE);
+        Object day = all.get(KEY_COIN_DAY);
+        Object done = all.get(KEY_COIN_DONE);
+        coinSeenDayCache = seen instanceof Long ? (Long) seen : Long.MIN_VALUE;
+        coinBalanceCache = balance instanceof Integer ? (Integer) balance : 0;
+        coinDoneDayCache = day instanceof Long ? (Long) day : Long.MIN_VALUE;
+        coinDoneCache = done instanceof Integer ? (Integer) done : 0;
+    }
+
+    private boolean goalDone(long day, int slot) {
+        if (wallet != null && wallet.day == day) return wallet.doneFor(day, slot);
+        loadCoinCache();
+        return coinDoneDayCache == day && (coinDoneCache & (1 << slot)) != 0;
+    }
+
+    private int goalProgress(long day, int slot) {
+        return wallet != null ? wallet.progressFor(day, slot) : 0;
+    }
+
+    private boolean coinsOn() {
+        return Leaderboard.coinsReady() && !filmMode;
+    }
+
+    private boolean challengeRoundPossible() {
+        if (!coinsOn() || !settingDailyChallenges) return false;
+        long day = today();
+        Challenges.Goal[] goals = todayGoals(day);
+        Map<String, ?> current = null;
+        for (int i = 0; i < 3; i++) {
+            if (goals[i] == null || goalDone(day, i)) continue;
+            if (current == null) current = playPrefs();
+            if (Challenges.fits(goals[i], current)) return true;
+        }
+        return false;
+    }
+
+    private void claimRound(Leaderboard.Replay replay, int weekBest) {
+        boolean wanted = roundChallenge;
+        roundChallenge = false;
+        if (!wanted || filmMode) return;
+        checkSeals();
+        Map<String, ?> current = playPrefs();
+        boolean fair = SettingsActivity.fairPlayMode(current) != FAIR_NONE;
+        boolean clean = !roundTampered && score == roundPipes && roundLivesUsed == 0 && roundGoldenPoints == 0 && score >= 1;
+        if (fair && clean) Leaderboard.noteCoinWeekBest(prefs, score);
+        if (replay == null || !clean) return;
+        long day = today();
+        Challenges.Goal[] goals = todayGoals(day);
+        int mask = 0;
+        for (int i = 0; i < 3; i++) {
+            Challenges.Goal goal = goals[i];
+            if (goal == null || goalDone(day, i) || !Challenges.fits(goal, current)) continue;
+            int before = goalProgress(day, i);
+            int after = Challenges.advance(goal, before, score, roundActiveSeconds + 0.5, roundFlaps, weekBest);
+            if (after > before) mask |= 1 << i;
+        }
+        if (mask == 0) return;
+        int twist = Challenges.twistOf(current);
+        boolean classic = twist >= 0 && Challenges.modeOf(twist, current) == FAIR_CLASSIC;
+        final int sent = mask;
+        pendingMask |= mask;
+        pendingSince = SystemClock.uptimeMillis();
+        pendingServerTime = Leaderboard.now();
+        walletPollSec = 0f;
+        if (roundFairMode == FAIR_NONE) boardStatusText = "Challenge run sent to be checked";
+        Leaderboard.claim(getContext(), score, classic, replay, this::post, (status, error) -> {
+            if (Leaderboard.VERIFYING.equals(status)) {
+                pendingSince = SystemClock.uptimeMillis();
+                walletPollSec = WALLET_POLL_SEC * 0.5f;
+            } else {
+                pendingMask &= ~sent;
+                if (roundFairMode == FAIR_NONE && error != null) boardStatusText = "Challenge run not sent: " + error.substring(0, 1).toLowerCase(Locale.US) + error.substring(1);
+            }
+        });
+    }
+
+    private void startTwist(int twist) {
+        if (twist <= Challenges.ANY) {
+            endTwist(false);
+            return;
+        }
+        if (twist == challengeTwist) return;
+        prefs.edit().putInt(KEY_TWIST, twist).putLong(KEY_TWIST_DAY, today()).apply();
+        coinBlockedAge = 99f;
+        if (gameState == GameState.HOME) resetGame();
+        else loadSettings();
+        SettingsActivity.ActivityLog.add(getContext(), "SETTINGS", "Challenge setup on: " + Challenges.TWIST_NAMES[twist]);
+    }
+
+    private void endTwist(boolean announce) {
+        if (challengeTwist <= Challenges.ANY && !prefs.getAll().containsKey(KEY_TWIST)) return;
+        int was = challengeTwist;
+        prefs.edit().remove(KEY_TWIST).remove(KEY_TWIST_DAY).apply();
+        challengeTwist = -1;
+        coinBlockedAge = 99f;
+        if (gameState == GameState.HOME) resetGame();
+        else loadSettings();
+        if (was > Challenges.ANY) {
+            SettingsActivity.ActivityLog.add(getContext(), "SETTINGS", "Challenge setup off: " + Challenges.TWIST_NAMES[was]);
+            if (announce) showToast(Challenges.TWIST_NAMES[was] + " is off", "Your own settings are back", false);
+        }
+    }
+
+    private boolean twistStillWanted() {
+        if (challengeTwist <= Challenges.ANY) return false;
+        long day = today();
+        if (challengeTwistDay != day) return false;
+        Challenges.Goal[] goals = todayGoals(day);
+        for (int i = 0; i < 3; i++) {
+            if (goals[i] != null && goals[i].twist == challengeTwist && !goalDone(day, i)) return true;
+        }
+        return wallet == null;
+    }
+
+    private void loadWallet() {
+        if (!coinsOn() || walletLoading) return;
+        walletLoading = true;
+        walletTried = true;
+        Leaderboard.fetchWallet(getContext(), this::post, (fresh, error) -> {
+            walletLoading = false;
+            if (fresh == null) {
+                walletOffline = true;
+                return;
+            }
+            walletOffline = false;
+            takeWallet(fresh);
+        });
+    }
+
+    private void takeWallet(Leaderboard.Wallet fresh) {
+        Leaderboard.Wallet old = wallet;
+        wallet = fresh;
+        Map<String, ?> all = prefs.getAll();
+        int knownEarned = all.get(KEY_COIN_EARNED) instanceof Integer ? (Integer) all.get(KEY_COIN_EARNED) : -1;
+        SharedPreferences.Editor editor = prefs.edit().putInt(KEY_COIN_BALANCE, fresh.balance).putInt(KEY_COIN_EARNED, fresh.earned);
+        if (fresh.day >= 0) editor.putLong(KEY_COIN_DAY, fresh.day).putInt(KEY_COIN_DONE, fresh.doneMask);
+        editor.apply();
+        loadCoinCache();
+        coinBalanceCache = fresh.balance;
+        if (fresh.day >= 0) {
+            coinDoneDayCache = fresh.day;
+            coinDoneCache = fresh.doneMask;
+        }
+        if (fresh.newsTime >= pendingServerTime - 60000L && pendingMask != 0 && fresh.newsTime > 0) pendingMask = 0;
+        int gained = knownEarned >= 0 ? fresh.earned - knownEarned : 0;
+        if (gained > 0) {
+            boolean all3 = fresh.day == today() && fresh.doneMask == 7 && (old == null || old.doneMask != 7 || old.day != fresh.day);
+            showToast("+" + gained + " FLIGHT COINS", all3 ? "All three done! " + fresh.streakFor(today()) + " day streak" : "Challenge complete!", true);
+            playSound(soundPoint);
+            feel(Feel.BEST);
+        } else if (!fresh.newsOk && fresh.newsTime >= pendingServerTime - 60000L && fresh.newsTime > 0 && (old == null || old.newsTime != fresh.newsTime)) {
+            showToast("RUN NOT COUNTED", fresh.newsWhy.isEmpty() ? "The checker couldn't confirm it" : "The checker said " + fresh.newsWhy, false);
+        }
+        if (buyingItem != null) {
+            if (fresh.owned.contains(buyingItem)) {
+                Shop.Item item = Shop.item(buyingItem);
+                buyingItem = null;
+                if (item != null) {
+                    showToast("UNLOCKED " + item.name.toUpperCase(Locale.US), "It's on your leaderboard row now", true);
+                    playSound(soundPoint);
+                    feel(Feel.BEST);
+                    String[] style = wallet.style.clone();
+                    style[item.kind] = item.id;
+                    equipStyle(style);
+                }
+            } else if (fresh.boughtItem.equals(buyingItem) && !fresh.boughtOk && fresh.boughtTime >= buyingSince - 5000L) {
+                buyingItem = null;
+                showToast("NOT BOUGHT", "You need more Flight Coins", false);
+            } else if (!fresh.buying.equals(buyingItem) && fresh.boughtTime >= buyingSince - 5000L && fresh.boughtItem.equals(buyingItem)) {
+                buyingItem = null;
+            }
+        }
+        if (challengeTwist > Challenges.ANY && !twistStillWanted() && (gameState == GameState.HOME || gameState == GameState.PANEL_SLIDING)) {
+            endTwist(true);
+        }
+    }
+
+    private String balanceLabel() {
+        int value = coinShown < 0f ? shownBalance() : Math.round(coinShown);
+        if (value != coinLabelValue) {
+            coinLabelValue = value;
+            coinLabel = String.format(Locale.US, "%,d", value);
+        }
+        return coinLabel;
+    }
+
+    private int shownBalance() {
+        if (wallet != null) return wallet.balance;
+        loadCoinCache();
+        return coinBalanceCache;
+    }
+
+    private void showToast(String title, String text, boolean coin) {
+        if (toastAge < TOAST_SEC && toastTitle != null) {
+            if (toastQueue.size() < 4) toastQueue.add(new String[] {title, text, coin ? "1" : ""});
+            return;
+        }
+        toastTitle = title;
+        toastText = text;
+        toastCoin = coin;
+        toastAge = 0f;
+    }
+
+    private void equipStyle(String[] style) {
+        if (wallet == null) return;
+        wallet.style = style.clone();
+        boardStaleMask = 0xF;
+        Leaderboard.equip(getContext(), wallet.style, this::post, (status, error) -> {
+            if (error != null) setCoinNote("Couldn't save your style: " + error);
+        });
+    }
+
+    private void setCoinNote(String note) {
+        coinNote = note == null ? "" : note;
+        coinNoteAge = 0f;
+    }
+
+    private void animateCoins(float deltaTime) {
+        float step = Math.min(0.1f, Math.max(0f, deltaTime));
+        coinTime = (coinTime + step) % 3600f;
+        if (toastAge < TOAST_SEC) {
+            if (!((gameState == GameState.PLAYING && !isPaused) || gameState == GameState.WAITING)) toastAge += step;
+        } else if (!toastQueue.isEmpty()) {
+            String[] next = toastQueue.poll();
+            toastTitle = next[0];
+            toastText = next[1];
+            toastCoin = !next[2].isEmpty();
+            toastAge = 0f;
+        }
+        coinBlockedAge += step;
+        if (coinOpen) {
+            coinOpenAge = Math.min(10f, coinOpenAge + step);
+            coinSwitchAge = Math.min(10f, coinSwitchAge + step);
+            coinKindAge = Math.min(10f, coinKindAge + step);
+            coinPill += (coinTab - coinPill) * Math.min(1f, step * 16f);
+            if (Math.abs(coinTab - coinPill) < 0.002f) coinPill = coinTab;
+            coinKindPill += (coinKind - coinKindPill) * Math.min(1f, step * 16f);
+            if (Math.abs(coinKind - coinKindPill) < 0.002f) coinKindPill = coinKind;
+            for (int i = 0; i < 3; i++) {
+                coinBars[i] += (coinBarTargets[i] - coinBars[i]) * Math.min(1f, step * 5f);
+                if (Math.abs(coinBarTargets[i] - coinBars[i]) < 0.001f) coinBars[i] = coinBarTargets[i];
+                if (coinDonePop[i] < 1f) coinDonePop[i] += step;
+            }
+        }
+        int balanceNow = shownBalance();
+        if (coinShown < 0f) {
+            coinShown = balanceNow;
+        } else if (coinShown != balanceNow) {
+            if (balanceNow > coinShown + 0.5f && coinBump >= 0.5f) coinBump = 0f;
+            coinShown += (balanceNow - coinShown) * Math.min(1f, step * 4f);
+            if (Math.abs(balanceNow - coinShown) < 0.5f) coinShown = balanceNow;
+        }
+        if (coinBump < 1f) coinBump += step;
+        twistCheckSec += step;
+        if (twistCheckSec >= 0.5f) {
+            twistCheckSec = 0f;
+            if (challengeTwist > Challenges.ANY && wallet != null && (gameState == GameState.HOME || gameState == GameState.PANEL_SLIDING)
+                    && !coinOpen && !twistStillWanted()) {
+                endTwist(true);
+            }
+        }
+        if (coinConfirmAge < CONFIRM_SEC) coinConfirmAge += step;
+        else coinConfirm = null;
+        if (coinNoteAge < 6f) coinNoteAge += step;
+        float press = coinBtnTarget > coinBtnProgress ? 14f : 10f;
+        coinBtnProgress += (coinBtnTarget - coinBtnProgress) * Math.min(1f, step * press);
+        long now = SystemClock.uptimeMillis();
+        if (pendingMask != 0 && now - pendingSince > PENDING_MAX_MS) pendingMask = 0;
+        if (buyingItem != null && now - buyingSince > BUY_MAX_MS) {
+            buyingItem = null;
+            setCoinNote("The shop is slow right now. Your coins are safe, try again later");
+        }
+        boolean watching = pendingMask != 0 || buyingItem != null;
+        if (watching && coinsOn()) {
+            walletPollSec += step;
+            if (walletPollSec >= WALLET_POLL_SEC && !walletLoading) {
+                walletPollSec = 0f;
+                loadWallet();
+            }
+        }
+        if (challengeTwist > Challenges.ANY && (gameState == GameState.HOME || gameState == GameState.PANEL_SLIDING)
+                && challengeTwistDay != today()) {
+            endTwist(true);
+        }
+        if (coinOpen) {
+            if (!coinDragging && coinFling != 0f) {
+                coinScroll += coinFling * step;
+                coinFling *= Math.max(0f, 1f - step * 4f);
+                if (Math.abs(coinFling) < 20f || coinScroll <= 0f || coinScroll >= coinScrollMax) coinFling = 0f;
+            }
+            coinScroll = Math.max(0f, Math.min(coinScrollMax, coinScroll));
+            if (coinClosing) {
+                coinAnim -= step / COIN_CLOSE_SEC;
+                if (coinAnim <= 0f) {
+                    coinOpen = false;
+                    coinClosing = false;
+                    coinAnim = 0f;
+                    coinPressAction = 0;
+                    if (boardHost != null && !boardOpen) boardHost.boardVisible(false);
+                }
+            } else if (coinAnim < 1f) {
+                coinAnim = Math.min(1f, coinAnim + step / COIN_OPEN_SEC);
+            }
+        }
+    }
+
+    private void openCoins() {
+        if (!coinsOn()) return;
+        coinOpen = true;
+        coinClosing = false;
+        coinAnim = 0f;
+        coinScroll = 0f;
+        coinFling = 0f;
+        coinPreview = null;
+        coinConfirm = null;
+        coinNote = "";
+        coinNoteAge = 99f;
+        coinBlockedAge = 99f;
+        long day = today();
+        loadCoinCache();
+        if (coinSeenDayCache != day) prefs.edit().putLong(KEY_COIN_SEEN_DAY, day).apply();
+        coinSeenDayCache = day;
+        coinOpenAge = 0f;
+        coinSwitchAge = 99f;
+        coinKindAge = 99f;
+        coinPill = coinTab;
+        coinKindPill = coinKind;
+        for (int i = 0; i < 3; i++) {
+            coinBars[i] = 0f;
+            coinBarTargets[i] = 0f;
+            coinDonePop[i] = 99f;
+        }
+        coinDoneSeen = -1;
+        coinPressAction = 0;
+        coinPressArg = -1;
+        coinSample = new Leaderboard.Entry();
+        String name = Leaderboard.name(prefs);
+        coinSample.name = name.isEmpty() ? "You" : name;
+        coinSample.uid = Leaderboard.uid(prefs);
+        coinSample.score = Math.max(1, Math.max(highScore, Leaderboard.best(prefs)));
+        loadWallet();
+    }
+
+    private void closeCoins() {
+        if (!coinOpen || coinClosing) return;
+        coinClosing = true;
+        coinPressAction = 0;
+        coinPreview = null;
+    }
+
+    boolean closeCoinsIfOpen() {
+        if (!coinOpen) return false;
+        closeCoins();
+        return true;
+    }
+
+    private boolean coinDot() {
+        if (!coinsOn()) return false;
+        loadCoinCache();
+        return coinSeenDayCache != today();
+    }
+
+    private void ensureBoardPaints() {
+        if (boardPaint == null) boardPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        if (boardTextPaint == null) {
+            boardTextPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+            Typeface face = null;
+            try {
+                face = ResourcesCompat.getFont(getContext(), R.font.flappy_font);
+            } catch (RuntimeException ignored) {
+            }
+            boardTextPaint.setTypeface(face != null ? face : Typeface.DEFAULT_BOLD);
+        }
+        if (lookPaint == null) lookPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+    }
+
+    private void coinHit(float left, float top, float right, float bottom, int action, int arg) {
+        if (coinGhost) return;
+        float[] hit;
+        if (coinHitCount < coinHits.size()) {
+            hit = coinHits.get(coinHitCount);
+        } else {
+            hit = new float[6];
+            coinHits.add(hit);
+        }
+        hit[0] = left;
+        hit[1] = top;
+        hit[2] = right;
+        hit[3] = bottom;
+        hit[4] = action;
+        hit[5] = arg;
+        coinHitCount++;
+    }
+
+    private float[] coinHitAt(int x, int y) {
+        for (int i = coinHitCount - 1; i >= 0; i--) {
+            float[] hit = coinHits.get(i);
+            if (x >= hit[0] && x <= hit[2] && y >= hit[1] && y <= hit[3]) {
+                if ((hit[4] == HIT_ITEM || hit[4] == HIT_ACTION) && !coinListRect.contains(x, y)) continue;
+                return hit;
+            }
+        }
+        return null;
+    }
+
+    private boolean pressedHit(int action, int arg) {
+        return coinPressAction == action && coinPressArg == arg;
+    }
+
+    private void drawCoin(Canvas canvas, float x, float y, float radius) {
+        boardPaint.setColor(faded(BOARD_DARK));
+        canvas.drawCircle(x, y + radius * 0.16f, radius, boardPaint);
+        boardPaint.setColor(faded(COIN_SHADE));
+        canvas.drawCircle(x, y, radius, boardPaint);
+        boardPaint.setColor(faded(COIN_GOLD));
+        canvas.drawCircle(x, y - radius * 0.06f, radius * 0.86f, boardPaint);
+        boardPaint.setColor(faded(COIN_RIM));
+        canvas.drawCircle(x, y - radius * 0.06f, radius * 0.6f, boardPaint);
+        boardPaint.setColor(faded(COIN_GOLD));
+        float arm = radius * 0.42f;
+        lookPath.reset();
+        lookPath.moveTo(x, y - arm - radius * 0.06f);
+        lookPath.quadTo(x, y - radius * 0.06f, x + arm, y - radius * 0.06f);
+        lookPath.quadTo(x, y - radius * 0.06f, x, y + arm - radius * 0.06f);
+        lookPath.quadTo(x, y - radius * 0.06f, x - arm, y - radius * 0.06f);
+        lookPath.quadTo(x, y - radius * 0.06f, x, y - arm - radius * 0.06f);
+        lookPath.close();
+        canvas.drawPath(lookPath, boardPaint);
+        boardPaint.setColor(faded(0x99FFFFFF));
+        boardPaint.setStyle(Paint.Style.STROKE);
+        boardPaint.setStrokeWidth(radius * 0.14f);
+        boardPaint.setStrokeCap(Paint.Cap.ROUND);
+        boardShape.set(x - radius * 0.7f, y - radius * 0.76f, x + radius * 0.7f, y + radius * 0.64f);
+        canvas.drawArc(boardShape, 200f, 60f, false, boardPaint);
+        boardPaint.setStyle(Paint.Style.FILL);
+        boardPaint.setStrokeCap(Paint.Cap.BUTT);
+    }
+
+    private void coinButton(Canvas canvas, RectF rect, String label, float unit, boolean pressed, int textColor, int face) {
+        float drop = pressed ? unit * 1.2f : 0f;
+        float radius = Math.min(unit * 3f, rect.height() / 2f);
+        boardPaint.setColor(faded(BOARD_DARK));
+        boardShape.set(rect.left, rect.top + unit * 1.2f, rect.right, rect.bottom + unit * 1.2f);
+        canvas.drawRoundRect(boardShape, radius, radius, boardPaint);
+        boardShape.set(rect.left, rect.top + drop, rect.right, rect.bottom + drop);
+        canvas.drawRoundRect(boardShape, radius, radius, boardPaint);
+        boardPaint.setColor(faded(face));
+        boardShape.inset(unit * 1.3f, unit * 1.3f);
+        canvas.drawRoundRect(boardShape, Math.max(unit, radius - unit), Math.max(unit, radius - unit), boardPaint);
+        float size = Math.min(unit * 8f, rect.height() * 0.48f);
+        boardText(canvas, label, rect.centerX(), rect.centerY() + drop + size * 0.36f, size, textColor, Paint.Align.CENTER, rect.width() - unit * 5f);
+    }
+
+    private void layoutCoins() {
+        float unit = baseBoardUnit();
+        float usableWidth = screenWidth - safeInsetLeft - safeInsetRight;
+        float width = BOARD_WIDTH_UNITS * unit;
+        float height = BOARD_HEIGHT_UNITS * unit;
+        float left = safeInsetLeft + (usableWidth - width) / 2f;
+        float top = systemBarTop + (getPlayableHeight() - height) / 2f;
+        coinPanel.set(left, top, left + width, top + height);
+    }
+
+    private void drawCoins(Canvas canvas) {
+        ensureBoardPaints();
+        float t = Math.max(0f, Math.min(1f, coinAnim));
+        float eased;
+        float alpha;
+        if (coinClosing) {
+            eased = t * t;
+            alpha = t;
+        } else {
+            float back = 1.70158f;
+            float x = t - 1f;
+            eased = 1f + (back + 1f) * x * x * x + back * x * x;
+            alpha = Math.min(1f, t * 1.8f);
+        }
+        float keep = boardAlpha;
+        boardAlpha = alpha;
+        coinAlpha = alpha;
+        layoutCoins();
+        boardPaint.setColor(faded(BOARD_DIM));
+        canvas.drawRect(0, 0, screenWidth, screenHeight, boardPaint);
+        float unit = baseBoardUnit();
+        float panelScale = 0.82f + 0.18f * eased;
+        canvas.save();
+        canvas.scale(panelScale, panelScale, coinPanel.centerX(), coinPanel.centerY());
+        canvas.translate(0f, (1f - eased) * 24f * unit);
+        coinHitCount = 0;
+        drawCoinsContent(canvas, coinPanel.left, coinPanel.top, unit);
+        canvas.restore();
+        if (panelScale != 1f || eased != 1f) coinHitCount = 0;
+        boardAlpha = keep;
+    }
+
+    private void drawCoinsContent(Canvas canvas, float left, float top, float unit) {
+        float width = BOARD_WIDTH_UNITS * unit;
+        float height = BOARD_HEIGHT_UNITS * unit;
+        boardShape.set(left, top, left + width, top + height);
+        boardPaint.setColor(faded(BOARD_DARK));
+        canvas.drawRoundRect(boardShape, unit * 5f, unit * 5f, boardPaint);
+        boardShape.inset(unit * 2f, unit * 2f);
+        boardPaint.setColor(faded(BOARD_PANEL_EDGE));
+        canvas.drawRoundRect(boardShape, unit * 4f, unit * 4f, boardPaint);
+        boardShape.inset(unit * 1.5f, unit * 1.5f);
+        boardPaint.setColor(faded(BOARD_PANEL));
+        canvas.drawRoundRect(boardShape, unit * 3f, unit * 3f, boardPaint);
+
+        boardText(canvas, "FLIGHT COINS", left + width / 2f, top + 24f * unit, 15f * unit, BOARD_ORANGE, Paint.Align.CENTER, width - 24f * unit);
+
+        float tabTop = top + 32f * unit;
+        float tabWidth = 96f * unit;
+        float tabGap = 6f * unit;
+        float tabsLeft = left + (width - tabWidth * 2f - tabGap) / 2f;
+        String[] tabs = {"DAILY", "SHOP"};
+        for (int i = 0; i < 2; i++) {
+            float tabLeft = tabsLeft + i * (tabWidth + tabGap);
+            boardShape.set(tabLeft, tabTop, tabLeft + tabWidth, tabTop + 18f * unit);
+            boardPaint.setColor(faded(BOARD_TAB_IDLE));
+            canvas.drawRoundRect(boardShape, unit * 3f, unit * 3f, boardPaint);
+        }
+        float pill = Math.max(0f, Math.min(1f, coinPill));
+        float moving = (float) Math.sin(Math.PI * Math.min(1f, Math.abs(coinTab - coinPill) * 2f)) * 0.5f;
+        float pillLeft = tabsLeft + pill * (tabWidth + tabGap) - moving * 5f * unit;
+        float pillRight = pillLeft + tabWidth + moving * 10f * unit;
+        float squash = moving * 0.8f * unit;
+        boardShape.set(pillLeft, tabTop + squash, pillRight, tabTop + 18f * unit - squash);
+        boardPaint.setColor(faded(BOARD_ORANGE));
+        canvas.drawRoundRect(boardShape, unit * 3f, unit * 3f, boardPaint);
+        boardPaint.setColor(faded(BOARD_DARK));
+        boardShape.set(pillLeft + unit * 2f, tabTop + 16.5f * unit - squash, pillRight - unit * 2f, tabTop + 18f * unit - squash);
+        canvas.drawRect(boardShape, boardPaint);
+        for (int i = 0; i < 2; i++) {
+            float tabLeft = tabsLeft + i * (tabWidth + tabGap);
+            float covered = Math.max(0f, Math.min(pillRight, tabLeft + tabWidth) - Math.max(pillLeft, tabLeft)) / tabWidth;
+            boardText(canvas, tabs[i], tabLeft + tabWidth / 2f, tabTop + 12f * unit, 8.5f * unit, mixColor(BOARD_DARK, Color.WHITE, Math.min(1f, covered)),
+                    Paint.Align.CENTER, tabWidth - 6f * unit);
+            coinHit(tabLeft, tabTop, tabLeft + tabWidth, tabTop + 18f * unit, HIT_TAB, i);
+        }
+
+        float stripTop = top + 55f * unit;
+        drawCoin(canvas, left + 18f * unit, stripTop + 7f * unit, 6.5f * unit * coinBumpScale());
+        String balance = wallet == null && walletLoading ? "..." : balanceLabel();
+        boardText(canvas, balance, left + 28f * unit, stripTop + 11f * unit, 12f * unit, BOARD_DARK, Paint.Align.LEFT, 90f * unit);
+        long day = today();
+        int streak = wallet != null ? wallet.streakFor(day) : 0;
+        if (streak > 0) {
+            String label = streak + " DAY STREAK";
+            boardTextPaint.setTextSize(7.5f * unit);
+            float labelWidth = Math.min(80f * unit, boardTextPaint.measureText(label));
+            drawBadge(canvas, 4, left + width - 14f * unit - labelWidth - 7f * unit, stripTop + 6.6f * unit, unit * 0.9f);
+            boardText(canvas, label, left + width - 14f * unit, stripTop + 10.5f * unit, 7.5f * unit, BOARD_ORANGE, Paint.Align.RIGHT, 80f * unit);
+        }
+
+        float contentTop = top + 74f * unit;
+        float contentBottom = top + 300f * unit;
+        if (wallet == null && walletOffline) {
+            float middle = (contentTop + contentBottom) / 2f;
+            boardText(canvas, "NO INTERNET", left + width / 2f, middle - 4f * unit, 13f * unit, BOARD_ORANGE, Paint.Align.CENTER, width - 30f * unit);
+            boardText(canvas, "Connect to earn and spend Flight Coins", left + width / 2f, middle + 10f * unit, 7.5f * unit, BOARD_DARK,
+                    Paint.Align.CENTER, width - 30f * unit);
+            boardText(canvas, "Trying again every few seconds", left + width / 2f, middle + 21f * unit, 6.5f * unit, BOARD_DARK,
+                    Paint.Align.CENTER, width - 30f * unit);
+            coinScrollMax = 0f;
+            if (!walletLoading && coinTime % 5f < 0.05f) loadWallet();
+        } else if (coinSwitchAge < COIN_SWITCH_SEC && coinSwitchFrom != coinTab) {
+            float t = coinSwitchAge / COIN_SWITCH_SEC;
+            float x = 1f - t;
+            float eased = 1f - x * x * x;
+            float shift = (coinTab > coinSwitchFrom ? 1f : -1f) * 34f * unit;
+            float baseAlpha = boardAlpha;
+            canvas.save();
+            canvas.clipRect(left + 3.5f * unit, contentTop - 2f * unit, left + width - 3.5f * unit, contentBottom + 2f * unit);
+            boardAlpha = baseAlpha * Math.max(0f, 1f - eased * 1.35f);
+            if (boardAlpha > 0.003f) {
+                float scroll = coinScroll;
+                coinScroll = coinSwitchScroll;
+                coinGhost = true;
+                canvas.save();
+                canvas.translate(-shift * eased, 0f);
+                drawTab(canvas, coinSwitchFrom, left, width, contentTop, contentBottom, unit);
+                canvas.restore();
+                coinGhost = false;
+                coinScroll = scroll;
+            }
+            boardAlpha = baseAlpha * Math.max(0f, Math.min(1f, (eased - 0.12f) / 0.88f));
+            canvas.save();
+            canvas.translate(shift * (1f - eased), 0f);
+            drawTab(canvas, coinTab, left, width, contentTop, contentBottom, unit);
+            canvas.restore();
+            boardAlpha = baseAlpha;
+            canvas.restore();
+        } else {
+            drawTab(canvas, coinTab, left, width, contentTop, contentBottom, unit);
+        }
+
+        String note = coinNoteAge < 6f ? coinNote : "";
+        if (note.isEmpty()) note = coinFooter(day);
+        boardText(canvas, note, left + width / 2f, top + 312f * unit, 7.2f * unit, coinNoteAge < 6f ? BOARD_ORANGE : BOARD_DARK,
+                Paint.Align.CENTER, width - 20f * unit);
+        float buttonWidth = 84f * unit;
+        float buttonTop = top + 320f * unit;
+        RectF ok = coinRect;
+        ok.set(left + (width - buttonWidth) / 2f, buttonTop, left + (width + buttonWidth) / 2f, buttonTop + 26f * unit);
+        coinButton(canvas, ok, "OK", unit, pressedHit(HIT_CLOSE, 0), BOARD_ORANGE, Color.WHITE);
+        coinHit(ok.left, ok.top, ok.right, ok.bottom, HIT_CLOSE, 0);
+    }
+
+    private void drawTab(Canvas canvas, int tab, float left, float width, float contentTop, float contentBottom, float unit) {
+        if (tab == 0) drawDaily(canvas, left, width, contentTop, contentBottom, unit);
+        else drawShop(canvas, left, width, contentTop, contentBottom, unit);
+    }
+
+    private float coinBumpScale() {
+        if (coinBump >= 0.45f) return 1f;
+        float t = coinBump / 0.45f;
+        return 1f + 0.22f * (float) Math.sin(t * Math.PI) * (1f - t * 0.4f);
+    }
+
+    private float staggered(int index) {
+        float t = Math.max(0f, Math.min(1f, (coinOpenAge - 0.1f - index * 0.07f) / 0.34f));
+        float back = 1.70158f;
+        float x = t - 1f;
+        return 1f + (back + 1f) * x * x * x + back * x * x;
+    }
+
+    private String coinFooter(long day) {
+        if (!settingDailyChallenges) return "Daily challenges are off in Settings";
+        long left = Math.max(0L, Challenges.dayEnds(day) - Leaderboard.now());
+        long hours = left / 3600000L;
+        long minutes = (left / 60000L) % 60L;
+        if (coinTab == 1) return "Everyone sees your style on the leaderboard";
+        return "New challenges in " + (hours > 0 ? hours + "h " : "") + minutes + "m";
+    }
+
+    private void drawDaily(Canvas canvas, float left, float width, float contentTop, float contentBottom, float unit) {
+        coinScrollMax = 0f;
+        long day = today();
+        Challenges.Goal[] goals = todayGoals(day);
+        if (coinBlockedAge > 0.5f || coinBlockedDay != day) {
+            Map<String, ?> current = playPrefs();
+            for (int i = 0; i < 3; i++) coinBlocked[i] = goals[i] == null ? null : Challenges.blocker(goals[i], withTwist(current, goals[i].twist));
+            coinBlockedAge = 0f;
+            coinBlockedDay = day;
+        }
+        float cardHeight = 58f * unit;
+        float gap = 6f * unit;
+        float cardLeft = left + 10f * unit;
+        float cardRight = left + width - 10f * unit;
+        int doneCount = 0;
+        int doneMask = 0;
+        for (int i = 0; i < 3; i++) if (goalDone(day, i)) doneMask |= 1 << i;
+        if (!coinGhost) {
+            if (coinDoneSeen >= 0) {
+                for (int i = 0; i < 3; i++) if ((doneMask & (1 << i)) != 0 && (coinDoneSeen & (1 << i)) == 0) coinDonePop[i] = 0f;
+            }
+            coinDoneSeen = doneMask;
+        }
+        float baseAlpha = boardAlpha;
+        for (int i = 0; i < 3; i++) {
+            float enter = staggered(i);
+            boardAlpha = baseAlpha * Math.max(0f, Math.min(1f, enter * 1.4f));
+            float cardTop = contentTop + i * (cardHeight + gap) + (1f - enter) * 14f * unit;
+            Challenges.Goal goal = goals[i];
+            boolean done = (doneMask & (1 << i)) != 0;
+            if (done) doneCount++;
+            boardShape.set(cardLeft, cardTop + unit, cardRight, cardTop + cardHeight + unit);
+            boardPaint.setColor(faded(BOARD_DIVIDER));
+            canvas.drawRoundRect(boardShape, unit * 4f, unit * 4f, boardPaint);
+            boardShape.set(cardLeft, cardTop, cardRight, cardTop + cardHeight);
+            boardPaint.setColor(faded(done ? mixColor(BOARD_PANEL_EDGE, 0xFFD8F2C4, 0.6f) : BOARD_PANEL_EDGE));
+            canvas.drawRoundRect(boardShape, unit * 4f, unit * 4f, boardPaint);
+            int tierColor = TIER_COLORS[i];
+            boardShape.set(cardLeft + 6f * unit, cardTop + 6f * unit, cardLeft + 46f * unit, cardTop + 17f * unit);
+            boardPaint.setColor(faded(tierColor));
+            canvas.drawRoundRect(boardShape, unit * 2.5f, unit * 2.5f, boardPaint);
+            boardText(canvas, Challenges.TIER_NAMES[i], boardShape.centerX(), cardTop + 14.2f * unit, 6.5f * unit, Color.WHITE,
+                    Paint.Align.CENTER, 36f * unit);
+            String reward = "+" + Challenges.REWARD[i];
+            boardTextPaint.setTextSize(9f * unit);
+            float rewardWidth = boardTextPaint.measureText(reward);
+            boardText(canvas, reward, cardRight - 8f * unit, cardTop + 15f * unit, 9f * unit, BOARD_DARK, Paint.Align.RIGHT, 0f);
+            drawCoin(canvas, cardRight - 13f * unit - rewardWidth, cardTop + 11.5f * unit, 4.4f * unit);
+            if (goal == null) {
+                boardText(canvas, "Update the game to see this challenge", cardLeft + 8f * unit, cardTop + 32f * unit, 7.5f * unit, BOARD_DARK,
+                        Paint.Align.LEFT, cardRight - cardLeft - 16f * unit);
+                continue;
+            }
+            float buttonWidth = 50f * unit;
+            float textRoom = cardRight - cardLeft - 16f * unit - (done ? 22f * unit : buttonWidth + 4f * unit);
+            boardText(canvas, goal.title(), cardLeft + 8f * unit, cardTop + 31f * unit, 8f * unit, BOARD_DARK, Paint.Align.LEFT,
+                    cardRight - cardLeft - 16f * unit - (done ? 22f * unit : 0f));
+            int progress = Math.min(goal.goal(), goalProgress(day, i));
+            if (done) progress = goal.goal();
+            float barLeft = cardLeft + 8f * unit;
+            float barRight = cardLeft + 8f * unit + textRoom;
+            float barTop = cardTop + 39f * unit;
+            boardShape.set(barLeft, barTop, barRight, barTop + 7f * unit);
+            boardPaint.setColor(faded(BOARD_DIVIDER));
+            canvas.drawRoundRect(boardShape, unit * 3.5f, unit * 3.5f, boardPaint);
+            float share = goal.goal() > 0 ? Math.min(1f, progress / (float) goal.goal()) : 0f;
+            if (!coinGhost) coinBarTargets[i] = share;
+            float shown = coinGhost ? share : coinBars[i];
+            if (shown > 0.002f) {
+                boardShape.set(barLeft, barTop, barLeft + Math.max(7f * unit, (barRight - barLeft) * shown), barTop + 7f * unit);
+                boardPaint.setColor(faded(tierColor));
+                canvas.drawRoundRect(boardShape, unit * 3.5f, unit * 3.5f, boardPaint);
+            }
+            String count = goal.goal() == 1 ? (done ? "DONE" : "NOT YET") : progress + " / " + goal.goal();
+            String blocked = done ? null : coinBlocked[i];
+            if (blocked != null) count = blocked.isEmpty() ? "Needs fair settings" : "Turn off " + blocked + " first";
+            boardText(canvas, count, barLeft, barTop + 15f * unit, 6.3f * unit, blocked != null ? BOARD_DROP : BOARD_DARK, Paint.Align.LEFT, textRoom);
+            if (done) {
+                float pop = coinDonePop[i] < 0.5f ? 1f + 0.45f * (float) Math.sin(coinDonePop[i] / 0.5f * Math.PI) : 1f;
+                canvas.save();
+                canvas.scale(pop, pop, cardRight - 16f * unit, cardTop + 40f * unit);
+                drawCheck(canvas, cardRight - 16f * unit, cardTop + 40f * unit, unit);
+                canvas.restore();
+                continue;
+            }
+            RectF button = coinRect;
+            button.set(cardRight - 8f * unit - buttonWidth, cardTop + 35f * unit, cardRight - 8f * unit, cardTop + 53f * unit);
+            boolean checking = (pendingMask & (1 << i)) != 0;
+            boolean active = goal.twist > Challenges.ANY && goal.twist == challengeTwist;
+            if (checking) {
+                int dots = 1 + (int) ((coinTime * 3f) % 3f);
+                String label = "CHECKING" + "...".substring(0, dots);
+                boardText(canvas, label, button.centerX(), button.centerY() + 2.5f * unit, 6.6f * unit, BOARD_ORANGE, Paint.Align.CENTER, buttonWidth);
+            } else if (active) {
+                coinButton(canvas, button, "STOP", unit, pressedHit(HIT_STOP, i), Color.WHITE, BOARD_ORANGE);
+                coinHit(button.left, button.top, button.right, button.bottom, HIT_STOP, i);
+            } else {
+                coinButton(canvas, button, "PLAY", unit, pressedHit(HIT_PLAY, i), Color.WHITE, tierColor);
+                coinHit(button.left, button.top, button.right, button.bottom, HIT_PLAY, i);
+            }
+        }
+        float enterBonus = staggered(3);
+        boardAlpha = baseAlpha * Math.max(0f, Math.min(1f, enterBonus * 1.4f));
+        float bonusTop = contentTop + 3f * (cardHeight + gap) + 2f * unit + (1f - enterBonus) * 5f * unit;
+        int streak = wallet != null ? wallet.streakFor(day) : 0;
+        boolean allDone = doneCount == 3;
+        int nextStreak = allDone ? streak : (wallet != null && wallet.lastFull == day - 1 ? wallet.streak + 1 : 1);
+        int bonus = Challenges.bonus(Math.max(1, nextStreak));
+        String line = allDone ? "ALL DONE! COME BACK TOMORROW" : "FINISH ALL 3 FOR +" + bonus;
+        boardShape.set(left + 10f * unit, bonusTop, left + width - 10f * unit, bonusTop + 18f * unit);
+        boardPaint.setColor(faded(allDone ? 0xFF5DBB4A : BOARD_DARK));
+        canvas.drawRoundRect(boardShape, unit * 4f, unit * 4f, boardPaint);
+        boardText(canvas, line, left + width / 2f + (allDone ? 0f : 5f * unit), bonusTop + 12.3f * unit, 8f * unit, Color.WHITE,
+                Paint.Align.CENTER, width - 46f * unit);
+        if (!allDone) {
+            boardTextPaint.setTextSize(8f * unit);
+            float lineWidth = Math.min(width - 46f * unit, boardTextPaint.measureText(line));
+            drawCoin(canvas, left + width / 2f + 5f * unit - lineWidth / 2f - 8f * unit, bonusTop + 9f * unit, 4.6f * unit);
+        }
+        if (!allDone && nextStreak > 1) {
+            boardText(canvas, "Includes a streak bonus for day " + nextStreak, left + width / 2f, bonusTop + 28f * unit, 6.5f * unit, BOARD_ORANGE,
+                    Paint.Align.CENTER, width - 30f * unit);
+        } else if (!allDone) {
+            boardText(canvas, "Finish every day in a row for a bigger bonus", left + width / 2f, bonusTop + 28f * unit, 6.5f * unit, BOARD_DARK,
+                    Paint.Align.CENTER, width - 30f * unit);
+        }
+        boardAlpha = baseAlpha;
+    }
+
+    private Map<String, ?> withTwist(Map<String, ?> current, int twist) {
+        if (twist <= Challenges.ANY || twist == challengeTwist) return current;
+        Map<String, Object> merged = new HashMap<>(prefs.getAll());
+        merged.putAll(Challenges.overlay(twist));
+        return merged;
+    }
+
+    private void drawCheck(Canvas canvas, float x, float y, float unit) {
+        boardPaint.setColor(faded(BOARD_DARK));
+        canvas.drawCircle(x, y + unit * 0.9f, 8f * unit, boardPaint);
+        boardPaint.setColor(faded(0xFF5DBB4A));
+        canvas.drawCircle(x, y, 8f * unit, boardPaint);
+        boardPaint.setColor(faded(Color.WHITE));
+        boardPaint.setStyle(Paint.Style.STROKE);
+        boardPaint.setStrokeWidth(2.2f * unit);
+        boardPaint.setStrokeCap(Paint.Cap.ROUND);
+        canvas.drawLine(x - 3.6f * unit, y + 0.2f * unit, x - 0.9f * unit, y + 2.9f * unit, boardPaint);
+        canvas.drawLine(x - 0.9f * unit, y + 2.9f * unit, x + 3.9f * unit, y - 2.8f * unit, boardPaint);
+        boardPaint.setStyle(Paint.Style.FILL);
+        boardPaint.setStrokeCap(Paint.Cap.BUTT);
+    }
+
+    private String[] previewStyle() {
+        String[] style = wallet != null ? wallet.style.clone() : new String[5];
+        Shop.Item item = Shop.item(coinPreview);
+        if (item != null) style[item.kind] = item.id;
+        return style;
+    }
+
+    private void drawShop(Canvas canvas, float left, float width, float contentTop, float contentBottom, float unit) {
+        float boxLeft = left + 8f * unit;
+        float boxRight = left + width - 8f * unit;
+        boardShape.set(boxLeft, contentTop, boxRight, contentTop + 25f * unit);
+        boardPaint.setColor(faded(BOARD_PANEL_EDGE));
+        canvas.drawRoundRect(boardShape, unit * 4f, unit * 4f, boardPaint);
+        if (coinSample == null) {
+            coinSample = new Leaderboard.Entry();
+            coinSample.name = "You";
+            coinSample.score = 1;
+        }
+        Leaderboard.Entry sample = coinSample;
+        String[] look = previewStyle();
+        if (!Arrays.equals(look, sample.look)) {
+            sample.look = look;
+            sample.lookCache = null;
+        }
+        plainBoardRow();
+        float shine = boardShine;
+        boardShine = coinTime;
+        boardRow(canvas, sample, "7", boxLeft - 2f * unit, boxRight - boxLeft + 6f * unit, contentTop + 3f * unit, unit, false);
+        boardShine = shine;
+
+        float chipTop = contentTop + 29f * unit;
+        float chipGap = 3f * unit;
+        float chipWidth = (boxRight - boxLeft - chipGap * 4f) / 5f;
+        for (int k = 0; k < 5; k++) {
+            float chipLeft = boxLeft + k * (chipWidth + chipGap);
+            boardShape.set(chipLeft, chipTop, chipLeft + chipWidth, chipTop + 14f * unit);
+            boardPaint.setColor(faded(BOARD_TAB_IDLE));
+            canvas.drawRoundRect(boardShape, unit * 3f, unit * 3f, boardPaint);
+        }
+        float kindPill = Math.max(0f, Math.min(4f, coinGhost ? coinKind : coinKindPill));
+        float pillLeft = boxLeft + kindPill * (chipWidth + chipGap);
+        boardShape.set(pillLeft, chipTop, pillLeft + chipWidth, chipTop + 14f * unit);
+        boardPaint.setColor(faded(BOARD_DARK));
+        canvas.drawRoundRect(boardShape, unit * 3f, unit * 3f, boardPaint);
+        for (int k = 0; k < 5; k++) {
+            float chipLeft = boxLeft + k * (chipWidth + chipGap);
+            float covered = Math.max(0f, Math.min(pillLeft + chipWidth, chipLeft + chipWidth) - Math.max(pillLeft, chipLeft)) / chipWidth;
+            boardText(canvas, Shop.KIND_NAMES[k], chipLeft + chipWidth / 2f, chipTop + 9.6f * unit, 6.4f * unit, mixColor(BOARD_DARK, Color.WHITE, covered),
+                    Paint.Align.CENTER, chipWidth - 3f * unit);
+            coinHit(chipLeft, chipTop, chipLeft + chipWidth, chipTop + 14f * unit, HIT_KIND, k);
+        }
+
+        float listTop = chipTop + 18f * unit;
+        float listBottom = contentBottom;
+        List<Shop.Item> items = Shop.of(coinKind);
+        float rowHeight = 22f * unit;
+        float scrollMax = Math.max(0f, items.size() * rowHeight - (listBottom - listTop));
+        float scroll = Math.max(0f, Math.min(scrollMax, coinScroll));
+        if (!coinGhost) {
+            coinListRect.set(boxLeft, listTop, boxRight, listBottom);
+            coinScrollMax = scrollMax;
+            coinScroll = scroll;
+        }
+        float slide = 0f;
+        float baseAlpha = boardAlpha;
+        if (!coinGhost && coinKindAge < COIN_KIND_SEC && coinKindFrom != coinKind) {
+            float t = coinKindAge / COIN_KIND_SEC;
+            float x = 1f - t;
+            slide = (coinKind > coinKindFrom ? 1f : -1f) * 18f * unit * x * x * x;
+            boardAlpha = baseAlpha * Math.min(1f, 0.2f + t);
+        }
+        canvas.save();
+        canvas.clipRect(boxLeft - unit, listTop, boxRight + unit, listBottom);
+        canvas.translate(slide, 0f);
+        for (int i = 0; i < items.size(); i++) {
+            float rowTop = listTop + i * rowHeight - scroll;
+            if (rowTop > listBottom || rowTop + rowHeight < listTop) continue;
+            drawShopRow(canvas, items.get(i), Shop.KINDS.indexOf(items.get(i).id.charAt(0)) * 100 + i, boxLeft, boxRight, rowTop, rowHeight, unit);
+        }
+        canvas.restore();
+        boardAlpha = baseAlpha;
+        if (scrollMax > 0f) {
+            float track = listBottom - listTop - 4f * unit;
+            float thumb = Math.max(14f * unit, track * (listBottom - listTop) / (items.size() * rowHeight));
+            float thumbTop = listTop + 2f * unit + (track - thumb) * (scroll / scrollMax);
+            boardPaint.setColor(faded(BOARD_DIVIDER));
+            boardShape.set(boxRight + 1.5f * unit, listTop + 2f * unit, boxRight + 4f * unit, listTop + 2f * unit + track);
+            canvas.drawRoundRect(boardShape, unit * 1.25f, unit * 1.25f, boardPaint);
+            boardPaint.setColor(faded(BOARD_DARK));
+            boardShape.set(boxRight + 1.5f * unit, thumbTop, boxRight + 4f * unit, thumbTop + thumb);
+            canvas.drawRoundRect(boardShape, unit * 1.25f, unit * 1.25f, boardPaint);
+        }
+    }
+
+    private void drawShopRow(Canvas canvas, Shop.Item item, int index, float left, float right, float rowTop, float rowHeight, float unit) {
+        boolean owned = wallet != null && wallet.owned.contains(item.id);
+        boolean worn = wallet != null && item.id.equals(wallet.style[item.kind]);
+        boolean previewing = item.id.equals(coinPreview);
+        boardShape.set(left, rowTop + unit, right, rowTop + rowHeight - unit);
+        boardPaint.setColor(faded(previewing ? mixColor(BOARD_PANEL_EDGE, BOARD_ORANGE, 0.25f) : BOARD_PANEL_EDGE));
+        canvas.drawRoundRect(boardShape, unit * 3.5f, unit * 3.5f, boardPaint);
+        float swatch = left + 13f * unit;
+        float middle = rowTop + rowHeight / 2f;
+        drawSwatch(canvas, item, swatch, middle, unit);
+        boardText(canvas, item.name, left + 27f * unit, middle + 3f * unit, 8f * unit, BOARD_DARK, Paint.Align.LEFT, 74f * unit);
+        float buttonWidth = 44f * unit;
+        RectF button = coinRect;
+        button.set(right - 5f * unit - buttonWidth, rowTop + 4f * unit, right - 5f * unit, rowTop + rowHeight - 4f * unit);
+        if (!owned) {
+            String price = String.format(Locale.US, "%,d", item.price);
+            boardTextPaint.setTextSize(7.5f * unit);
+            float priceWidth = boardTextPaint.measureText(price);
+            float priceRight = button.left - 5f * unit;
+            boolean affordable = shownBalance() >= item.price;
+            boardText(canvas, price, priceRight, middle + 2.8f * unit, 7.5f * unit, affordable ? BOARD_DARK : BOARD_DROP, Paint.Align.RIGHT, 0f);
+            drawCoin(canvas, priceRight - priceWidth - 5f * unit, middle, 3.6f * unit);
+        }
+        String label;
+        int face;
+        int text;
+        float pulse = 1f;
+        if (item.id.equals(buyingItem)) {
+            label = "BUYING" + "...".substring(0, 1 + (int) ((coinTime * 3f) % 3f));
+            face = BOARD_TAB_IDLE;
+            text = BOARD_DARK;
+        } else if (worn) {
+            label = "ON";
+            face = 0xFF5DBB4A;
+            text = Color.WHITE;
+        } else if (owned) {
+            label = "USE";
+            face = Color.WHITE;
+            text = BOARD_ORANGE;
+        } else if (item.id.equals(coinConfirm)) {
+            label = "SURE?";
+            face = BOARD_ORANGE;
+            text = Color.WHITE;
+            pulse = 1f + 0.05f * (float) Math.sin(coinTime * 9f);
+        } else {
+            label = "BUY";
+            face = Color.WHITE;
+            text = BOARD_ORANGE;
+        }
+        float buttonLeft = button.left;
+        canvas.save();
+        canvas.scale(pulse, pulse, button.centerX(), button.centerY());
+        coinButton(canvas, button, label, unit, pressedHit(HIT_ACTION, index), text, face);
+        canvas.restore();
+        coinHit(left, rowTop, buttonLeft - unit, rowTop + rowHeight, HIT_ITEM, index);
+        coinHit(buttonLeft - unit, rowTop, right, rowTop + rowHeight, HIT_ACTION, index);
+    }
+
+    private Shop.Item itemAt(int index) {
+        int kind = index / 100;
+        List<Shop.Item> items = Shop.of(kind);
+        int at = index % 100;
+        return at >= 0 && at < items.size() ? items.get(at) : null;
+    }
+
+    private void drawSwatch(Canvas canvas, Shop.Item item, float x, float y, float unit) {
+        switch (item.kind) {
+            case Shop.NAME:
+                lookText(canvas, item, "Aa", x, y + 3.2f * unit, 9f * unit, Paint.Align.CENTER, 0f, 7);
+                break;
+            case Shop.ROW:
+                lookBackground(canvas, item, x - 9f * unit, y - 6f * unit, x + 9f * unit, y + 6f * unit, unit, 3);
+                break;
+            case Shop.GLOW:
+                boardShape.set(x - 8f * unit, y - 5f * unit, x + 8f * unit, y + 5f * unit);
+                boardPaint.setColor(faded(BOARD_PANEL));
+                canvas.drawRoundRect(boardShape, unit * 2.5f, unit * 2.5f, boardPaint);
+                lookGlow(canvas, item, x - 8f * unit, y - 5f * unit, x + 8f * unit, y + 5f * unit, unit);
+                break;
+            case Shop.MOTION:
+                boardShape.set(x - 9f * unit, y - 6f * unit, x + 9f * unit, y + 6f * unit);
+                boardPaint.setColor(faded(0xFF9FB8C8));
+                canvas.drawRoundRect(boardShape, unit * 2.5f, unit * 2.5f, boardPaint);
+                canvas.save();
+                canvas.clipRect(boardShape.left, boardShape.top, boardShape.right, boardShape.bottom);
+                lookMotion(canvas, item, x - 9f * unit, y - 6f * unit, x + 9f * unit, y + 6f * unit, unit, 7);
+                canvas.restore();
+                break;
+            default:
+                drawBadge(canvas, item.effect, x, y, unit * 1.15f);
+                break;
+        }
+    }
+
+    private boolean onCoinsTouch(int action, int x, int y) {
+        boolean ready = !coinClosing && coinAnim >= 1f;
+        if (action == MotionEvent.ACTION_DOWN) {
+            float[] hit = ready ? coinHitAt(x, y) : null;
+            coinPressAction = hit == null ? 0 : (int) hit[4];
+            coinPressArg = hit == null ? -1 : (int) hit[5];
+            coinDragArmed = ready && coinTab == 1 && coinScrollMax > 0f && coinListRect.contains(x, y);
+            coinDragging = false;
+            coinDragStartY = y;
+            coinDragLastY = y;
+            coinDragLastTime = SystemClock.uptimeMillis();
+            if (coinDragArmed) coinFling = 0f;
+            if (coinPressAction != 0) feel(Feel.PRESS);
+        } else if (action == MotionEvent.ACTION_MOVE) {
+            if (coinDragArmed) {
+                if (!coinDragging && Math.abs(y - coinDragStartY) > 8f * baseBoardUnit()) {
+                    coinDragging = true;
+                    coinPressAction = 0;
+                    coinDragLastY = y;
+                }
+                if (coinDragging) {
+                    long now = SystemClock.uptimeMillis();
+                    float moved = y - coinDragLastY;
+                    float seconds = Math.max(0.001f, (now - coinDragLastTime) / 1000f);
+                    coinScroll = Math.max(0f, Math.min(coinScrollMax, coinScroll - moved));
+                    coinFling = coinFling * 0.3f + (-moved / seconds) * 0.7f;
+                    coinDragLastY = y;
+                    coinDragLastTime = now;
+                }
+            }
+        } else if (action == MotionEvent.ACTION_UP) {
+            int pressedAction = coinPressAction;
+            int pressedArg = coinPressArg;
+            coinPressAction = 0;
+            coinPressArg = -1;
+            boolean dragged = coinDragging;
+            coinDragArmed = false;
+            coinDragging = false;
+            if (dragged) {
+                if (SystemClock.uptimeMillis() - coinDragLastTime > 80L) coinFling = 0f;
+                return true;
+            }
+            coinFling = 0f;
+            float[] released = ready ? coinHitAt(x, y) : null;
+            if (pressedAction != 0 && released != null && pressedAction == (int) released[4] && pressedArg == (int) released[5]) coinAction(pressedAction, pressedArg);
+        } else if (action == MotionEvent.ACTION_CANCEL) {
+            coinPressAction = 0;
+            coinDragArmed = false;
+            coinDragging = false;
+            coinFling = 0f;
+        }
+        return true;
+    }
+
+    private void coinAction(int action, int arg) {
+        switch (action) {
+            case HIT_CLOSE:
+                playSound(soundSwooshing);
+                feel(Feel.BUTTON);
+                closeCoins();
+                break;
+            case HIT_TAB:
+                if (coinTab != arg) {
+                    playSound(soundSwooshing);
+                    feel(Feel.TICK);
+                    coinSwitchFrom = coinTab;
+                    coinSwitchScroll = coinScroll;
+                    coinSwitchAge = 0f;
+                    coinTab = arg;
+                    coinFling = 0f;
+                    coinScroll = 0f;
+                    coinPreview = null;
+                    coinConfirm = null;
+                }
+                break;
+            case HIT_KIND:
+                if (coinKind != arg) {
+                    feel(Feel.TICK);
+                    coinKindFrom = coinKind;
+                    coinKindAge = 0f;
+                    coinKind = arg;
+                    coinFling = 0f;
+                    coinScroll = 0f;
+                    coinPreview = null;
+                    coinConfirm = null;
+                }
+                break;
+            case HIT_PLAY:
+                playChallenge(arg);
+                break;
+            case HIT_STOP:
+                feel(Feel.TOGGLE);
+                endTwist(false);
+                setCoinNote("Back to your own settings");
+                break;
+            case HIT_ITEM: {
+                Shop.Item item = itemAt(arg);
+                if (item == null) break;
+                feel(Feel.TICK);
+                coinPreview = item.id.equals(coinPreview) ? null : item.id;
+                break;
+            }
+            case HIT_ACTION:
+                shopAction(itemAt(arg));
+                break;
+            default:
+                break;
+        }
+    }
+
+    private void playChallenge(int slot) {
+        long day = today();
+        Challenges.Goal goal = todayGoals(day)[slot];
+        if (goal == null) return;
+        String blocked = Challenges.blocker(goal, withTwist(playPrefs(), goal.twist));
+        if (blocked != null) {
+            feel(Feel.REJECT);
+            setCoinNote(blocked.isEmpty() ? "Change your settings back to fair ones first" : "Turn off " + blocked + " in Settings first");
+            return;
+        }
+        if (!settingDailyChallenges) {
+            feel(Feel.REJECT);
+            setCoinNote("Turn on Daily challenges in Settings first");
+            return;
+        }
+        feel(Feel.BUTTON);
+        playSound(soundSwooshing);
+        if (goal.twist > Challenges.ANY) startTwist(goal.twist);
+        else if (challengeTwist > Challenges.ANY) endTwist(false);
+        coinOpen = false;
+        coinClosing = false;
+        coinAnim = 0f;
+        if (boardHost != null && !boardOpen) boardHost.boardVisible(false);
+        if (gameState == GameState.HOME) {
+            gameState = GameState.TRANSITION_TO_WAITING;
+            isFadingOut = true;
+        }
+    }
+
+    private void shopAction(Shop.Item item) {
+        if (item == null || wallet == null) return;
+        if (item.id.equals(buyingItem)) return;
+        String[] style = wallet.style.clone();
+        if (item.id.equals(style[item.kind])) {
+            feel(Feel.TOGGLE);
+            style[item.kind] = null;
+            equipStyle(style);
+            return;
+        }
+        if (wallet.owned.contains(item.id)) {
+            feel(Feel.CONFIRM);
+            playSound(soundSwooshing);
+            style[item.kind] = item.id;
+            equipStyle(style);
+            coinPreview = null;
+            return;
+        }
+        if (buyingItem != null) {
+            setCoinNote("Wait for your last purchase to finish");
+            return;
+        }
+        if (wallet.balance < item.price) {
+            feel(Feel.REJECT);
+            coinPreview = item.id;
+            setCoinNote("You need " + String.format(Locale.US, "%,d", item.price - wallet.balance) + " more Flight Coins");
+            return;
+        }
+        if (!item.id.equals(coinConfirm)) {
+            feel(Feel.TICK);
+            coinConfirm = item.id;
+            coinConfirmAge = 0f;
+            coinPreview = item.id;
+            return;
+        }
+        coinConfirm = null;
+        buyingItem = item.id;
+        buyingSince = Leaderboard.now();
+        walletPollSec = 0f;
+        feel(Feel.CONFIRM);
+        Leaderboard.buy(getContext(), item.id, this::post, (status, error) -> {
+            if (error != null) {
+                buyingItem = null;
+                setCoinNote(error);
+                feel(Feel.REJECT);
+            } else {
+                walletPollSec = WALLET_POLL_SEC * 0.4f;
+            }
+        });
+    }
+
+    private boolean onCoinsKey(int keyCode, KeyEvent event, boolean down) {
+        if (!down || event.getRepeatCount() > 0) return true;
+        if (keyCode == KeyEvent.KEYCODE_ESCAPE || keyCode == KeyEvent.KEYCODE_BACK || keyCode == KeyEvent.KEYCODE_ENTER
+                || keyCode == keyPlay || keyCode == keyFlap || keyCode == keyFlapAlt || keyCode == KeyEvent.KEYCODE_BUTTON_A) {
+            closeCoins();
+            return true;
+        }
+        if (keyCode == KeyEvent.KEYCODE_DPAD_LEFT || keyCode == KeyEvent.KEYCODE_DPAD_RIGHT || keyCode == KeyEvent.KEYCODE_TAB
+                || keyCode == KeyEvent.KEYCODE_BUTTON_L1 || keyCode == KeyEvent.KEYCODE_BUTTON_R1) {
+            int tab = keyCode == KeyEvent.KEYCODE_DPAD_LEFT || keyCode == KeyEvent.KEYCODE_BUTTON_L1 ? 0
+                    : keyCode == KeyEvent.KEYCODE_DPAD_RIGHT || keyCode == KeyEvent.KEYCODE_BUTTON_R1 ? 1 : 1 - coinTab;
+            coinAction(HIT_TAB, tab);
+            return true;
+        }
+        if (coinTab == 1 && (keyCode == KeyEvent.KEYCODE_DPAD_UP || keyCode == KeyEvent.KEYCODE_DPAD_DOWN)) {
+            if (keyCode == KeyEvent.KEYCODE_DPAD_UP) coinAction(HIT_KIND, (coinKind + 4) % 5);
+            else coinAction(HIT_KIND, (coinKind + 1) % 5);
+            return true;
+        }
+        return true;
+    }
+
+    private boolean scrollCoins(float amount) {
+        if (!coinOpen || coinClosing || coinScrollMax <= 0f) return false;
+        coinFling = 0f;
+        coinScroll = Math.max(0f, Math.min(coinScrollMax, coinScroll + amount * 22f * baseBoardUnit()));
+        return true;
+    }
+
+    private void layoutCoinButton() {
+        float height = settingsButtonBitmap != null ? settingsButtonBitmap.getHeight() : 28f * scale;
+        float x = safeInsetLeft + cornerMargin;
+        float y = systemBarTop + cornerMargin;
+        ensureBoardPaints();
+        boardTextPaint.setTextSize(height * 0.56f);
+        String balance = balanceLabel();
+        float width = height * 1.05f + boardTextPaint.measureText(balance) + height * 0.42f;
+        coinButtonRect.set((int) x, (int) y, (int) (x + width), (int) (y + height));
+    }
+
+    private void drawCoinButton(Canvas canvas) {
+        if (!coinsOn()) {
+            coinButtonRect.setEmpty();
+            return;
+        }
+        layoutCoinButton();
+        float keep = boardAlpha;
+        boardAlpha = 1f;
+        float unit = coinButtonRect.height() / 28f;
+        float drop = coinBtnProgress * 2f * unit;
+        RectF rect = coinRect;
+        rect.set(coinButtonRect.left, coinButtonRect.top, coinButtonRect.right, coinButtonRect.bottom);
+        float radius = rect.height() / 2f;
+        boardPaint.setColor(BOARD_DARK);
+        boardShape.set(rect.left, rect.top + 2f * unit, rect.right, rect.bottom + 2f * unit);
+        canvas.drawRoundRect(boardShape, radius, radius, boardPaint);
+        boardShape.set(rect.left, rect.top + drop, rect.right, rect.bottom + drop);
+        canvas.drawRoundRect(boardShape, radius, radius, boardPaint);
+        boardShape.inset(2f * unit, 2f * unit);
+        boardPaint.setColor(Color.WHITE);
+        canvas.drawRoundRect(boardShape, radius - 2f * unit, radius - 2f * unit, boardPaint);
+        drawCoin(canvas, rect.left + rect.height() * 0.5f, rect.centerY() + drop - unit * 0.5f, rect.height() * 0.3f * coinBumpScale());
+        String balance = balanceLabel();
+        boardText(canvas, balance, rect.left + rect.height() * 0.9f, rect.centerY() + drop + rect.height() * 0.19f, rect.height() * 0.56f,
+                BOARD_ORANGE, Paint.Align.LEFT, 0f);
+        if (coinDot()) {
+            float pulse = 0.5f + 0.5f * (float) Math.sin(coinTime * 4f);
+            boardPaint.setColor(BOARD_DARK);
+            canvas.drawCircle(rect.right - unit * 2f, rect.top + unit * 3f + drop, unit * (5.2f + pulse * 0.6f), boardPaint);
+            boardPaint.setColor(BOARD_DROP);
+            canvas.drawCircle(rect.right - unit * 2f, rect.top + unit * 2.6f + drop, unit * (4f + pulse * 0.6f), boardPaint);
+        }
+        boardAlpha = keep;
+    }
+
+    private void drawTwistChip(Canvas canvas, boolean interactive) {
+        if (challengeTwist <= Challenges.ANY) {
+            twistChipRect.setEmpty();
+            return;
+        }
+        ensureBoardPaints();
+        float keep = boardAlpha;
+        boardAlpha = 1f;
+        float unit = scale;
+        String label = Challenges.TWIST_NAMES[challengeTwist].toUpperCase(Locale.US) + " CHALLENGE";
+        float size = 7.6f * unit;
+        boardTextPaint.setTextSize(size);
+        float textWidth = boardTextPaint.measureText(label);
+        float height = 17f * unit;
+        float width = textWidth + (interactive ? 26f : 14f) * unit;
+        float x = safeInsetLeft + (screenWidth - safeInsetLeft - safeInsetRight - width) / 2f;
+        float y = systemBarTop + cornerMargin;
+        if (gameState == GameState.HOME && !coinButtonRect.isEmpty()) {
+            x = coinButtonRect.left;
+            y = coinButtonRect.bottom + 8f * unit;
+        }
+        boardShape.set(x, y, x + width, y + height);
+        boardPaint.setColor(0xCC543847);
+        canvas.drawRoundRect(boardShape, height / 2f, height / 2f, boardPaint);
+        boardText(canvas, label, x + 7f * unit + textWidth / 2f, y + height / 2f + size * 0.36f, size, COIN_GOLD, Paint.Align.CENTER, 0f);
+        if (interactive) {
+            float cx = x + width - 10f * unit;
+            float cy = y + height / 2f;
+            boardPaint.setColor(Color.WHITE);
+            boardPaint.setStyle(Paint.Style.STROKE);
+            boardPaint.setStrokeWidth(1.6f * unit);
+            boardPaint.setStrokeCap(Paint.Cap.ROUND);
+            canvas.drawLine(cx - 2.6f * unit, cy - 2.6f * unit, cx + 2.6f * unit, cy + 2.6f * unit, boardPaint);
+            canvas.drawLine(cx + 2.6f * unit, cy - 2.6f * unit, cx - 2.6f * unit, cy + 2.6f * unit, boardPaint);
+            boardPaint.setStyle(Paint.Style.FILL);
+            boardPaint.setStrokeCap(Paint.Cap.BUTT);
+            twistChipRect.set((int) x, (int) (y - 4f * unit), (int) (x + width), (int) (y + height + 4f * unit));
+        } else {
+            twistChipRect.setEmpty();
+        }
+        boardAlpha = keep;
+    }
+
+    private void drawToast(Canvas canvas) {
+        if (toastTitle == null || toastAge >= TOAST_SEC) return;
+        if ((gameState == GameState.PLAYING && !isPaused) || gameState == GameState.WAITING) return;
+        ensureBoardPaints();
+        float keep = boardAlpha;
+        float rise = Math.min(1f, toastAge / 0.25f);
+        float fall = Math.max(0f, Math.min(1f, (toastAge - TOAST_SEC + 0.4f) / 0.4f));
+        rise = 1f - (1f - rise) * (1f - rise) * (1f - rise);
+        boardAlpha = Math.max(0f, Math.min(1f, rise * (1f - fall)));
+        float unit = baseBoardUnit();
+        float titleSize = 10f * unit;
+        float textSize = 7f * unit;
+        boardTextPaint.setTextSize(titleSize);
+        float titleWidth = boardTextPaint.measureText(toastTitle);
+        boardTextPaint.setTextSize(textSize);
+        float textWidth = toastText == null ? 0f : boardTextPaint.measureText(toastText);
+        float usable = screenWidth - safeInsetLeft - safeInsetRight;
+        float iconRoom = toastCoin ? 20f * unit : 0f;
+        float width = Math.min(usable - 16f * unit, Math.max(titleWidth + iconRoom, textWidth) + 22f * unit);
+        float height = 34f * unit;
+        float x = safeInsetLeft + (usable - width) / 2f;
+        float y = systemBarTop + 10f * unit - (1f - rise) * 16f * unit;
+        if (gameState == GameState.HOME && !coinButtonRect.isEmpty()) {
+            y += Math.max(coinButtonRect.bottom, twistChipRect.isEmpty() ? 0 : twistChipRect.bottom) - systemBarTop;
+        } else if (!twistChipRect.isEmpty()) {
+            y += twistChipRect.bottom - systemBarTop;
+        }
+        boardShape.set(x, y + 1.5f * unit, x + width, y + height + 1.5f * unit);
+        boardPaint.setColor(faded(BOARD_DARK));
+        canvas.drawRoundRect(boardShape, unit * 6f, unit * 6f, boardPaint);
+        boardShape.set(x, y, x + width, y + height);
+        canvas.drawRoundRect(boardShape, unit * 6f, unit * 6f, boardPaint);
+        boardShape.inset(unit * 2f, unit * 2f);
+        boardPaint.setColor(faded(BOARD_PANEL));
+        canvas.drawRoundRect(boardShape, unit * 4.5f, unit * 4.5f, boardPaint);
+        float center = x + width / 2f;
+        if (toastCoin) {
+            float spin = (float) Math.abs(Math.cos(toastAge * 5f));
+            canvas.save();
+            float coinX = center - Math.min(titleWidth, width - 30f * unit) / 2f - 4f * unit;
+            canvas.scale(0.35f + 0.65f * spin, 1f, coinX, y + 14f * unit);
+            drawCoin(canvas, coinX, y + 14f * unit, 6f * unit);
+            canvas.restore();
+            center += 7f * unit;
+        }
+        boardText(canvas, toastTitle, center, y + 17.5f * unit, titleSize, BOARD_ORANGE, Paint.Align.CENTER, width - 16f * unit - iconRoom);
+        if (toastText != null) {
+            boardText(canvas, toastText, x + width / 2f, y + 28f * unit, textSize, BOARD_DARK, Paint.Align.CENTER, width - 16f * unit);
+        }
+        boardAlpha = keep;
+    }
+
+    private static float lookHash(int seed, int k) {
+        int h = seed * 0x27D4EB2D + k * 0x165667B1;
+        h ^= h >>> 15;
+        h *= 0x85EBCA77;
+        h ^= h >>> 13;
+        h *= 0xC2B2AE3D;
+        h ^= h >>> 16;
+        return (h & 0xFFFFFF) / (float) 0x1000000;
+    }
+
+    private Shop.Item[] lookOf(Leaderboard.Entry entry) {
+        if (entry == null || entry.look == null) return null;
+        if (!(entry.lookCache instanceof Shop.Item[])) entry.lookCache = Shop.look(entry.look);
+        return (Shop.Item[]) entry.lookCache;
+    }
+
+    private static int hueColor(float hue, float saturation, float value) {
+        float h = ((hue % 1f) + 1f) % 1f * 6f;
+        int sector = (int) Math.floor(h);
+        float f = h - sector;
+        float p = value * (1f - saturation);
+        float q = value * (1f - saturation * f);
+        float t = value * (1f - saturation * (1f - f));
+        float r, g, b;
+        switch (sector) {
+            case 0: r = value; g = t; b = p; break;
+            case 1: r = q; g = value; b = p; break;
+            case 2: r = p; g = value; b = t; break;
+            case 3: r = p; g = q; b = value; break;
+            case 4: r = t; g = p; b = value; break;
+            default: r = value; g = p; b = q; break;
+        }
+        return 0xFF000000 | (Math.round(r * 255f) << 16) | (Math.round(g * 255f) << 8) | Math.round(b * 255f);
+    }
+
+    private Shader lookShader(Shop.Item item) {
+        int index = -1;
+        for (int i = 0; i < Shop.ITEMS.length; i++) {
+            if (Shop.ITEMS[i] == item) {
+                index = i;
+                break;
+            }
+        }
+        if (index < 0) return null;
+        if (lookShaders[index] != null) return lookShaders[index];
+        Shader shader;
+        int a = item.color;
+        int b = item.second;
+        if (item.kind == Shop.NAME) {
+            if (item.effect == 1) {
+                shader = new LinearGradient(0f, 0f, 1f, 0f, new int[] {a, a, b, a, a}, new float[] {0f, 0.4f, 0.5f, 0.6f, 1f}, Shader.TileMode.CLAMP);
+            } else if (item.effect == 2) {
+                shader = new LinearGradient(0f, 0f, 1f, 0f, new int[] {a, b, a}, null, Shader.TileMode.REPEAT);
+            } else {
+                int[] colors = new int[7];
+                for (int i = 0; i < 7; i++) colors[i] = hueColor(i / 6f, 0.85f, 0.95f);
+                shader = new LinearGradient(0f, 0f, 1f, 0f, colors, null, Shader.TileMode.REPEAT);
+            }
+        } else if (item.kind == Shop.ROW) {
+            switch (item.effect) {
+                case 1:
+                    shader = new LinearGradient(0f, 0f, 1f, 0f, new int[] {a, mixColor(a, b, 0.5f), b}, null, Shader.TileMode.CLAMP);
+                    break;
+                case 3:
+                    shader = new LinearGradient(0f, 0f, 0f, 1f, new int[] {b, a, mixColor(a, 0xFF8A5A10, 0.35f)}, new float[] {0f, 0.55f, 1f},
+                            Shader.TileMode.CLAMP);
+                    break;
+                case 4:
+                    shader = new LinearGradient(0f, 0f, 1f, 0f, new int[] {a, b, a}, null, Shader.TileMode.CLAMP);
+                    break;
+                case 5:
+                    shader = new LinearGradient(0f, 0f, 1f, 0f, new int[] {a, b, a}, null, Shader.TileMode.REPEAT);
+                    break;
+                default:
+                    shader = new LinearGradient(0f, 0f, 0f, 1f, new int[] {b, a}, null, Shader.TileMode.CLAMP);
+                    break;
+            }
+        } else {
+            return null;
+        }
+        lookShaders[index] = shader;
+        return shader;
+    }
+
+    private void lookText(Canvas canvas, Shop.Item item, String text, float x, float baseline, float size, Paint.Align align, float room, int seed) {
+        if (item == null || item.kind != Shop.NAME) {
+            boardText(canvas, text, x, baseline, size, BOARD_DARK, align, room);
+            return;
+        }
+        outlineText(canvas, text, x, baseline, size, align, room);
+        if (item.effect == 0) {
+            boardText(canvas, text, x, baseline, size, item.color, align, room);
+            return;
+        }
+        Shader shader = lookShader(item);
+        boardTextPaint.setTextSize(size);
+        float width = Math.max(size, boardTextPaint.measureText(text));
+        if (room > 0f) width = Math.min(width, room);
+        float start = align == Paint.Align.CENTER ? x - width / 2f : align == Paint.Align.RIGHT ? x - width : x;
+        float time = boardShine + lookHash(seed, 1) * 7f;
+        lookMatrix.reset();
+        if (item.effect == 1) {
+            float sweep = Math.max(width, 30f * size / 10f) * 1.6f;
+            float travel = (time % 2.6f) / 2.6f;
+            lookMatrix.setScale(sweep, 1f);
+            lookMatrix.postTranslate(start - sweep + (width + sweep * 1.4f) * travel, 0f);
+        } else if (item.effect == 2) {
+            float span = Math.max(size * 3f, width * 0.8f);
+            lookMatrix.setScale(span, 1f);
+            lookMatrix.postTranslate(start - time * span * 0.35f, 0f);
+        } else {
+            float span = Math.max(size * 4f, width * 1.2f);
+            lookMatrix.setScale(span, 1f);
+            lookMatrix.postTranslate(start - time * span * 0.25f, 0f);
+        }
+        shader.setLocalMatrix(lookMatrix);
+        boardTextPaint.setShader(shader);
+        boardText(canvas, text, x, baseline, size, Color.WHITE, align, room);
+        boardTextPaint.setShader(null);
+    }
+
+    private void outlineText(Canvas canvas, String text, float x, float baseline, float size, Paint.Align align, float room) {
+        boardTextPaint.setShader(null);
+        boardTextPaint.setStyle(Paint.Style.STROKE);
+        boardTextPaint.setStrokeWidth(size * 0.13f);
+        boardTextPaint.setStrokeJoin(Paint.Join.ROUND);
+        boardText(canvas, text, x, baseline + size * 0.04f, size, 0xCC543847, align, room);
+        boardTextPaint.setStyle(Paint.Style.FILL);
+        boardTextPaint.setStrokeWidth(0f);
+    }
+
+    private void lookBackground(Canvas canvas, Shop.Item item, float left, float top, float right, float bottom, float unit, int seed) {
+        if (item == null) return;
+        ensureBoardPaints();
+        float radius = unit * 3f;
+        boardShape.set(left, top, right, bottom);
+        lookPaint.setStyle(Paint.Style.FILL);
+        lookPaint.setShader(null);
+        if (item.effect == 2) {
+            lookPaint.setColor(faded(item.second));
+            canvas.drawRoundRect(boardShape, radius, radius, lookPaint);
+            canvas.save();
+            canvas.clipRect(left + radius * 0.6f, top, right - radius * 0.6f, bottom);
+            lookPaint.setColor(faded(scaleAlpha(item.color, 0.75f)));
+            float band = 6f * unit;
+            float shift = (boardShine * 6f * unit) % (band * 2f);
+            for (float x = left - (bottom - top) - band * 2f + shift; x < right; x += band * 2f) {
+                lookPath.reset();
+                lookPath.moveTo(x, bottom);
+                lookPath.lineTo(x + band, bottom);
+                lookPath.lineTo(x + band + (bottom - top), top);
+                lookPath.lineTo(x + (bottom - top), top);
+                lookPath.close();
+                canvas.drawPath(lookPath, lookPaint);
+            }
+            canvas.restore();
+            return;
+        }
+        Shader shader = lookShader(item);
+        lookMatrix.reset();
+        if (item.effect == 5) {
+            float span = (right - left) * 0.7f;
+            lookMatrix.setScale(span, bottom - top);
+            lookMatrix.postTranslate(left - boardShine * span * 0.08f, top);
+        } else {
+            lookMatrix.setScale(right - left, bottom - top);
+            lookMatrix.postTranslate(left, top);
+        }
+        if (shader != null) {
+            shader.setLocalMatrix(lookMatrix);
+            lookPaint.setShader(shader);
+            lookPaint.setColor(Color.WHITE);
+            lookPaint.setAlpha(Math.round(255f * Math.max(0f, Math.min(1f, boardAlpha))));
+        } else {
+            lookPaint.setColor(faded(item.color));
+        }
+        canvas.drawRoundRect(boardShape, radius, radius, lookPaint);
+        lookPaint.setShader(null);
+        if (item.effect == 3) {
+            canvas.save();
+            canvas.clipRect(left + radius * 0.6f, top, right - radius * 0.6f, bottom);
+            float cycle = (boardShine % 3.2f) / 3.2f;
+            float bandX = left - 20f * unit + (right - left + 40f * unit) * cycle;
+            lookPaint.setColor(faded(0x88FFFFFF));
+            lookPath.reset();
+            lookPath.moveTo(bandX, bottom);
+            lookPath.lineTo(bandX + 6f * unit, bottom);
+            lookPath.lineTo(bandX + 6f * unit + (bottom - top), top);
+            lookPath.lineTo(bandX + (bottom - top), top);
+            lookPath.close();
+            canvas.drawPath(lookPath, lookPaint);
+            canvas.restore();
+        } else if (item.effect == 4) {
+            for (int k = 0; k < 9; k++) {
+                float sx = left + 4f * unit + (right - left - 8f * unit) * lookHash(seed, k + 11);
+                float sy = top + 2.5f * unit + (bottom - top - 5f * unit) * lookHash(seed, k + 37);
+                float twinkle = 0.5f + 0.5f * (float) Math.sin(boardShine * (1.6f + lookHash(seed, k) * 2f) + k * 1.7f);
+                lookPaint.setColor(faded(scaleAlpha(0xFFFFFFFF, 0.25f + 0.75f * twinkle)));
+                canvas.drawCircle(sx, sy, (0.45f + 0.45f * twinkle) * unit, lookPaint);
+            }
+        } else if (item.effect == 5) {
+            canvas.save();
+            canvas.clipRect(left + radius * 0.4f, top, right - radius * 0.4f, bottom);
+            for (int k = 0; k < 4; k++) {
+                float phase = (boardShine * (0.12f + 0.05f * lookHash(seed, k)) + lookHash(seed, k + 5)) % 1f;
+                float bx = left + (right - left) * phase;
+                float by = top + (bottom - top) * (0.3f + 0.4f * lookHash(seed, k + 9));
+                lookPaint.setColor(faded(scaleAlpha(0xFFFFB43B, 0.35f)));
+                canvas.drawCircle(bx, by, 3.2f * unit, lookPaint);
+            }
+            canvas.restore();
+        }
+    }
+
+    private void lookGlow(Canvas canvas, Shop.Item item, float left, float top, float right, float bottom, float unit) {
+        if (item == null) return;
+        ensureBoardPaints();
+        float pulse = 0.5f + 0.5f * (float) Math.sin(boardShine * 3.1f);
+        int color = item.effect == 1 ? hueColor(boardShine * 0.25f, 0.8f, 1f) : item.color;
+        lookPaint.setShader(null);
+        lookPaint.setStyle(Paint.Style.STROKE);
+        float[] widths = {3.6f, 2.2f, 1.1f};
+        float[] alphas = {0.18f, 0.32f, 0.85f};
+        for (int i = 0; i < 3; i++) {
+            float w = widths[i] * unit * (0.85f + 0.3f * pulse);
+            lookPaint.setStrokeWidth(w);
+            lookPaint.setColor(faded(scaleAlpha(color, alphas[i] * (0.65f + 0.35f * pulse))));
+            boardShape.set(left + w * 0.5f, top + w * 0.5f, right - w * 0.5f, bottom - w * 0.5f);
+            canvas.drawRoundRect(boardShape, unit * 3f, unit * 3f, lookPaint);
+        }
+        lookPaint.setStyle(Paint.Style.FILL);
+    }
+
+    private void lookMotion(Canvas canvas, Shop.Item item, float left, float top, float right, float bottom, float unit, int seed) {
+        if (item == null) return;
+        ensureBoardPaints();
+        float width = right - left;
+        float height = bottom - top;
+        float time = boardShine + lookHash(seed, 3) * 9f;
+        lookPaint.setShader(null);
+        lookPaint.setStyle(Paint.Style.FILL);
+        switch (item.effect) {
+            case 0: {
+                float cycle = (time % 2.8f) / 2.8f;
+                float bandX = left - 16f * unit + (width + 32f * unit) * cycle;
+                lookPaint.setColor(faded(0x55FFFFFF));
+                lookPath.reset();
+                lookPath.moveTo(bandX, bottom);
+                lookPath.lineTo(bandX + 9f * unit, bottom);
+                lookPath.lineTo(bandX + 9f * unit + height * 0.6f, top);
+                lookPath.lineTo(bandX + height * 0.6f, top);
+                lookPath.close();
+                canvas.drawPath(lookPath, lookPaint);
+                break;
+            }
+            case 1:
+                for (int k = 0; k < 6; k++) {
+                    float speed = 0.7f + lookHash(seed, k + 20);
+                    float life = (time * speed + lookHash(seed, k + 40)) % 1f;
+                    float strength = (float) Math.sin(life * Math.PI);
+                    float sx = left + 3f * unit + (width - 6f * unit) * lookHash(seed, k + 60 + (int) (time * speed + lookHash(seed, k + 40)));
+                    float sy = top + 2.5f * unit + (height - 5f * unit) * lookHash(seed, k + 80 + (int) (time * speed + lookHash(seed, k + 40)));
+                    lookStar(canvas, sx, sy, (1.4f + 1.2f * lookHash(seed, k)) * unit * strength, scaleAlpha(item.color, strength));
+                }
+                break;
+            case 2:
+                lookPaint.setStyle(Paint.Style.STROKE);
+                lookPaint.setStrokeWidth(0.6f * unit);
+                for (int k = 0; k < 7; k++) {
+                    float speed = 0.25f + 0.25f * lookHash(seed, k + 3);
+                    float life = (time * speed + lookHash(seed, k + 13)) % 1f;
+                    float bx = left + width * lookHash(seed, k + 23) + (float) Math.sin(time * 2f + k) * 1.2f * unit;
+                    float by = bottom + 2f * unit - (height + 4f * unit) * life;
+                    lookPaint.setColor(faded(scaleAlpha(item.color, 0.9f * (1f - life * 0.6f))));
+                    canvas.drawCircle(bx, by, (0.9f + 1.3f * lookHash(seed, k + 33)) * unit, lookPaint);
+                }
+                lookPaint.setStyle(Paint.Style.FILL);
+                break;
+            case 3:
+                for (int k = 0; k < 10; k++) {
+                    float speed = 0.22f + 0.2f * lookHash(seed, k + 7);
+                    float life = (time * speed + lookHash(seed, k + 17)) % 1f;
+                    float fx = left + width * lookHash(seed, k + 27) + (float) Math.sin(time * 1.5f + k * 2f) * 2f * unit;
+                    float fy = top - 1f * unit + (height + 2f * unit) * life;
+                    lookPaint.setColor(faded(scaleAlpha(0xFFFFFFFF, 0.9f)));
+                    canvas.drawCircle(fx, fy, (0.5f + 0.6f * lookHash(seed, k + 47)) * unit, lookPaint);
+                }
+                break;
+            case 4:
+                for (int k = 0; k < 4; k++) {
+                    float speed = 0.3f + 0.15f * lookHash(seed, k + 5);
+                    float life = (time * speed + lookHash(seed, k + 15)) % 1f;
+                    float hx = left + 8f * unit + (width - 16f * unit) * lookHash(seed, k + 25);
+                    float hy = bottom - (height + 2f * unit) * life;
+                    float fade = (float) Math.sin(life * Math.PI);
+                    lookHeart(canvas, hx, hy, 1.7f * unit, scaleAlpha(item.color, 0.85f * fade));
+                }
+                break;
+            case 5:
+                for (int k = 0; k < 9; k++) {
+                    float speed = 0.45f + 0.35f * lookHash(seed, k + 2);
+                    float life = (time * speed + lookHash(seed, k + 12)) % 1f;
+                    float ex = left + width * lookHash(seed, k + 22) + (float) Math.sin(time * 3f + k) * 1.4f * unit;
+                    float ey = bottom - height * life;
+                    float flicker = 0.6f + 0.4f * (float) Math.sin(time * 14f + k * 3f);
+                    int color = mixColor(0xFFFFE27A, item.color, life);
+                    lookPaint.setColor(faded(scaleAlpha(color, (1f - life) * flicker)));
+                    canvas.drawCircle(ex, ey, (0.5f + 0.7f * (1f - life)) * unit, lookPaint);
+                }
+                break;
+            default:
+                for (int k = 0; k < 3; k++) {
+                    float speed = 0.12f + 0.06f * lookHash(seed, k + 4);
+                    float life = (time * speed + lookHash(seed, k + 14)) % 1f;
+                    float fx = left - 6f * unit + (width + 12f * unit) * life;
+                    float fy = top + height * (0.25f + 0.5f * lookHash(seed, k + 24)) + (float) Math.sin(time * 2.2f + k * 2f) * 2.5f * unit;
+                    canvas.save();
+                    canvas.rotate((float) Math.sin(time * 1.7f + k) * 35f + 20f, fx, fy);
+                    lookPaint.setColor(faded(scaleAlpha(BOARD_DARK, 0.5f)));
+                    boardShape.set(fx - 3.6f * unit, fy - 1.1f * unit + 0.4f * unit, fx + 3.6f * unit, fy + 1.1f * unit + 0.4f * unit);
+                    canvas.drawRoundRect(boardShape, 1.1f * unit, 1.1f * unit, lookPaint);
+                    lookPaint.setColor(faded(item.color));
+                    boardShape.set(fx - 3.6f * unit, fy - 1.1f * unit, fx + 3.6f * unit, fy + 1.1f * unit);
+                    canvas.drawRoundRect(boardShape, 1.1f * unit, 1.1f * unit, lookPaint);
+                    lookPaint.setColor(faded(scaleAlpha(BOARD_DARK, 0.6f)));
+                    lookPaint.setStyle(Paint.Style.STROKE);
+                    lookPaint.setStrokeWidth(0.4f * unit);
+                    canvas.drawLine(fx - 3.4f * unit, fy, fx + 3.4f * unit, fy, lookPaint);
+                    lookPaint.setStyle(Paint.Style.FILL);
+                    canvas.restore();
+                }
+                break;
+        }
+    }
+
+    private void lookStar(Canvas canvas, float x, float y, float arm, int color) {
+        if (arm <= 0.05f) return;
+        lookPaint.setColor(faded(color));
+        lookPath.reset();
+        lookPath.moveTo(x, y - arm);
+        lookPath.quadTo(x, y, x + arm, y);
+        lookPath.quadTo(x, y, x, y + arm);
+        lookPath.quadTo(x, y, x - arm, y);
+        lookPath.quadTo(x, y, x, y - arm);
+        lookPath.close();
+        canvas.drawPath(lookPath, lookPaint);
+    }
+
+    private void lookHeart(Canvas canvas, float x, float y, float size, int color) {
+        lookPaint.setColor(faded(color));
+        lookPath.reset();
+        lookPath.moveTo(x, y + size * 1.1f);
+        lookPath.quadTo(x - size * 2.1f, y - size * 0.3f, x - size, y - size * 1.2f);
+        lookPath.quadTo(x - size * 0.3f, y - size * 1.6f, x, y - size * 0.6f);
+        lookPath.quadTo(x + size * 0.3f, y - size * 1.6f, x + size, y - size * 1.2f);
+        lookPath.quadTo(x + size * 2.1f, y - size * 0.3f, x, y + size * 1.1f);
+        lookPath.close();
+        canvas.drawPath(lookPath, lookPaint);
+    }
+
+    private void drawBadge(Canvas canvas, int kind, float x, float y, float unit) {
+        ensureBoardPaints();
+        lookPaint.setShader(null);
+        lookPaint.setStyle(Paint.Style.FILL);
+        switch (kind) {
+            case 0: {
+                lookPath.reset();
+                for (int i = 0; i < 10; i++) {
+                    double angle = -Math.PI / 2 + i * Math.PI / 5;
+                    float r = (i % 2 == 0 ? 4.6f : 2f) * unit;
+                    float px = x + (float) Math.cos(angle) * r;
+                    float py = y + 0.4f * unit + (float) Math.sin(angle) * r;
+                    if (i == 0) lookPath.moveTo(px, py);
+                    else lookPath.lineTo(px, py);
+                }
+                lookPath.close();
+                lookPaint.setColor(faded(BOARD_DARK));
+                canvas.save();
+                canvas.translate(0f, 0.7f * unit);
+                canvas.drawPath(lookPath, lookPaint);
+                canvas.restore();
+                lookPaint.setColor(faded(0xFFFFC93C));
+                canvas.drawPath(lookPath, lookPaint);
+                break;
+            }
+            case 1:
+                lookHeart(canvas, x, y + 0.6f * unit, 2.5f * unit, BOARD_DARK);
+                lookHeart(canvas, x, y, 2.5f * unit, 0xFFFF4F7B);
+                lookPaint.setColor(faded(0x88FFFFFF));
+                canvas.drawCircle(x - 1.6f * unit, y - 1.3f * unit, 0.8f * unit, lookPaint);
+                break;
+            case 2: {
+                float keep = boardAlpha;
+                drawCoin(canvas, x, y, 4.4f * unit);
+                boardAlpha = keep;
+                break;
+            }
+            case 3:
+                lookPath.reset();
+                lookPath.moveTo(x + 1.2f * unit, y - 5f * unit);
+                lookPath.lineTo(x - 3.2f * unit, y + 0.8f * unit);
+                lookPath.lineTo(x - 0.2f * unit, y + 0.8f * unit);
+                lookPath.lineTo(x - 1.4f * unit, y + 5f * unit);
+                lookPath.lineTo(x + 3.4f * unit, y - 1.2f * unit);
+                lookPath.lineTo(x + 0.4f * unit, y - 1.2f * unit);
+                lookPath.close();
+                lookPaint.setColor(faded(BOARD_DARK));
+                canvas.save();
+                canvas.translate(0.5f * unit, 0.7f * unit);
+                canvas.drawPath(lookPath, lookPaint);
+                canvas.restore();
+                lookPaint.setColor(faded(0xFFFFE04A));
+                canvas.drawPath(lookPath, lookPaint);
+                break;
+            case 4: {
+                float flick = 0.92f + 0.08f * (float) Math.sin(boardShine * 9f + x);
+                lookPath.reset();
+                lookPath.moveTo(x, y - 5f * unit * flick);
+                lookPath.quadTo(x + 5.4f * unit, y + 0.6f * unit, x, y + 4.4f * unit);
+                lookPath.quadTo(x - 5.4f * unit, y + 0.6f * unit, x, y - 5f * unit * flick);
+                lookPath.close();
+                lookPaint.setColor(faded(0xFFE0401F));
+                canvas.drawPath(lookPath, lookPaint);
+                lookPath.reset();
+                lookPath.moveTo(x, y - 1.6f * unit * flick);
+                lookPath.quadTo(x + 2.8f * unit, y + 1.8f * unit, x, y + 4f * unit);
+                lookPath.quadTo(x - 2.8f * unit, y + 1.8f * unit, x, y - 1.6f * unit * flick);
+                lookPath.close();
+                lookPaint.setColor(faded(0xFFFFD45C));
+                canvas.drawPath(lookPath, lookPaint);
+                break;
+            }
+            case 5: {
+                Bitmap bird = birdBitmaps != null && birdBitmaps.length > 1 ? birdBitmaps[(int) (boardShine * 8f) % birdBitmaps.length] : null;
+                if (bird != null) {
+                    lookPaint.setAlpha(Math.round(255f * Math.max(0f, Math.min(1f, boardAlpha))));
+                    lookPaint.setFilterBitmap(false);
+                    float w = 11f * unit;
+                    float h = w * bird.getHeight() / Math.max(1f, bird.getWidth());
+                    boardShape.set(x - w / 2f, y - h / 2f, x + w / 2f, y + h / 2f);
+                    canvas.drawBitmap(bird, null, boardShape, lookPaint);
+                    lookPaint.setFilterBitmap(true);
+                    lookPaint.setAlpha(255);
+                }
+                break;
+            }
+            case 6:
+                lookPath.reset();
+                lookPath.moveTo(x - 4.6f * unit, y + 3.4f * unit);
+                lookPath.lineTo(x - 4.8f * unit, y - 3f * unit);
+                lookPath.lineTo(x - 2.2f * unit, y - 0.4f * unit);
+                lookPath.lineTo(x, y - 4.4f * unit);
+                lookPath.lineTo(x + 2.2f * unit, y - 0.4f * unit);
+                lookPath.lineTo(x + 4.8f * unit, y - 3f * unit);
+                lookPath.lineTo(x + 4.6f * unit, y + 3.4f * unit);
+                lookPath.close();
+                lookPaint.setColor(faded(BOARD_DARK));
+                canvas.save();
+                canvas.translate(0f, 0.8f * unit);
+                canvas.drawPath(lookPath, lookPaint);
+                canvas.restore();
+                lookPaint.setColor(faded(0xFFFFC93C));
+                canvas.drawPath(lookPath, lookPaint);
+                lookPaint.setColor(faded(0xFFE0533D));
+                canvas.drawCircle(x, y + 1.4f * unit, 0.95f * unit, lookPaint);
+                lookPaint.setColor(faded(0xFF3FA9F5));
+                canvas.drawCircle(x - 2.6f * unit, y + 1.8f * unit, 0.7f * unit, lookPaint);
+                canvas.drawCircle(x + 2.6f * unit, y + 1.8f * unit, 0.7f * unit, lookPaint);
+                break;
+            default:
+                lookPath.reset();
+                lookPath.moveTo(x, y - 4.6f * unit);
+                lookPath.lineTo(x + 4.4f * unit, y - 1f * unit);
+                lookPath.lineTo(x, y + 4.8f * unit);
+                lookPath.lineTo(x - 4.4f * unit, y - 1f * unit);
+                lookPath.close();
+                lookPaint.setColor(faded(BOARD_DARK));
+                canvas.save();
+                canvas.translate(0f, 0.7f * unit);
+                canvas.drawPath(lookPath, lookPaint);
+                canvas.restore();
+                lookPaint.setColor(faded(0xFF7FE3FF));
+                canvas.drawPath(lookPath, lookPaint);
+                lookPaint.setColor(faded(0xFFD8F8FF));
+                lookPath.reset();
+                lookPath.moveTo(x, y - 4.6f * unit);
+                lookPath.lineTo(x + 1.6f * unit, y - 1f * unit);
+                lookPath.lineTo(x, y + 4.8f * unit);
+                lookPath.lineTo(x - 1.6f * unit, y - 1f * unit);
+                lookPath.close();
+                canvas.drawPath(lookPath, lookPaint);
+                float glint = 0.5f + 0.5f * (float) Math.sin(boardShine * 2.4f);
+                lookStar(canvas, x + 2.6f * unit, y - 3.4f * unit, 1.6f * unit * glint, scaleAlpha(0xFFFFFFFF, glint));
+                break;
+        }
+    }
+
     private void startRoundChecks() {
         roundFairMode = currentFairMode;
+        roundChallenge = false;
         if (filmMode) {
             startReplay();
             return;
         }
+        roundChallenge = challengeRoundPossible();
         roundTampered = false;
         roundPipes = 0;
         pipesCheck = scoreKey;
@@ -3095,7 +5054,8 @@ class GameView extends View implements Choreographer.FrameCallback {
         boardStatusText = null;
         trackPause();
         startReplay();
-        if (roundFairMode != FAIR_NONE && settingBoardAutoPost) Leaderboard.startSession(getContext(), replaySeed);
+        if (roundChallenge) Leaderboard.startSession(getContext(), replaySeed, true);
+        else if (roundFairMode != FAIR_NONE && settingBoardAutoPost) Leaderboard.startSession(getContext(), replaySeed);
     }
 
     static Map<String, Object> replayPrefs(Map<String, ?> all) {
@@ -3152,7 +5112,7 @@ class GameView extends View implements Choreographer.FrameCallback {
         random.setSeed(roundRandomSeed);
         fxRandom.setSeed(roundRandomSeed ^ 0x2545F4914F6CDD1DL);
         if (filmMode) return;
-        boolean forBoard = roundFairMode != FAIR_NONE && settingBoardAutoPost && Leaderboard.configured();
+        boolean forBoard = (roundFairMode != FAIR_NONE && settingBoardAutoPost && Leaderboard.configured()) || roundChallenge;
         if (!forBoard && !settingReplayEnabled) return;
         try {
             headerBytes.reset();
@@ -3195,7 +5155,7 @@ class GameView extends View implements Choreographer.FrameCallback {
                 out.writeBoolean(pipe.isScored);
                 out.writeBoolean(pipe.isGolden);
             }
-            Map<String, Object> current = replayPrefs(prefs.getAll());
+            Map<String, Object> current = replayPrefs(playPrefs());
             if (packedPrefsBytes == null || !current.equals(packedPrefs)) {
                 FastBytes packed = new FastBytes(2048);
                 DataOutputStream packer = new DataOutputStream(packed);
@@ -3391,7 +5351,7 @@ class GameView extends View implements Choreographer.FrameCallback {
 
     private void saveFilm() {
         if (!filmRecording || !replayLive || replayHeader == null || replayEvents == null || replayCount == 0 || filmExtras == null) return;
-        if (replayPrefs == null || !replayPrefs.equals(replayPrefs(prefs.getAll()))) return;
+        if (replayPrefs == null || !replayPrefs.equals(replayPrefs(playPrefs()))) return;
         final byte[] header = replayHeader;
         final byte[] extras = filmExtras;
         final int count = replayCount;
@@ -3680,7 +5640,7 @@ class GameView extends View implements Choreographer.FrameCallback {
     }
 
     static final class BoardMemory {
-        static final int MAGIC = 0x46425345;
+        static final int MAGIC = 0x46425346;
         static final int MAX_ROWS = 1000;
         final Object[] lists = new Object[4];
         final Leaderboard.Entry[] mine = new Leaderboard.Entry[4];
@@ -3786,6 +5746,12 @@ class GameView extends View implements Choreographer.FrameCallback {
             out.writeByte((entry.classic ? 1 : 0) | (entry.verified ? 2 : 0));
             out.writeLong(entry.time);
             out.writeUTF(clip(entry.version));
+            StringBuilder look = new StringBuilder();
+            for (int i = 0; entry.look != null && i < entry.look.length && i < 5; i++) {
+                if (i > 0) look.append(',');
+                if (entry.look[i] != null) look.append(entry.look[i]);
+            }
+            out.writeUTF(clip(look.toString()));
         }
 
         private static Leaderboard.Entry readEntry(DataInputStream in) throws IOException {
@@ -3798,6 +5764,19 @@ class GameView extends View implements Choreographer.FrameCallback {
             entry.verified = (flags & 2) != 0;
             entry.time = in.readLong();
             entry.version = in.readUTF();
+            String look = in.readUTF();
+            if (!look.isEmpty()) {
+                String[] ids = (look + ",,,,,").split(",", -1);
+                String[] kept = new String[5];
+                boolean any = false;
+                for (int i = 0; i < 5; i++) {
+                    if (Shop.validId(ids[i]) && ids[i].charAt(0) == Shop.KINDS.charAt(i)) {
+                        kept[i] = ids[i];
+                        any = true;
+                    }
+                }
+                if (any) entry.look = kept;
+            }
             return entry;
         }
     }
@@ -4450,7 +6429,7 @@ class GameView extends View implements Choreographer.FrameCallback {
 
     private Leaderboard.Replay takeReplay() {
         boolean usable = replayLive && replayForBoard && replayHeader != null && replayEvents != null && replayCount > 0
-                && replayPrefs != null && replayPrefs.equals(replayPrefs(prefs.getAll()));
+                && replayPrefs != null && replayPrefs.equals(replayPrefs(playPrefs()));
         Leaderboard.Replay replay = usable ? new Leaderboard.Replay(replayHeader, replayEvents, replayCount, replaySeed, REPLAY_RULES, replayMarks) : null;
         replayLive = false;
         replayHeader = null;
@@ -4488,8 +6467,7 @@ class GameView extends View implements Choreographer.FrameCallback {
         return null;
     }
 
-    private String judgeRound(String assists) {
-        Leaderboard.Replay replay = takeReplay();
+    private String judgeRound(String assists, Leaderboard.Replay replay) {
         if (!Leaderboard.configured()) return "leaderboard not set up";
         checkSeals();
         String reason = null;
@@ -4519,6 +6497,7 @@ class GameView extends View implements Choreographer.FrameCallback {
                 SettingsActivity.ActivityLog.add(getContext(), "BOARD", "Round of " + score + " rejected for the leaderboard: " + reason);
             }
             boardStatusText = !settingBoardAutoPost ? "Posting is off" : "Not posted: " + reason;
+            if (challengeTwist > Challenges.ANY && roundFairMode == FAIR_NONE) boardStatusText = Challenges.TWIST_NAMES[challengeTwist] + " challenge round";
             return "not eligible for the leaderboard (" + reason + ")";
         }
         int whole = (int) Math.ceil(seconds);
@@ -4779,6 +6758,10 @@ class GameView extends View implements Choreographer.FrameCallback {
     }
 
     boolean closeBoardIfOpen() {
+        if (coinOpen) {
+            closeCoins();
+            return true;
+        }
         if (!boardOpen) return false;
         closeBoard();
         return true;
@@ -4798,6 +6781,8 @@ class GameView extends View implements Choreographer.FrameCallback {
         boardRetrySec = 0f;
         boardVerifyPoll = 0f;
         boardTab = settingBoardTab;
+        boardSwitchAge = BOARD_SWITCH_SEC;
+        boardPillFrom = -1f;
         boardShowAll = Boolean.TRUE.equals(prefs.getAll().get(BOARD_SHOW_ALL_KEY));
         boardOpen = true;
         boardClosing = false;
@@ -4888,6 +6873,7 @@ class GameView extends View implements Choreographer.FrameCallback {
             if (boardOpen) refreshBoard();
         }
         if (boardBubbleAge < BUBBLE_HOLD_SEC + BUBBLE_FADE_SEC) boardBubbleAge += step;
+        if (boardSwitchAge < BOARD_SWITCH_SEC) boardSwitchAge += step;
         if (boardOpen || nameOverlayOpen || dimSpring[0] > 0f) layoutBoard();
         if (!boardOpen) return;
         if (!boardDragging) {
@@ -5374,19 +7360,12 @@ class GameView extends View implements Choreographer.FrameCallback {
                 else if (pressed == boardJoinRect) askBoardName();
                 else if (pressed == boardYouRect) scrollBoardToMine();
                 else if (pressed == boardToggleRect) {
-                    boardShowAll = !boardShowAll;
-                    resetBoardScroll();
-                    hideBoardBubble();
+                    switchBoard(boardTab, !boardShowAll);
                     prefs.edit().putBoolean(BOARD_SHOW_ALL_KEY, boardShowAll).apply();
-                    showBoardView(false);
                 } else {
                     int tab = pressed == boardTabAllRect ? 0 : 1;
-                    if (tab != boardTab) {
-                        resetBoardScroll();
-                        hideBoardBubble();
-                    }
-                    boardTab = tab;
-                    showBoardView(false);
+                    if (tab != boardTab) switchBoard(tab, boardShowAll);
+                    else showBoardView(false);
                 }
             }
         } else if (action == MotionEvent.ACTION_CANCEL) {
@@ -5503,19 +7482,6 @@ class GameView extends View implements Choreographer.FrameCallback {
                 Paint.Align.CENTER, rect.width() - unit * 8f);
     }
 
-    private void boardTab(Canvas canvas, Rect rect, String label, boolean selected, float unit) {
-        boardShape.set(rect);
-        boardPaint.setColor(faded(selected ? BOARD_ORANGE : BOARD_TAB_IDLE));
-        canvas.drawRoundRect(boardShape, unit * 3f, unit * 3f, boardPaint);
-        if (selected) {
-            boardPaint.setColor(faded(BOARD_DARK));
-            boardShape.set(rect.left + unit * 2f, rect.bottom - unit * 1.5f, rect.right - unit * 2f, rect.bottom);
-            canvas.drawRect(boardShape, boardPaint);
-        }
-        boardText(canvas, label, rect.exactCenterX(), rect.exactCenterY() + unit * 3f, unit * 8.5f,
-                selected ? Color.WHITE : BOARD_DARK, Paint.Align.CENTER, rect.width() - unit * 6f);
-    }
-
     private void boardRow(Canvas canvas, Leaderboard.Entry entry, String rank, float left, float width, float rowTop, float unit, boolean mine) {
         float rowHeight = BOARD_ROW_HEIGHT * unit;
         float baseline = rowTop + 13.5f * unit;
@@ -5527,6 +7493,15 @@ class GameView extends View implements Choreographer.FrameCallback {
             boardPaint.setColor(faded(mixColor(BOARD_PANEL, BOARD_PANEL_EDGE, Math.min(1f, boardRowLift * 1.2f))));
             boardShape.set(left + 6f * unit, rowTop + 0.5f * unit, left + width - 9f * unit, rowTop + rowHeight - 0.5f * unit);
             canvas.drawRoundRect(boardShape, unit * 3f, unit * 3f, boardPaint);
+        }
+        Shop.Item[] look = lookOf(entry);
+        int lookSeed = entry.uid == null ? 0 : entry.uid.hashCode();
+        float lookLeft = left + 6f * unit;
+        float lookRight = left + width - 9f * unit;
+        boolean dark = look != null && look[Shop.ROW] != null && look[Shop.ROW].dark();
+        if (look != null) {
+            lookBackground(canvas, look[Shop.ROW], lookLeft, rowTop + 0.5f * unit, lookRight, rowTop + rowHeight - 0.5f * unit, unit, lookSeed);
+            lookGlow(canvas, look[Shop.GLOW], lookLeft, rowTop + 0.5f * unit, lookRight, rowTop + rowHeight - 0.5f * unit, unit);
         }
         if (boardRowGlow > 0f) {
             boardPaint.setColor(faded(scaleAlpha(0x66FFD45C, boardRowGlow)));
@@ -5550,7 +7525,8 @@ class GameView extends View implements Choreographer.FrameCallback {
         float scoreRight = left + width - 13f * unit;
         boardTextPaint.setTextSize(11f * unit);
         float scoreWidth = boardTextPaint.measureText(score);
-        int scoreColor = boardRowHot > 0f ? mixColor(BOARD_DARK, BOARD_ORANGE, boardRowHot) : BOARD_DARK;
+        int plainText = dark ? Color.WHITE : BOARD_DARK;
+        int scoreColor = boardRowHot > 0f ? mixColor(plainText, BOARD_ORANGE, boardRowHot) : plainText;
         if (boardRowPop > 0f) {
             float grow = 1f + 0.3f * boardRowPop;
             canvas.save();
@@ -5567,10 +7543,17 @@ class GameView extends View implements Choreographer.FrameCallback {
         }
         float nameLeft = left + 37f * unit;
         float nameRoom = width - 37f * unit - 13f * unit - scoreWidth - badgeRoom - 6f * unit - (entry.classic ? 40f * unit : 0f);
-        if (medal == 1) {
+        if (look != null && look[Shop.BADGE] != null) {
+            drawBadge(canvas, look[Shop.BADGE].effect, nameLeft + 4.5f * unit, rowTop + 9.3f * unit, unit * 0.92f);
+            nameLeft += 11f * unit;
+            nameRoom -= 11f * unit;
+        }
+        if (look != null && look[Shop.NAME] != null) {
+            lookText(canvas, look[Shop.NAME], entry.name, nameLeft, baseline, 10f * unit, Paint.Align.LEFT, nameRoom, lookSeed);
+        } else if (medal == 1) {
             championName(canvas, entry.name, nameLeft, baseline, unit, nameRoom);
         } else {
-            boardText(canvas, entry.name, nameLeft, baseline, 10f * unit, BOARD_DARK, Paint.Align.LEFT, nameRoom);
+            boardText(canvas, entry.name, nameLeft, baseline, 10f * unit, plainText, Paint.Align.LEFT, nameRoom);
         }
         if (entry.classic) {
             float nameWidth = Math.min(nameRoom, boardTextPaint.measureText(entry.name));
@@ -5579,6 +7562,12 @@ class GameView extends View implements Choreographer.FrameCallback {
             boardShape.set(tagLeft, rowTop + 4.5f * unit, tagLeft + 36f * unit, rowTop + 14.5f * unit);
             canvas.drawRoundRect(boardShape, unit * 2f, unit * 2f, boardPaint);
             boardText(canvas, "CLASSIC", tagLeft + 18f * unit, rowTop + 12f * unit, 6.5f * unit, Color.WHITE, Paint.Align.CENTER, 32f * unit);
+        }
+        if (look != null && look[Shop.MOTION] != null) {
+            canvas.save();
+            canvas.clipRect(lookLeft, rowTop + 0.5f * unit, lookRight, rowTop + rowHeight - 0.5f * unit);
+            lookMotion(canvas, look[Shop.MOTION], lookLeft, rowTop + 0.5f * unit, lookRight, rowTop + rowHeight - 0.5f * unit, unit, lookSeed);
+            canvas.restore();
         }
         if (boardRowGainAge >= 0f && boardRowGain > 0) {
             float t = boardRowGainAge;
@@ -5892,7 +7881,7 @@ class GameView extends View implements Choreographer.FrameCallback {
         }
         boolean still = boardAnim >= 1f && !boardClosing;
         boolean reshaped = nameSpring[0] > 0f && (!nameSide || sideFit < 1f);
-        boolean idle = !boardLoading && currentBoardMotion() == null;
+        boolean idle = !boardLoading && currentBoardMotion() == null && boardSwitchAge >= BOARD_SWITCH_SEC;
         if (still && reshaped && idle && drawBoardCached(canvas, fade)) return;
         boardCached = false;
         canvas.save();
@@ -5983,37 +7972,12 @@ class GameView extends View implements Choreographer.FrameCallback {
         return true;
     }
 
-    private void drawBoardContent(Canvas canvas, float left, float top, float unit) {
+    private void drawBoardBody(Canvas canvas, float left, float width, float rowsTop, float unit) {
         float rowHeight = BOARD_ROW_HEIGHT * unit;
-        float width = BOARD_WIDTH_UNITS * unit;
-        float height = BOARD_HEIGHT_UNITS * unit;
-
-        boardShape.set(left, top, left + width, top + height);
-        boardPaint.setColor(faded(BOARD_DARK));
-        canvas.drawRoundRect(boardShape, unit * 5f, unit * 5f, boardPaint);
-        boardShape.inset(unit * 2f, unit * 2f);
-        boardPaint.setColor(faded(BOARD_PANEL_EDGE));
-        canvas.drawRoundRect(boardShape, unit * 4f, unit * 4f, boardPaint);
-        boardShape.inset(unit * 1.5f, unit * 1.5f);
-        boardPaint.setColor(faded(BOARD_PANEL));
-        canvas.drawRoundRect(boardShape, unit * 3f, unit * 3f, boardPaint);
-
-        boardText(canvas, "LEADERBOARD", left + width / 2f, top + 24f * unit, 15f * unit, BOARD_ORANGE, Paint.Align.CENTER, width - 24f * unit);
-
-        float tabTop = top + 32f * unit;
-        float tabWidth = 96f * unit;
-        float tabGap = 6f * unit;
-        float tabsLeft = left + (width - tabWidth * 2f - tabGap) / 2f;
-        boardTabAllRect.set((int) tabsLeft, (int) tabTop, (int) (tabsLeft + tabWidth), (int) (tabTop + 18f * unit));
-        boardTabWeekRect.set((int) (tabsLeft + tabWidth + tabGap), (int) tabTop, (int) (tabsLeft + tabWidth * 2f + tabGap), (int) (tabTop + 18f * unit));
-        boardTab(canvas, boardTabAllRect, "ALL TIME", boardTab == 0, unit);
-        boardTab(canvas, boardTabWeekRect, "WEEKLY", boardTab == 1, unit);
-
         String own = Leaderboard.uid(prefs);
         List<Leaderboard.Entry> entries = boardEntries();
         Leaderboard.Entry mine = boardMine();
         int rank = boardRank();
-        float rowsTop = tabTop + 24f * unit;
         float rowsHeight = BOARD_ROWS * rowHeight;
         int count = entries.size();
         if (entries != boardIndexed) {
@@ -6108,6 +8072,136 @@ class GameView extends View implements Choreographer.FrameCallback {
         }
 
         drawBoardBubble(canvas, left, width, rowsTop, rowsHeight, youTop, unit);
+    }
+
+    private boolean boardSwitching() {
+        return boardSwitchAge < BOARD_SWITCH_SEC && (boardSwitchFromTab != boardTab || boardSwitchFromAll != boardShowAll);
+    }
+
+    private void drawBoardSwitch(Canvas canvas, float left, float width, float rowsTop, float unit) {
+        float t = Math.max(0f, Math.min(1f, boardSwitchAge / BOARD_SWITCH_SEC));
+        float x = 1f - t;
+        float eased = 1f - x * x * x;
+        float baseAlpha = boardAlpha;
+        int tab = boardTab;
+        boolean showAll = boardShowAll;
+        float scroll = boardScroll;
+        float shift = (boardSwitchDir == 0 ? 0f : 34f * unit) * boardSwitchDir;
+        float rise = boardSwitchDir == 0 ? 8f * unit : 0f;
+        float bottom = rowsTop + (BOARD_ROWS + 1) * BOARD_ROW_HEIGHT * unit + 3f * unit;
+        canvas.save();
+        canvas.clipRect(left + 3.5f * unit, rowsTop - unit, left + width - 3.5f * unit, bottom);
+        boardTab = boardSwitchFromTab;
+        boardShowAll = boardSwitchFromAll;
+        boardScroll = boardSwitchScroll;
+        boardAlpha = baseAlpha * Math.max(0f, 1f - eased * 1.35f);
+        if (boardAlpha > 0.003f) {
+            canvas.save();
+            canvas.translate(-shift * eased, -rise * eased);
+            drawBoardBody(canvas, left, width, rowsTop, unit);
+            canvas.restore();
+        }
+        boardTab = tab;
+        boardShowAll = showAll;
+        boardScroll = scroll;
+        boardAlpha = baseAlpha * Math.max(0f, Math.min(1f, (eased - 0.12f) / 0.88f));
+        canvas.save();
+        canvas.translate(shift * (1f - eased), rise * (1f - eased));
+        drawBoardBody(canvas, left, width, rowsTop, unit);
+        canvas.restore();
+        boardAlpha = baseAlpha;
+        canvas.restore();
+    }
+
+    private void switchBoard(int tab, boolean showAll) {
+        if (tab == boardTab && showAll == boardShowAll) return;
+        boardPillFrom = boardPillPosition();
+        boardPillTo = pillSpot(tab);
+        boardSwitchFromTab = boardTab;
+        boardSwitchFromAll = boardShowAll;
+        boardSwitchScroll = boardScroll;
+        boardSwitchDir = tab == boardTab ? 0 : pillSpot(tab) > pillSpot(boardTab) ? 1 : -1;
+        boardSwitchAge = 0f;
+        boardTab = tab;
+        boardShowAll = showAll;
+        resetBoardScroll();
+        hideBoardBubble();
+        feel(Feel.TICK);
+        showBoardView(false);
+    }
+
+    private static float pillSpot(int tab) {
+        return tab == 1 ? 0f : 1f;
+    }
+
+    private float boardPillPosition() {
+        if (boardSwitchAge >= BOARD_SWITCH_SEC || boardPillFrom < 0f) return pillSpot(boardTab);
+        float t = Math.max(0f, Math.min(1f, boardSwitchAge / BOARD_PILL_SEC));
+        float back = 1.2f;
+        float x = t - 1f;
+        float eased = 1f + (back + 1f) * x * x * x + back * x * x;
+        return boardPillFrom + (boardPillTo - boardPillFrom) * eased;
+    }
+
+    private void drawBoardTabs(Canvas canvas, float unit) {
+        for (Rect rect : new Rect[] {boardTabWeekRect, boardTabAllRect}) {
+            boardShape.set(rect);
+            boardPaint.setColor(faded(BOARD_TAB_IDLE));
+            canvas.drawRoundRect(boardShape, unit * 3f, unit * 3f, boardPaint);
+        }
+        float pos = boardPillPosition();
+        float moving = boardSwitchAge < BOARD_PILL_SEC ? (float) Math.sin(Math.PI * Math.max(0f, Math.min(1f, boardSwitchAge / BOARD_PILL_SEC))) : 0f;
+        float pillLeft = boardTabWeekRect.left + (boardTabAllRect.left - boardTabWeekRect.left) * pos;
+        float pillRight = boardTabWeekRect.right + (boardTabAllRect.right - boardTabWeekRect.right) * pos;
+        float stretch = moving * 5f * unit;
+        float squash = moving * 0.8f * unit;
+        boardShape.set(pillLeft - stretch, boardTabWeekRect.top + squash, pillRight + stretch, boardTabWeekRect.bottom - squash);
+        boardPaint.setColor(faded(BOARD_ORANGE));
+        canvas.drawRoundRect(boardShape, unit * 3f, unit * 3f, boardPaint);
+        boardPaint.setColor(faded(BOARD_DARK));
+        boardShape.set(pillLeft - stretch + unit * 2f, boardTabWeekRect.bottom - squash - unit * 1.5f, pillRight + stretch - unit * 2f, boardTabWeekRect.bottom - squash);
+        canvas.drawRect(boardShape, boardPaint);
+        drawTabLabel(canvas, boardTabWeekRect, "WEEKLY", pillLeft - stretch, pillRight + stretch, unit);
+        drawTabLabel(canvas, boardTabAllRect, "ALL TIME", pillLeft - stretch, pillRight + stretch, unit);
+    }
+
+    private void drawTabLabel(Canvas canvas, Rect rect, String label, float pillLeft, float pillRight, float unit) {
+        float covered = Math.max(0f, Math.min(pillRight, rect.right) - Math.max(pillLeft, rect.left)) / Math.max(1f, rect.width());
+        boardText(canvas, label, rect.exactCenterX(), rect.exactCenterY() + unit * 3f, unit * 8.5f,
+                mixColor(BOARD_DARK, Color.WHITE, Math.max(0f, Math.min(1f, covered))), Paint.Align.CENTER, rect.width() - unit * 6f);
+    }
+
+    private void drawBoardContent(Canvas canvas, float left, float top, float unit) {
+        float rowHeight = BOARD_ROW_HEIGHT * unit;
+        float width = BOARD_WIDTH_UNITS * unit;
+        float height = BOARD_HEIGHT_UNITS * unit;
+
+        boardShape.set(left, top, left + width, top + height);
+        boardPaint.setColor(faded(BOARD_DARK));
+        canvas.drawRoundRect(boardShape, unit * 5f, unit * 5f, boardPaint);
+        boardShape.inset(unit * 2f, unit * 2f);
+        boardPaint.setColor(faded(BOARD_PANEL_EDGE));
+        canvas.drawRoundRect(boardShape, unit * 4f, unit * 4f, boardPaint);
+        boardShape.inset(unit * 1.5f, unit * 1.5f);
+        boardPaint.setColor(faded(BOARD_PANEL));
+        canvas.drawRoundRect(boardShape, unit * 3f, unit * 3f, boardPaint);
+
+        boardText(canvas, "LEADERBOARD", left + width / 2f, top + 24f * unit, 15f * unit, BOARD_ORANGE, Paint.Align.CENTER, width - 24f * unit);
+
+        float tabTop = top + 32f * unit;
+        float tabWidth = 96f * unit;
+        float tabGap = 6f * unit;
+        float tabsLeft = left + (width - tabWidth * 2f - tabGap) / 2f;
+        boardTabWeekRect.set((int) tabsLeft, (int) tabTop, (int) (tabsLeft + tabWidth), (int) (tabTop + 18f * unit));
+        boardTabAllRect.set((int) (tabsLeft + tabWidth + tabGap), (int) tabTop, (int) (tabsLeft + tabWidth * 2f + tabGap), (int) (tabTop + 18f * unit));
+        drawBoardTabs(canvas, unit);
+
+        float rowsTop = tabTop + 24f * unit;
+        float rowsHeight = BOARD_ROWS * rowHeight;
+        if (boardSwitching()) drawBoardSwitch(canvas, left, width, rowsTop, unit);
+        else drawBoardBody(canvas, left, width, rowsTop, unit);
+        float youTop = rowsTop + rowsHeight;
+        int count = boardEntries().size();
         float footerTop = youTop + rowHeight;
         boolean offline = boardOffline;
         if (offline && count == 0) {
@@ -6296,6 +8390,8 @@ class GameView extends View implements Choreographer.FrameCallback {
         if (boardStatusAlpha > 0f && boardStatusPlace()) drawBoardStatus(canvas);
         if (boardOpen) drawBoard(canvas);
         if (!boardOpen && (nameOverlayOpen || dimSpring[0] > 0f)) drawNameBackdrop(canvas);
+        if (coinOpen) drawCoins(canvas);
+        if (!filmMode) drawToast(canvas);
 
         if (transitionAlpha > 0) {
             transitionPaint.setAlpha((int) transitionAlpha);
@@ -6637,6 +8733,7 @@ class GameView extends View implements Choreographer.FrameCallback {
                 break;
             case WAITING:
                 drawGetReady(canvas, 255);
+                if (!filmMode) drawTwistChip(canvas, false);
                 break;
             case PLAYING:
                 int scoreCenterY = systemBarTop + (int) (getPlayableHeight() * 0.15);
@@ -6651,7 +8748,11 @@ class GameView extends View implements Choreographer.FrameCallback {
                 if (darkenPaint.getAlpha() > 0) {
                     canvas.drawRect(0, 0, screenWidth, screenHeight, darkenPaint);
                 }
-                if (gameState == GameState.PANEL_SLIDING) drawGameOverScreen(canvas);
+                if (gameState == GameState.PANEL_SLIDING) {
+                    drawGameOverScreen(canvas);
+                    if (!filmMode && gameOverElementsY == gameOverElementsTargetY) drawTwistChip(canvas, true);
+                    else twistChipRect.setEmpty();
+                }
                 break;
         }
     }
@@ -6761,6 +8862,13 @@ class GameView extends View implements Choreographer.FrameCallback {
         if (settingsButtonBitmap != null) {
             layoutSettingsButton();
             if (!settingHideSettingsIcon) drawSettingsGear(canvas, 255, 1f);
+        }
+        if (!filmMode && !boardOpen && !nameOverlayOpen) {
+            drawCoinButton(canvas);
+            drawTwistChip(canvas, true);
+        } else {
+            coinButtonRect.setEmpty();
+            twistChipRect.setEmpty();
         }
 
         float originalPlayWidth = playButtonBitmap.getWidth();
@@ -7027,6 +9135,11 @@ class GameView extends View implements Choreographer.FrameCallback {
 
     @Override
     public boolean onGenericMotionEvent(MotionEvent event) {
+        if (coinOpen && event.getActionMasked() == MotionEvent.ACTION_SCROLL) {
+            float amount = event.getAxisValue(MotionEvent.AXIS_VSCROLL);
+            if (amount != 0f) scrollCoins(-amount * 1.5f);
+            return true;
+        }
         if (boardOpen && !nameOverlayOpen && event.getActionMasked() == MotionEvent.ACTION_SCROLL) {
             float amount = event.getAxisValue(MotionEvent.AXIS_VSCROLL);
             if (amount != 0f && scrollBoard(-amount * 3f)) return true;
@@ -7044,6 +9157,7 @@ class GameView extends View implements Choreographer.FrameCallback {
         int action = event.getActionMasked();
         if (event.getToolType(0) == MotionEvent.TOOL_TYPE_MOUSE) hasMouse = true;
         if (nameOverlayOpen) return true;
+        if (coinOpen) return onCoinsTouch(action, touchX, touchY);
         if (boardOpen) return onBoardTouch(action, touchX, touchY);
         if (action == MotionEvent.ACTION_DOWN && isSecondaryClick(event)) {
             secondaryClickHeld = true;
@@ -7121,20 +9235,22 @@ class GameView extends View implements Choreographer.FrameCallback {
 
     private boolean overButton(int x, int y) {
         if (x < 0 || y < 0) return false;
+        if (coinOpen) return coinHitAt(x, y) != null;
         if (boardOpen && (nameOverlayOpen || nameSpring[0] >= 0.02f)) return false;
         if (boardOpen) return boardCloseRect.contains(x, y) || boardJoinRect.contains(x, y)
                 || boardTabAllRect.contains(x, y) || boardTabWeekRect.contains(x, y) || boardToggleRect.contains(x, y)
                 || boardYouRect.contains(x, y);
         if (gameState == GameState.HOME) {
             return playButtonRect.contains(x, y) || scoreButtonRect.contains(x, y)
-                    || rateButtonRect.contains(x, y) || settingsButtonRect.contains(x, y);
+                    || rateButtonRect.contains(x, y) || settingsButtonRect.contains(x, y) || coinButtonRect.contains(x, y)
+                    || twistChipRect.contains(x, y);
         }
         if (gameState == GameState.PANEL_SLIDING) {
             if (gameOverElementsY != gameOverElementsTargetY || isRestarting) return false;
             boolean counted = displayedScore == score;
             return (counted && playButtonRect.contains(x, y))
                     || (counted && settingClassicMenuEnabled && scoreButtonRect.contains(x, y))
-                    || (isGameOverIconAnimationDone && settingsButtonRect.contains(x, y));
+                    || (isGameOverIconAnimationDone && settingsButtonRect.contains(x, y)) || twistChipRect.contains(x, y);
         }
         if (gameState == GameState.PLAYING) {
             if (isPaused) return resumeDestRect.contains(x, y);
@@ -7165,6 +9281,7 @@ class GameView extends View implements Choreographer.FrameCallback {
                 || (keyCode == KeyEvent.KEYCODE_BUTTON_START && !running);
         boolean settingsKey = keyCode == keySettings;
         boolean pauseKey = keyCode == keyPause || ((keyCode == KeyEvent.KEYCODE_ESCAPE || keyCode == KeyEvent.KEYCODE_BUTTON_START) && running);
+        if (coinOpen) return onCoinsKey(keyCode, event, down);
         if (boardOpen) {
             boolean closes = flapKey || playKey || keyCode == KeyEvent.KEYCODE_ESCAPE || keyCode == KeyEvent.KEYCODE_ENTER;
             if (closes && down && event.getRepeatCount() == 0) closeBoard();
@@ -7174,6 +9291,18 @@ class GameView extends View implements Choreographer.FrameCallback {
                         : keyCode == KeyEvent.KEYCODE_MOVE_HOME ? -100000f : keyCode == KeyEvent.KEYCODE_MOVE_END ? 100000f : 0f;
                 if (rows != 0f) {
                     if (down) scrollBoard(rows);
+                    return true;
+                }
+                if (keyCode == KeyEvent.KEYCODE_DPAD_LEFT || keyCode == KeyEvent.KEYCODE_DPAD_RIGHT || keyCode == KeyEvent.KEYCODE_TAB
+                        || keyCode == KeyEvent.KEYCODE_BUTTON_L1 || keyCode == KeyEvent.KEYCODE_BUTTON_R1) {
+                    if (down && event.getRepeatCount() == 0 && Leaderboard.configured()) {
+                        int tab = keyCode == KeyEvent.KEYCODE_DPAD_LEFT || keyCode == KeyEvent.KEYCODE_BUTTON_L1 ? 1
+                                : keyCode == KeyEvent.KEYCODE_DPAD_RIGHT || keyCode == KeyEvent.KEYCODE_BUTTON_R1 ? 0 : 1 - boardTab;
+                        if (tab != boardTab) {
+                            playSound(soundSwooshing);
+                            switchBoard(tab, boardShowAll);
+                        }
+                    }
                     return true;
                 }
             }
@@ -7279,8 +9408,12 @@ class GameView extends View implements Choreographer.FrameCallback {
             else if (scoreButtonRect.contains(x, y)) pressedButtonRect = scoreButtonRect;
             else if (rateButtonRect.contains(x, y)) pressedButtonRect = rateButtonRect;
             else if (settingsButtonRect.contains(x, y)) pressedButtonRect = settingsButtonRect;
+            else if (coinButtonRect.contains(x, y)) pressedButtonRect = coinButtonRect;
+            else if (twistChipRect.contains(x, y)) pressedButtonRect = twistChipRect;
         } else if (gameState == GameState.PANEL_SLIDING) {
-            if (gameOverElementsY == gameOverElementsTargetY && !isRestarting) {
+            if (gameOverElementsY == gameOverElementsTargetY && !isRestarting && twistChipRect.contains(x, y)) {
+                pressedButtonRect = twistChipRect;
+            } else if (gameOverElementsY == gameOverElementsTargetY && !isRestarting) {
                 if (displayedScore == score && playButtonRect.contains(x, y)) pressedButtonRect = playButtonRect;
                 else if (displayedScore == score && settingClassicMenuEnabled && scoreButtonRect.contains(x, y)) pressedButtonRect = scoreButtonRect;
                 if (isGameOverIconAnimationDone && settingsButtonRect.contains(x, y)) pressedButtonRect = settingsButtonRect;
@@ -7309,6 +9442,7 @@ class GameView extends View implements Choreographer.FrameCallback {
         scoreBtnTarget = (pressedButtonRect == scoreButtonRect) ? 1f : 0f;
         rateBtnTarget = (pressedButtonRect == rateButtonRect) ? 1f : 0f;
         settingsBtnTarget = (pressedButtonRect == settingsButtonRect && onHome) ? 1f : 0f;
+        coinBtnTarget = (pressedButtonRect == coinButtonRect && onHome) ? 1f : 0f;
         okBtnTarget = (pressedButtonRect == playButtonRect && onPanel) ? 1f : 0f;
         gameOverSettingsBtnTarget = (pressedButtonRect == settingsButtonRect && onPanel) ? 1f : 0f;
         if (pressedButtonRect == settingsButtonRect && (onHome || onPanel) && !settingsOpening && settingsSpinTarget % 360f == 0f) {
@@ -7381,10 +9515,17 @@ class GameView extends View implements Choreographer.FrameCallback {
                     openRatePage();
                 } else if (button == settingsButtonRect) {
                     openSettingsSoon();
+                } else if (button == coinButtonRect) {
+                    openCoins();
+                    if (boardHost != null) boardHost.boardVisible(true);
+                } else if (button == twistChipRect) {
+                    endTwist(true);
                 }
             } else if (gameState == GameState.PANEL_SLIDING) {
                 playSound(soundSwooshing);
-                if (button == playButtonRect) {
+                if (button == twistChipRect) {
+                    endTwist(true);
+                } else if (button == playButtonRect) {
                     isRestarting = true;
                 } else if (button == scoreButtonRect) {
                     openBoard();
@@ -7412,6 +9553,7 @@ class GameView extends View implements Choreographer.FrameCallback {
         scoreBtnTarget = 0f;
         rateBtnTarget = 0f;
         settingsBtnTarget = 0f;
+        coinBtnTarget = 0f;
         okBtnTarget = 0f;
         gameOverSettingsBtnTarget = 0f;
         if (!settingsOpening && settingsSpinTarget % 360f != 0f) settingsSpinTarget = spinBase();
@@ -7653,6 +9795,7 @@ class GameView extends View implements Choreographer.FrameCallback {
         fpsFrames++;
         fpsTimer += deltaTime;
         animateBoard(deltaTime);
+        if (!filmMode) animateCoins(deltaTime);
         if (gameState == GameState.PLAYING && !isPaused) {
             roundActiveSeconds += deltaTime;
             if (replayLive) {
@@ -7684,7 +9827,7 @@ class GameView extends View implements Choreographer.FrameCallback {
                 stepAccumulator -= fixedStepSec;
                 steps++;
             }
-            if (steps == 0 && !boardOpen && !nameOverlayOpen && boardStatusAlpha <= 0f) return;
+            if (steps == 0 && !boardOpen && !coinOpen && !nameOverlayOpen && boardStatusAlpha <= 0f && toastAge >= TOAST_SEC) return;
         } else if (settingFixedStepEnabled) {
             float advance = Math.min(deltaTime, fixedStepSec * MAX_FIXED_STEPS);
             if (advance > 0f) advance = snapStep(advance, fixedStepSec);
@@ -9197,5 +11340,414 @@ final class MemoryPrefs implements SharedPreferences {
         public void apply() {
             commit();
         }
+    }
+}
+
+final class Challenges {
+    static final long DAY_MS = 86400000L;
+    static final int EASY = 0;
+    static final int MEDIUM = 1;
+    static final int HARD = 2;
+    static final int[] REWARD = {40, 80, 150};
+    static final String[] TIER_NAMES = {"EASY", "MEDIUM", "HARD"};
+    static final int BONUS = 100;
+    static final int STREAK_STEP = 20;
+    static final int STREAK_CAP = 5;
+    static final int MAX_BALANCE = 99999999;
+
+    static final int SCORE = 1;
+    static final int TOTAL = 2;
+    static final int ROUNDS = 3;
+    static final int SECONDS = 4;
+    static final int EXACT = 5;
+    static final int THRIFTY = 6;
+    static final int BEAT_WEEK = 7;
+    static final int FLAPS = 8;
+
+    static final int ANY = 0;
+    static final int CLASSIC = 1;
+    static final int STORM = 2;
+    static final int UPSIDE = 3;
+    static final int DIZZY = 4;
+    static final int REVERSE = 5;
+    static final int RAMP = 6;
+    static final int SHRINK = 7;
+    static final int GIANT = 8;
+    static final int WIDE = 9;
+    static final String[] TWIST_NAMES = {"", "Classic physics", "Thunderstorm", "Upside down", "Dizzy bird", "Reverse pipes",
+            "Speed ramp", "Shrinking gaps", "Giant bird", "Wide pipes"};
+
+    private static final Object[][][] TWISTS = {
+            {},
+            {},
+            {{SettingsActivity.PREF_WEATHER_EFFECT, 2, SettingsActivity.DEFAULT_WEATHER_EFFECT},
+                    {SettingsActivity.PREF_LIGHTNING_SCORES, SettingsActivity.DEFAULT_LIGHTNING_SCORES, SettingsActivity.DEFAULT_LIGHTNING_SCORES},
+                    {SettingsActivity.PREF_MEGA_STRIKE_SCORE, SettingsActivity.DEFAULT_MEGA_STRIKE_SCORE, SettingsActivity.DEFAULT_MEGA_STRIKE_SCORE}},
+            {{SettingsActivity.PREF_UPSIDE_DOWN_ENABLED, true, SettingsActivity.DEFAULT_UPSIDE_DOWN_ENABLED}},
+            {{SettingsActivity.PREF_DRUNK_MODE_ENABLED, true, SettingsActivity.DEFAULT_DRUNK_MODE_ENABLED},
+                    {SettingsActivity.PREF_DRUNK_MODE_STRENGTH, 1.0f, SettingsActivity.DEFAULT_DRUNK_MODE_STRENGTH}},
+            {{SettingsActivity.PREF_REVERSE_PIPES_ENABLED, true, SettingsActivity.DEFAULT_REVERSE_PIPES_ENABLED}},
+            {{SettingsActivity.PREF_SPEED_RAMP, 10, SettingsActivity.DEFAULT_SPEED_RAMP},
+                    {SettingsActivity.PREF_RAMP_TOP_SPEED, SettingsActivity.DEFAULT_RAMP_TOP_SPEED, SettingsActivity.DEFAULT_RAMP_TOP_SPEED}},
+            {{SettingsActivity.PREF_GAP_SHRINK, 5, SettingsActivity.DEFAULT_GAP_SHRINK},
+                    {SettingsActivity.PREF_RAMP_MIN_GAP, SettingsActivity.DEFAULT_RAMP_MIN_GAP, SettingsActivity.DEFAULT_RAMP_MIN_GAP}},
+            {{SettingsActivity.PREF_BIRD_SIZE, 1.5f, SettingsActivity.DEFAULT_BIRD_SIZE}},
+            {{SettingsActivity.PREF_PIPE_WIDTH, 1.6f, SettingsActivity.DEFAULT_PIPE_WIDTH}},
+    };
+
+    static final class Goal {
+        final String id;
+        final int tier;
+        final int kind;
+        final int target;
+        final int extra;
+        final int twist;
+
+        Goal(String id, int tier, int kind, int target, int extra, int twist) {
+            this.id = id;
+            this.tier = tier;
+            this.kind = kind;
+            this.target = target;
+            this.extra = extra;
+            this.twist = twist;
+        }
+
+        boolean single() {
+            return kind == SCORE || kind == SECONDS || kind == EXACT || kind == THRIFTY || kind == BEAT_WEEK;
+        }
+
+        int goal() {
+            return single() && kind != SCORE && kind != SECONDS ? 1 : target;
+        }
+
+        String title() {
+            String where = twistPhrase(twist);
+            switch (kind) {
+                case SCORE: return "Score " + target + " in one round" + where;
+                case TOTAL: return "Score " + target + " points in total" + where;
+                case ROUNDS: return "Score " + extra + " or more in " + target + " rounds" + where;
+                case SECONDS: return "Stay alive for " + target + " seconds" + where;
+                case EXACT: return "Crash on exactly " + target + " points" + where;
+                case THRIFTY: return "Score " + target + " using " + extra + " flaps or fewer" + where;
+                case BEAT_WEEK: return "Beat your best score this week" + where;
+                case FLAPS: return "Flap " + target + " times" + where;
+                default: return "Challenge";
+            }
+        }
+    }
+
+    static String twistPhrase(int twist) {
+        switch (twist) {
+            case CLASSIC: return " with Classic physics";
+            case STORM: return " in a thunderstorm";
+            case UPSIDE: return " upside down";
+            case DIZZY: return " as a dizzy bird";
+            case REVERSE: return " with reversed pipes";
+            case RAMP: return " as the speed ramps up";
+            case SHRINK: return " as the gaps shrink";
+            case GIANT: return " as a giant bird";
+            case WIDE: return " with extra wide pipes";
+            default: return "";
+        }
+    }
+
+    static final Goal[] EASY_POOL = {
+            new Goal("e1", EASY, SCORE, 10, 0, ANY),
+            new Goal("e2", EASY, SCORE, 15, 0, ANY),
+            new Goal("e3", EASY, TOTAL, 30, 0, ANY),
+            new Goal("e4", EASY, ROUNDS, 3, 3, ANY),
+            new Goal("e5", EASY, SECONDS, 20, 0, ANY),
+            new Goal("e6", EASY, FLAPS, 100, 0, ANY),
+            new Goal("e7", EASY, SCORE, 5, 0, UPSIDE),
+            new Goal("e8", EASY, SCORE, 5, 0, STORM),
+            new Goal("e9", EASY, SCORE, 5, 0, REVERSE),
+            new Goal("e10", EASY, SCORE, 8, 0, CLASSIC),
+            new Goal("e11", EASY, EXACT, 7, 0, ANY),
+            new Goal("e12", EASY, SCORE, 5, 0, GIANT),
+            new Goal("e13", EASY, SCORE, 5, 0, DIZZY),
+            new Goal("e14", EASY, SCORE, 8, 0, WIDE),
+            new Goal("e15", EASY, TOTAL, 20, 0, STORM),
+    };
+
+    static final Goal[] MEDIUM_POOL = {
+            new Goal("m1", MEDIUM, SCORE, 25, 0, ANY),
+            new Goal("m2", MEDIUM, SCORE, 40, 0, ANY),
+            new Goal("m3", MEDIUM, TOTAL, 100, 0, ANY),
+            new Goal("m4", MEDIUM, ROUNDS, 5, 10, ANY),
+            new Goal("m5", MEDIUM, SECONDS, 45, 0, ANY),
+            new Goal("m6", MEDIUM, SCORE, 15, 0, STORM),
+            new Goal("m7", MEDIUM, SCORE, 12, 0, UPSIDE),
+            new Goal("m8", MEDIUM, SCORE, 12, 0, REVERSE),
+            new Goal("m9", MEDIUM, SCORE, 20, 0, CLASSIC),
+            new Goal("m10", MEDIUM, EXACT, 13, 0, ANY),
+            new Goal("m11", MEDIUM, THRIFTY, 15, 40, ANY),
+            new Goal("m12", MEDIUM, SCORE, 15, 0, WIDE),
+            new Goal("m13", MEDIUM, SCORE, 10, 0, DIZZY),
+            new Goal("m14", MEDIUM, SCORE, 20, 0, RAMP),
+            new Goal("m15", MEDIUM, FLAPS, 400, 0, ANY),
+            new Goal("m16", MEDIUM, SCORE, 12, 0, GIANT),
+            new Goal("m17", MEDIUM, SCORE, 20, 0, SHRINK),
+            new Goal("m18", MEDIUM, TOTAL, 50, 0, STORM),
+    };
+
+    static final Goal[] HARD_POOL = {
+            new Goal("h1", HARD, SCORE, 50, 0, ANY),
+            new Goal("h2", HARD, SCORE, 75, 0, ANY),
+            new Goal("h3", HARD, TOTAL, 300, 0, ANY),
+            new Goal("h4", HARD, ROUNDS, 10, 15, ANY),
+            new Goal("h5", HARD, SECONDS, 90, 0, ANY),
+            new Goal("h6", HARD, TOTAL, 100, 0, STORM),
+            new Goal("h7", HARD, SCORE, 30, 0, STORM),
+            new Goal("h8", HARD, SCORE, 25, 0, UPSIDE),
+            new Goal("h9", HARD, SCORE, 25, 0, REVERSE),
+            new Goal("h10", HARD, SCORE, 40, 0, CLASSIC),
+            new Goal("h11", HARD, EXACT, 42, 0, ANY),
+            new Goal("h12", HARD, BEAT_WEEK, 5, 0, ANY),
+            new Goal("h13", HARD, THRIFTY, 30, 75, ANY),
+            new Goal("h14", HARD, SCORE, 30, 0, SHRINK),
+            new Goal("h15", HARD, SCORE, 25, 0, GIANT),
+            new Goal("h16", HARD, SCORE, 40, 0, RAMP),
+            new Goal("h17", HARD, SCORE, 20, 0, DIZZY),
+            new Goal("h18", HARD, SCORE, 30, 0, WIDE),
+    };
+
+    private Challenges() {
+    }
+
+    static long day(long time) {
+        return time >= 0 ? time / DAY_MS : (time - DAY_MS + 1) / DAY_MS;
+    }
+
+    static long dayEnds(long day) {
+        return (day + 1L) * DAY_MS;
+    }
+
+    static Goal find(String id) {
+        if (id == null) return null;
+        for (Goal[] pool : new Goal[][] {EASY_POOL, MEDIUM_POOL, HARD_POOL}) {
+            for (Goal goal : pool) if (goal.id.equals(id)) return goal;
+        }
+        return null;
+    }
+
+    static Goal[] forDay(long day) {
+        Random random = new Random(day * 0x9E3779B97F4A7C15L + 0x2545F4914F6CDD1DL);
+        Goal[] picked = new Goal[3];
+        Goal[][] pools = {EASY_POOL, MEDIUM_POOL, HARD_POOL};
+        for (int tier = 0; tier < 3; tier++) {
+            Goal[] pool = pools[tier];
+            Goal choice = pool[random.nextInt(pool.length)];
+            for (int tries = 0; tries < 12 && clashes(choice, picked, tier); tries++) choice = pool[random.nextInt(pool.length)];
+            picked[tier] = choice;
+        }
+        return picked;
+    }
+
+    private static boolean clashes(Goal choice, Goal[] picked, int count) {
+        for (int i = 0; i < count; i++) {
+            Goal other = picked[i];
+            if (choice.twist != ANY && choice.twist == other.twist) return true;
+            if (choice.twist == ANY && other.twist == ANY && choice.kind == other.kind) return true;
+        }
+        return false;
+    }
+
+    static Object[][] twistKeys(int twist) {
+        return twist >= 0 && twist < TWISTS.length ? TWISTS[twist] : new Object[0][];
+    }
+
+    static Map<String, Object> overlay(int twist) {
+        Map<String, Object> values = new TreeMap<>();
+        if (twist == CLASSIC) {
+            values.putAll(SettingsActivity.classicRuleValues());
+            return values;
+        }
+        for (Object[] key : twistKeys(twist)) values.put((String) key[0], key[1]);
+        return values;
+    }
+
+    static int modeOf(int twist, Map<String, ?> prefs) {
+        if (twist == ANY) return SettingsActivity.fairPlayMode(prefs);
+        if (twist == CLASSIC) {
+            return SettingsActivity.fairPlayMode(prefs) == SettingsActivity.FAIR_CLASSIC ? SettingsActivity.FAIR_CLASSIC : SettingsActivity.FAIR_NONE;
+        }
+        if (twist < 0 || twist >= TWISTS.length) return SettingsActivity.FAIR_NONE;
+        Map<String, Object> rest = new TreeMap<>();
+        for (Map.Entry<String, ?> entry : prefs.entrySet()) {
+            if (entry.getKey() != null) rest.put(entry.getKey(), entry.getValue());
+        }
+        for (Object[] key : TWISTS[twist]) {
+            String name = (String) key[0];
+            Object value = prefs.containsKey(name) ? prefs.get(name) : key[2];
+            if (!SettingsActivity.samePref(value, key[1])) return SettingsActivity.FAIR_NONE;
+            rest.remove(name);
+        }
+        return SettingsActivity.fairPlayMode(rest);
+    }
+
+    static boolean fits(Goal goal, Map<String, ?> prefs) {
+        return goal != null && modeOf(goal.twist, prefs) != SettingsActivity.FAIR_NONE;
+    }
+
+    static boolean fits(Goal goal, int twist, int restMode) {
+        if (goal == null || restMode == SettingsActivity.FAIR_NONE) return false;
+        if (goal.twist == ANY) return twist == ANY;
+        if (goal.twist == CLASSIC) return twist == ANY && restMode == SettingsActivity.FAIR_CLASSIC;
+        return twist == goal.twist;
+    }
+
+    static int twistOf(Map<String, ?> prefs) {
+        if (SettingsActivity.fairPlayMode(prefs) != SettingsActivity.FAIR_NONE) return ANY;
+        for (int twist = STORM; twist < TWISTS.length; twist++) {
+            if (modeOf(twist, prefs) != SettingsActivity.FAIR_NONE) return twist;
+        }
+        return -1;
+    }
+
+    static String blocker(Goal goal, Map<String, ?> prefs) {
+        if (goal == null || fits(goal, prefs)) return null;
+        Map<String, Object> rest = new TreeMap<>();
+        for (Map.Entry<String, ?> entry : prefs.entrySet()) {
+            if (entry.getKey() != null) rest.put(entry.getKey(), entry.getValue());
+        }
+        if (goal.twist == CLASSIC) rest.putAll(SettingsActivity.classicRuleValues());
+        else for (Object[] key : twistKeys(goal.twist)) rest.remove((String) key[0]);
+        String key = SettingsActivity.fairPlayBlocker(rest);
+        return key == null ? "" : SettingsActivity.fairKeyName(key);
+    }
+
+    static int advance(Goal goal, int progress, int score, double seconds, int flaps, int weekBest) {
+        int before = Math.max(0, progress);
+        if (score < 1) return before;
+        switch (goal.kind) {
+            case SCORE: return Math.max(before, Math.min(goal.target, score));
+            case TOTAL: return Math.min(goal.target, before + score);
+            case ROUNDS: return score >= goal.extra ? Math.min(goal.target, before + 1) : before;
+            case SECONDS: return Math.max(before, Math.min(goal.target, (int) Math.floor(seconds)));
+            case EXACT: return score == goal.target ? 1 : before;
+            case THRIFTY: return score >= goal.target && flaps <= goal.extra ? 1 : before;
+            case BEAT_WEEK: return score >= goal.target && score > weekBest ? 1 : before;
+            case FLAPS: return Math.min(goal.target, before + Math.max(0, flaps));
+            default: return before;
+        }
+    }
+
+    static boolean done(Goal goal, int progress) {
+        return goal != null && progress >= goal.goal();
+    }
+
+    static int bonus(int streak) {
+        return BONUS + STREAK_STEP * Math.max(0, Math.min(STREAK_CAP, streak - 1));
+    }
+}
+
+final class Shop {
+    static final int NAME = 0;
+    static final int ROW = 1;
+    static final int GLOW = 2;
+    static final int MOTION = 3;
+    static final int BADGE = 4;
+    static final String KINDS = "nbgai";
+    static final String[] KIND_NAMES = {"NAME", "ROW", "GLOW", "MOTION", "BADGE"};
+
+    static final class Item {
+        final String id;
+        final int kind;
+        final String name;
+        final int price;
+        final int color;
+        final int second;
+        final int effect;
+
+        Item(String id, String name, int price, int color, int second, int effect) {
+            this.id = id;
+            this.kind = KINDS.indexOf(id.charAt(0));
+            this.name = name;
+            this.price = price;
+            this.color = color;
+            this.second = second;
+            this.effect = effect;
+        }
+
+        boolean dark() {
+            return kind == ROW && effect >= 4;
+        }
+    }
+
+    static final Item[] ITEMS = {
+            new Item("n_gold", "Gold", 300, 0xFFE8A317, 0xFFFFD45C, 0),
+            new Item("n_ruby", "Ruby", 300, 0xFFD62F4B, 0xFFFF6B81, 0),
+            new Item("n_emerald", "Emerald", 300, 0xFF15955A, 0xFF4FD08E, 0),
+            new Item("n_sapphire", "Sapphire", 300, 0xFF2A62D9, 0xFF6F9BFF, 0),
+            new Item("n_violet", "Violet", 350, 0xFF8A3FD6, 0xFFC08BFF, 0),
+            new Item("n_bubblegum", "Bubblegum", 350, 0xFFF0559D, 0xFFFF9CCB, 0),
+            new Item("n_ice", "Frost", 600, 0xFF3AA7D8, 0xFFB8F1FF, 1),
+            new Item("n_fire", "Fire", 900, 0xFFE0401F, 0xFFFFB43B, 2),
+            new Item("n_ocean", "Ocean", 900, 0xFF1F6FD0, 0xFF2BD3C0, 2),
+            new Item("n_rainbow", "Rainbow", 1500, 0xFFFF5A5A, 0xFF5AB4FF, 3),
+            new Item("b_sky", "Sky", 400, 0xFF9FDDF5, 0xFFDDF6FF, 0),
+            new Item("b_mint", "Mint", 400, 0xFFA8E8C4, 0xFFE4FBEC, 0),
+            new Item("b_peach", "Peach", 400, 0xFFFFC2A1, 0xFFFFE7D6, 0),
+            new Item("b_sunset", "Sunset", 700, 0xFFFF9A5C, 0xFFE86BB5, 1),
+            new Item("b_candy", "Candy", 800, 0xFFFFB3D1, 0xFFFFF3F8, 2),
+            new Item("b_gold", "Gold bar", 1200, 0xFFE8B23A, 0xFFFFE79A, 3),
+            new Item("b_night", "Night sky", 900, 0xFF1C2350, 0xFF3A3F86, 4),
+            new Item("b_lava", "Lava", 900, 0xFF5C1210, 0xFFC93A16, 5),
+            new Item("g_gold", "Gold glow", 600, 0xFFFFC93C, 0, 0),
+            new Item("g_pink", "Pink glow", 500, 0xFFFF5FA8, 0, 0),
+            new Item("g_cyan", "Cyan glow", 500, 0xFF3FD8F0, 0, 0),
+            new Item("g_lime", "Lime glow", 500, 0xFF8CE04A, 0, 0),
+            new Item("g_rainbow", "Rainbow glow", 1200, 0xFFFF5A5A, 0, 1),
+            new Item("a_shimmer", "Shimmer", 700, 0xFFFFFFFF, 0, 0),
+            new Item("a_sparkle", "Sparkles", 900, 0xFFFFE27A, 0, 1),
+            new Item("a_bubbles", "Bubbles", 800, 0xFF8FDBFF, 0, 2),
+            new Item("a_snow", "Snowfall", 800, 0xFFFFFFFF, 0, 3),
+            new Item("a_hearts", "Hearts", 900, 0xFFFF5F8A, 0, 4),
+            new Item("a_embers", "Embers", 1000, 0xFFFF8A2B, 0, 5),
+            new Item("a_feathers", "Feathers", 1000, 0xFFF8F0B0, 0, 6),
+            new Item("i_star", "Star", 250, 0xFFFFC93C, 0, 0),
+            new Item("i_heart", "Heart", 250, 0xFFFF4F7B, 0, 1),
+            new Item("i_coin", "Coin", 300, 0xFFFFC93C, 0, 2),
+            new Item("i_bolt", "Lightning", 350, 0xFFFFE04A, 0, 3),
+            new Item("i_flame", "Flame", 400, 0xFFFF7A1F, 0, 4),
+            new Item("i_bird", "Little bird", 600, 0xFFFFC93C, 0, 5),
+            new Item("i_crown", "Crown", 700, 0xFFFFC93C, 0, 6),
+            new Item("i_diamond", "Diamond", 900, 0xFF7FE3FF, 0, 7),
+    };
+
+    private Shop() {
+    }
+
+    static Item item(String id) {
+        if (id == null) return null;
+        for (Item item : ITEMS) if (item.id.equals(id)) return item;
+        return null;
+    }
+
+    static boolean validId(String id) {
+        return id != null && id.matches("[nbgai]_[a-z0-9]{1,20}");
+    }
+
+    private static final Object[] LISTS = new Object[5];
+
+    @SuppressWarnings("unchecked")
+    static List<Item> of(int kind) {
+        if (kind < 0 || kind >= LISTS.length) return new ArrayList<>();
+        if (LISTS[kind] == null) {
+            List<Item> list = new ArrayList<>();
+            for (Item item : ITEMS) if (item.kind == kind) list.add(item);
+            LISTS[kind] = java.util.Collections.unmodifiableList(list);
+        }
+        return (List<Item>) LISTS[kind];
+    }
+
+    static Item[] look(String[] ids) {
+        Item[] look = new Item[5];
+        if (ids == null) return look;
+        for (int i = 0; i < 5 && i < ids.length; i++) {
+            Item item = item(ids[i]);
+            if (item != null && item.kind == i) look[i] = item;
+        }
+        return look;
     }
 }
