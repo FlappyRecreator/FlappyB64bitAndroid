@@ -102,6 +102,9 @@ public class ActivityManager {
     public int getMemoryClass() { return 256; }
     public boolean isLowRamDevice() { return false; }
 }
+=== FILE: android/app/UiModeManager.java
+package android.app;
+public class UiModeManager { public static int simType = 1; public int getCurrentModeType() { return simType; } }
 === FILE: android/content/ActivityNotFoundException.java
 package android.content;
 public class ActivityNotFoundException extends RuntimeException { public ActivityNotFoundException(String m) { super(m); } }
@@ -168,7 +171,7 @@ import java.util.HashMap;
 import java.util.Map;
 public abstract class Context {
     public static final int MODE_PRIVATE = 0;
-    public static final String VIBRATOR_SERVICE = "vibrator", CLIPBOARD_SERVICE = "clipboard", INPUT_METHOD_SERVICE = "input_method", ACTIVITY_SERVICE = "activity", POWER_SERVICE = "power";
+    public static final String VIBRATOR_SERVICE = "vibrator", CLIPBOARD_SERVICE = "clipboard", INPUT_METHOD_SERVICE = "input_method", ACTIVITY_SERVICE = "activity", POWER_SERVICE = "power", UI_MODE_SERVICE = "uimode";
     private final android.view.inputmethod.InputMethodManager imm = new android.view.inputmethod.InputMethodManager();
     public static final Map<String, Object> SIM_PREFS = new HashMap<>();
     public static Intent simLastStarted; public static boolean simNoActivities;
@@ -193,7 +196,7 @@ public abstract class Context {
     public android.content.pm.PackageManager getPackageManager() { return new android.content.pm.PackageManager(); }
     public static final android.content.pm.ApplicationInfo SIM_APP_INFO = new android.content.pm.ApplicationInfo();
     public android.content.pm.ApplicationInfo getApplicationInfo() { return SIM_APP_INFO; }
-    public Object getSystemService(String name) { if (ACTIVITY_SERVICE.equals(name)) return new android.app.ActivityManager(); if (POWER_SERVICE.equals(name)) return new android.os.PowerManager(); return VIBRATOR_SERVICE.equals(name) ? vib : CLIPBOARD_SERVICE.equals(name) ? clipboard : INPUT_METHOD_SERVICE.equals(name) ? imm : null; }
+    public Object getSystemService(String name) { if (UI_MODE_SERVICE.equals(name)) return new android.app.UiModeManager(); if (ACTIVITY_SERVICE.equals(name)) return new android.app.ActivityManager(); if (POWER_SERVICE.equals(name)) return new android.os.PowerManager(); return VIBRATOR_SERVICE.equals(name) ? vib : CLIPBOARD_SERVICE.equals(name) ? clipboard : INPUT_METHOD_SERVICE.equals(name) ? imm : null; }
     public void startActivity(Intent i) { if (simNoActivities) throw new ActivityNotFoundException("none"); simStartedActivities++; simLastStarted = i; }
     public SharedPreferences getSharedPreferences(String name, int mode) {
         final Map<String, Object> store = (name.startsWith("FlappyBirdProfile_") || name.equals("FlappyReplayPlayback")) ? SIM_STORES.computeIfAbsent(name, k -> new HashMap<>()) : SIM_PREFS;
@@ -291,6 +294,7 @@ public class PackageManager {
     public static class NameNotFoundException extends Exception { public NameNotFoundException(String s) { super(s); } }
     public static boolean simNoIcon;
     public android.graphics.drawable.Drawable getApplicationIcon(String name) throws NameNotFoundException { if (simNoIcon) throw new NameNotFoundException(name); return new android.graphics.drawable.GradientDrawable(); }
+    public static java.util.Set<String> simFeatures = new java.util.HashSet<>(); public boolean hasSystemFeature(String name) { return simFeatures.contains(name); }
     public PackageInfo getPackageInfo(String name, int flags) throws NameNotFoundException { PackageInfo info = new PackageInfo(); info.versionName = "1.5.4"; info.versionCode = 154; return info; }
     public static final int PERMISSION_GRANTED = 0, PERMISSION_DENIED = -1;
 }
@@ -327,7 +331,7 @@ public class ColorStateList {
 === FILE: android/content/res/Configuration.java
 package android.content.res;
 public class Configuration {
-    public static final int ORIENTATION_PORTRAIT = 1, ORIENTATION_LANDSCAPE = 2, UI_MODE_NIGHT_MASK = 0x30, UI_MODE_NIGHT_YES = 0x20, UI_MODE_NIGHT_NO = 0x10;
+    public static final int ORIENTATION_PORTRAIT = 1, ORIENTATION_LANDSCAPE = 2, UI_MODE_NIGHT_MASK = 0x30, UI_MODE_NIGHT_YES = 0x20, UI_MODE_NIGHT_NO = 0x10, UI_MODE_TYPE_NORMAL = 1, UI_MODE_TYPE_DESK = 2, UI_MODE_TYPE_TELEVISION = 4;
     public static final int TOUCHSCREEN_NOTOUCH = 1, TOUCHSCREEN_FINGER = 3, KEYBOARD_NOKEYS = 1, KEYBOARD_QWERTY = 2, HARDKEYBOARDHIDDEN_NO = 1, HARDKEYBOARDHIDDEN_YES = 2;
     public int orientation = ORIENTATION_PORTRAIT, uiMode = UI_MODE_NIGHT_YES, touchscreen = TOUCHSCREEN_FINGER, keyboard = KEYBOARD_NOKEYS, hardKeyboardHidden = HARDKEYBOARDHIDDEN_YES;
     public int screenWidthDp = 392, screenHeightDp = 850; public float fontScale = 1f;
@@ -2251,6 +2255,8 @@ final class Replayer {
         double seconds;
         int flaps;
         int steps;
+        int twist = -1;
+        int restMode;
         final List<Mark> marks = new ArrayList<>();
 
         Result fail(int verdict, String why) {
@@ -2522,6 +2528,10 @@ final class Replayer {
     }
 
     static Result run(byte[] compressed, int claimedScore, boolean claimedClassic) {
+        return run(compressed, claimedScore, claimedClassic, false);
+    }
+
+    static Result run(byte[] compressed, int claimedScore, boolean claimedClassic, boolean challenge) {
         Result result = new Result();
         Recording r;
         try {
@@ -2534,11 +2544,21 @@ final class Replayer {
         }
         result.mode = r.mode;
         result.seed = r.seed;
-        if (r.mode != SettingsActivity.FAIR_STANDARD && r.mode != SettingsActivity.FAIR_CLASSIC) {
-            return result.fail(REJECTED, "the replay has no fair game mode");
+        if (challenge) {
+            int twist = Challenges.twistOf(r.prefs);
+            if (twist < 0) return result.fail(SKIPPED, "its settings don't match any challenge");
+            if (SettingsActivity.fairPlayMode(r.prefs) != r.mode) return result.fail(REJECTED, "the game mode did not match the settings");
+            result.twist = twist;
+            result.restMode = Challenges.modeOf(twist, r.prefs);
+        } else {
+            if (r.mode != SettingsActivity.FAIR_STANDARD && r.mode != SettingsActivity.FAIR_CLASSIC) {
+                return result.fail(REJECTED, "the replay has no fair game mode");
+            }
+            if ((r.mode == SettingsActivity.FAIR_CLASSIC) != claimedClassic) return result.fail(REJECTED, "the game mode did not match the score");
+            if (SettingsActivity.fairPlayMode(r.prefs) != r.mode) return result.fail(REJECTED, "the settings were not fair");
+            result.twist = Challenges.ANY;
+            result.restMode = r.mode;
         }
-        if ((r.mode == SettingsActivity.FAIR_CLASSIC) != claimedClassic) return result.fail(REJECTED, "the game mode did not match the score");
-        if (SettingsActivity.fairPlayMode(r.prefs) != r.mode) return result.fail(REJECTED, "the settings were not fair");
         if (r.width < 100 || r.height < 100 || r.width > 16384 || r.height > 16384) return result.fail(REJECTED, "the screen size was not possible");
         if (r.insetTop < 0 || r.insetBottom < 0 || r.insetLeft < 0 || r.insetRight < 0
                 || r.insetTop + r.insetBottom >= r.height || r.insetLeft + r.insetRight >= r.width) {
@@ -2601,6 +2621,7 @@ final class Replayer {
         set(view, "clock", r.clock);
         float restX = (Float) get(view, "baseBirdX");
         float restY = (Float) call(view, "waitingBirdY", new Class<?>[0]);
+        if ((Boolean) get(view, "settingUpsideDownEnabled")) restY = (Integer) get(view, "screenHeight") - restY;
         if (Math.abs(r.baseBirdX - restX) > 0.01f || Math.abs(r.birdX - restX) > 0.01f || Math.abs(r.birdY - restY) > 0.05f
                 || r.birdVelocityY != 0f || r.birdRotation != 0f) {
             return result.fail(REJECTED, "the bird did not start where the game puts it");
@@ -2886,7 +2907,7 @@ public final class Verifier {
         Map<String, Object> pending = Json.object(Json.parse(call("GET", "/replays.json?shallow=true", null, false, null).body));
         if (pending == null || pending.isEmpty()) {
             report.add("No runs are waiting.");
-            return 0;
+            pending = new LinkedHashMap<>();
         }
         for (String user : pending.keySet()) {
             if (System.currentTimeMillis() > deadline) {
@@ -2895,7 +2916,13 @@ public final class Verifier {
             }
             Map<String, Object> slots = Json.object(Json.parse(call("GET", "/replays/" + enc(user) + ".json?shallow=true", null, false, null).body));
             if (slots == null) continue;
-            for (String slot : slots.keySet()) {
+            List<String> order = new ArrayList<>(slots.keySet());
+            order.sort((x, y) -> {
+                int a = x.equals("a") ? 0 : x.equals("w") ? 1 : 2;
+                int b = y.equals("a") ? 0 : y.equals("w") ? 1 : 2;
+                return a != b ? Integer.compare(a, b) : x.compareTo(y);
+            });
+            for (String slot : order) {
                 try {
                     check(user, slot);
                 } catch (IOException | RuntimeException e) {
@@ -2903,6 +2930,11 @@ public final class Verifier {
                     report.add("Could not check a run from " + shortId(user) + ": " + e.getMessage());
                 }
             }
+        }
+        try {
+            processPurchases(deadline);
+        } catch (IOException | RuntimeException e) {
+            report.add("Purchases will be tried again next time: " + e.getMessage());
         }
         return 0;
     }
@@ -2949,7 +2981,9 @@ public final class Verifier {
         String why;
         String owner = "";
         Replayer.Result result = null;
-        if (!(slot.equals("a") || slot.equals("w")) || score < 1 || score > SettingsActivity.Leaderboard.MAX_SCORE || !safeKey(seed)
+        boolean board = slot.equals("a") || slot.equals("w");
+        boolean challenge = slot.matches("x[0-7]");
+        if (!(board || challenge) || score < 1 || score > SettingsActivity.Leaderboard.MAX_SCORE || !safeKey(seed)
                 || started <= 0 || sent <= 0 || week == Long.MIN_VALUE || data.isEmpty()) {
             outcome = Replayer.REJECTED;
             why = "the upload was incomplete";
@@ -2958,6 +2992,7 @@ public final class Verifier {
             why = BANNED_WHY;
         } else if (!(owner = seedOwner(seed)).isEmpty()) {
             if (owner.equals(user)) {
+                if (challenge) awardFromSeed(user, seed, sent, score);
                 call("DELETE", place + ".json", null, false, reply.etag);
                 return;
             }
@@ -2974,7 +3009,7 @@ public final class Verifier {
                 outcome = Replayer.REJECTED;
                 why = "the replay could not be read";
             } else {
-                result = Replayer.run(bytes, score, classic);
+                result = Replayer.run(bytes, score, classic, challenge);
                 outcome = result.verdict;
                 why = result.why;
                 if (outcome == Replayer.OK) {
@@ -2999,9 +3034,10 @@ public final class Verifier {
         Map<String, Object> now = new LinkedHashMap<>();
         now.put(".sv", "timestamp");
         verdict.put("t", now);
-        update.put("verdicts/" + user, verdict);
+        if (board) update.put("verdicts/" + user, verdict);
+        Map<String, Object> claim = null;
         if (outcome != Replayer.SKIPPED && safeKey(seed) && owner.isEmpty()) {
-            Map<String, Object> claim = new LinkedHashMap<>();
+            claim = new LinkedHashMap<>();
             claim.put("u", user);
             Map<String, Object> stamp = new LinkedHashMap<>();
             stamp.put(".sv", "timestamp");
@@ -3009,7 +3045,12 @@ public final class Verifier {
             update.put("seeds/" + seed, claim);
         }
         String name = "";
-        if (outcome == Replayer.OK) {
+        int gained = -1;
+        if (outcome == Replayer.OK && challenge) {
+            gained = awardRound(update, user, sent, score, result.seconds, result.flaps, result.twist, result.restMode,
+                    weekBest(user, sent));
+            if (claim != null) claim.put("q", true);
+        } else if (outcome == Replayer.OK) {
             Map<String, Object> scores = Json.object(Json.parse(call("GET", "/scores/" + enc(user) + ".json", null, false, null).body));
             name = Json.string(scores, "n");
             String key = SettingsActivity.Leaderboard.nameKey(name);
@@ -3029,18 +3070,31 @@ public final class Verifier {
             } else {
                 String version = Json.string(entry, "vn");
                 if (!version.matches("[0-9][0-9A-Za-z._-]{0,15}")) version = "";
+                if (claim != null) {
+                    Map<String, Object> facts = new LinkedHashMap<>();
+                    facts.put("s", (double) score);
+                    facts.put("sec", result.seconds);
+                    facts.put("fl", (double) result.flaps);
+                    facts.put("md", (double) result.restMode);
+                    facts.put("wb", (double) weekBest(user, sent));
+                    claim.put("f", facts);
+                }
                 publish(update, user, name, score, classic, sent, (int) week, result, scores, version);
             }
         }
         if (outcome == Replayer.REJECTED && !BANNED_WHY.equals(why)) {
-            lowerClaim(update, user, score, week);
+            if (board) lowerClaim(update, user, score, week);
             strike(update, user, why, sent > 0 ? sent : System.currentTimeMillis());
         }
+        if (challenge && outcome != Replayer.OK) news(update, user, 0, 0, false, why);
         call("PATCH", "/.json", Json.write(update), false, null);
         Reply removed = call("DELETE", place + ".json", null, false, reply.etag);
         if (removed.code == 412) report.add("A run from " + shortId(user) + " changed while it was being checked; it will be checked again.");
         String who = name.isEmpty() ? shortId(user) : name;
-        if (outcome == Replayer.OK) {
+        if (outcome == Replayer.OK && challenge) {
+            verified++;
+            report.add("Checked a challenge run of " + score + " by " + who + (gained > 0 ? ": earned " + gained + " coins" : ": no new progress"));
+        } else if (outcome == Replayer.OK) {
             verified++;
             report.add("Verified " + score + (classic ? " (Classic)" : "") + " by " + who + String.format(" in %.1f s of play", result.seconds));
         } else if (outcome == Replayer.SKIPPED) {
@@ -3493,9 +3547,11 @@ public final class Verifier {
     static void publish(Map<String, Object> update, String user, String name, int score, boolean classic, long sent, int week,
             Replayer.Result result, Map<String, Object> scores, String version) throws IOException {
         double seconds = Math.ceil(result.seconds);
+        Map<String, Object> style = styleOf(user);
         Map<String, Object> best = Json.object(Json.parse(call("GET", "/vscores/" + enc(user) + ".json", null, false, null).body));
         if (best == null || Json.number(best, "s") < score) {
             Map<String, Object> entry = new LinkedHashMap<>();
+            if (style != null) entry.put("y", style);
             entry.put("n", name);
             entry.put("s", (double) score);
             entry.put("c", classic);
@@ -3510,6 +3566,7 @@ public final class Verifier {
             long savedWeek = Json.number(weekly, "w");
             if (weekly == null || savedWeek < week || (savedWeek == week && Json.number(weekly, "s") < score)) {
                 Map<String, Object> entry = new LinkedHashMap<>();
+                if (style != null) entry.put("y", style);
                 entry.put("n", name);
                 entry.put("s", (double) score);
                 entry.put("c", classic);
@@ -3525,6 +3582,188 @@ public final class Verifier {
         if (Json.number(scores, "s") == score) update.put("scores/" + user + "/vs", (double) score);
         Map<String, Object> posted = Json.object(Json.parse(call("GET", "/weekly/" + enc(user) + ".json", null, false, null).body));
         if (Json.number(posted, "k") == week * SettingsActivity.Leaderboard.WEEK_KEY + score) update.put("weekly/" + user + "/vs", (double) score);
+    }
+
+    static Map<String, Object> styleOf(String user) throws IOException {
+        Map<String, Object> wallet = getMap("/wallet/" + enc(user) + ".json");
+        Map<String, Object> style = Json.object(wallet.get("y"));
+        Map<String, Object> owned = Json.object(wallet.get("o"));
+        if (style == null || owned == null) return null;
+        Map<String, Object> kept = new LinkedHashMap<>();
+        for (Map.Entry<String, Object> part : style.entrySet()) {
+            String kind = part.getKey();
+            Object id = part.getValue();
+            if (kind.length() == 1 && Shop.KINDS.contains(kind) && id instanceof String && Shop.validId((String) id)
+                    && ((String) id).startsWith(kind + "_") && owned.containsKey(id)) {
+                kept.put(kind, id);
+            }
+        }
+        return kept.isEmpty() ? null : kept;
+    }
+
+    static int weekBest(String user, long sent) throws IOException {
+        int week = SettingsActivity.Leaderboard.week(sent);
+        long best = 0L;
+        Map<String, Object> weekly = getMap("/vweekly/" + enc(user) + ".json");
+        if (Json.number(weekly, "w") == week) best = Math.max(best, Json.number(weekly, "s"));
+        Map<String, Object> kept = getMap("/wallet/" + enc(user) + "/k.json");
+        if (Json.number(kept, "w") == week) best = Math.max(best, Json.number(kept, "s"));
+        return (int) Math.max(0L, Math.min(SettingsActivity.Leaderboard.MAX_SCORE, best));
+    }
+
+    static void news(Map<String, Object> update, String user, int gain, int newly, boolean ok, String why) {
+        Map<String, Object> note = new LinkedHashMap<>();
+        Map<String, Object> stamp = new LinkedHashMap<>();
+        stamp.put(".sv", "timestamp");
+        note.put("t", stamp);
+        note.put("g", (double) gain);
+        note.put("m", (double) newly);
+        note.put("ok", ok);
+        if (why != null && !why.isEmpty()) note.put("why", why.length() > 160 ? why.substring(0, 160) : why);
+        update.put("wallet/" + user + "/n", note);
+    }
+
+    static void awardFromSeed(String user, String seed, long sent, int score) throws IOException {
+        Map<String, Object> record = getMap("/seeds/" + enc(seed) + ".json");
+        Map<String, Object> facts = Json.object(record.get("f"));
+        if (facts == null || Boolean.TRUE.equals(record.get("q")) || Json.number(facts, "s") != score) return;
+        Map<String, Object> update = new LinkedHashMap<>();
+        int restMode = (int) Json.number(facts, "md");
+        Object seconds = facts.get("sec");
+        int gained = awardRound(update, user, sent, score, seconds instanceof Number ? ((Number) seconds).doubleValue() : 0.0,
+                (int) Json.number(facts, "fl"), Challenges.ANY, restMode, (int) Math.max(0L, Json.number(facts, "wb")));
+        update.put("seeds/" + seed + "/q", true);
+        call("PATCH", "/.json", Json.write(update), false, null);
+        report.add("Counted a leaderboard run of " + score + " by " + shortId(user) + " toward challenges" + (gained > 0 ? ": earned " + gained + " coins" : ""));
+    }
+
+    static int awardRound(Map<String, Object> update, String user, long sent, int score, double seconds, int flaps, int twist, int restMode,
+            int weekBest) throws IOException {
+        Map<String, Object> wallet = getMap("/wallet/" + enc(user) + ".json");
+        long day = Challenges.day(sent);
+        Map<String, Object> daily = Json.object(wallet.get("d"));
+        long savedDay = daily == null ? Long.MIN_VALUE : Json.number(daily, "d");
+        if (savedDay != Long.MIN_VALUE && savedDay > day) {
+            news(update, user, 0, 0, false, "the run was from an earlier day");
+            return 0;
+        }
+        Challenges.Goal[] goals = Challenges.forDay(day);
+        Map<String, Object> next = new LinkedHashMap<>();
+        next.put("d", (double) day);
+        int mask = 0;
+        int[] progress = new int[3];
+        if (daily != null && savedDay == day) {
+            String ids = Json.string(daily, "g");
+            String[] parts = ids.split(",");
+            if (parts.length == 3) {
+                for (int i = 0; i < 3; i++) {
+                    Challenges.Goal goal = Challenges.find(parts[i]);
+                    goals[i] = goal != null && goal.tier == i ? goal : null;
+                }
+            }
+            mask = (int) (Json.number(daily, "m") & 7L);
+            if (mask < 0) mask = 0;
+            for (int i = 0; i < 3; i++) progress[i] = (int) Math.max(0L, Json.number(daily, "p" + i));
+        }
+        StringBuilder ids = new StringBuilder();
+        for (int i = 0; i < 3; i++) {
+            if (i > 0) ids.append(',');
+            ids.append(goals[i] == null ? "" : goals[i].id);
+        }
+        next.put("g", ids.toString());
+        int gain = 0;
+        int newly = 0;
+        for (int i = 0; i < 3; i++) {
+            Challenges.Goal goal = goals[i];
+            if (goal == null || (mask & (1 << i)) != 0 || !Challenges.fits(goal, twist, restMode)) continue;
+            progress[i] = Challenges.advance(goal, progress[i], score, seconds, flaps, weekBest);
+            if (Challenges.done(goal, progress[i])) {
+                mask |= 1 << i;
+                newly |= 1 << i;
+                gain += Challenges.REWARD[i];
+            }
+        }
+        for (int i = 0; i < 3; i++) next.put("p" + i, (double) progress[i]);
+        next.put("m", (double) mask);
+        update.put("wallet/" + user + "/d", next);
+        if (mask == 7 && newly != 0) {
+            long last = wallet.containsKey("l") ? Json.number(wallet, "l") : Long.MIN_VALUE;
+            long streak = Math.max(0L, Json.number(wallet, "s"));
+            streak = last == day - 1 ? streak + 1 : last == day ? Math.max(1L, streak) : 1L;
+            update.put("wallet/" + user + "/s", (double) streak);
+            update.put("wallet/" + user + "/l", (double) day);
+            gain += Challenges.bonus((int) Math.min(100000L, streak));
+        }
+        if (twist == Challenges.ANY && restMode != SettingsActivity.FAIR_NONE) {
+            int week = SettingsActivity.Leaderboard.week(sent);
+            Map<String, Object> kept = Json.object(wallet.get("k"));
+            long best = kept != null && Json.number(kept, "w") == week ? Json.number(kept, "s") : 0L;
+            if (score > best) {
+                Map<String, Object> mark = new LinkedHashMap<>();
+                mark.put("w", (double) week);
+                mark.put("s", (double) score);
+                update.put("wallet/" + user + "/k", mark);
+            }
+        }
+        if (gain > 0) {
+            long balance = Math.max(0L, Json.number(wallet, "b"));
+            long earned = Math.max(0L, Json.number(wallet, "e"));
+            update.put("wallet/" + user + "/b", (double) Math.min(Challenges.MAX_BALANCE, balance + gain));
+            update.put("wallet/" + user + "/e", (double) Math.min(Integer.MAX_VALUE, earned + gain));
+        }
+        news(update, user, gain, newly, true, "");
+        return gain;
+    }
+
+    static void processPurchases(long deadline) throws IOException {
+        Map<String, Object> waitingBuys = getMap("/buy.json?shallow=true");
+        for (String user : waitingBuys.keySet()) {
+            if (System.currentTimeMillis() > deadline) return;
+            if (!userKey(user)) {
+                call("DELETE", "/buy/" + enc(user) + ".json", null, false, null);
+                continue;
+            }
+            Reply reply = call("GET", "/buy/" + enc(user) + ".json", null, true, null);
+            Map<String, Object> order = Json.object(Json.parse(orNull(reply.body)));
+            if (order == null) continue;
+            String id = Json.string(order, "i");
+            Shop.Item item = Shop.item(id);
+            Map<String, Object> wallet = getMap("/wallet/" + enc(user) + ".json");
+            Map<String, Object> owned = Json.object(wallet.get("o"));
+            long balance = Math.max(0L, Json.number(wallet, "b"));
+            Map<String, Object> update = new LinkedHashMap<>();
+            boolean ok;
+            String result;
+            if (item == null) {
+                ok = false;
+                result = "an unknown item";
+            } else if (exists("/banned/" + enc(user) + ".json")) {
+                ok = false;
+                result = "a banned player";
+            } else if (owned != null && owned.containsKey(item.id)) {
+                ok = true;
+                result = "already owned";
+            } else if (balance >= item.price) {
+                ok = true;
+                result = "bought for " + item.price;
+                update.put("wallet/" + user + "/b", (double) (balance - item.price));
+                update.put("wallet/" + user + "/o/" + item.id, true);
+            } else {
+                ok = false;
+                result = "not enough coins (" + balance + " of " + item.price + ")";
+            }
+            Map<String, Object> done = new LinkedHashMap<>();
+            done.put("i", item == null ? "" : item.id);
+            done.put("ok", ok);
+            Map<String, Object> stamp = new LinkedHashMap<>();
+            stamp.put(".sv", "timestamp");
+            done.put("t", stamp);
+            update.put("wallet/" + user + "/r", done);
+            call("PATCH", "/.json", Json.write(update), false, null);
+            Reply removed = call("DELETE", "/buy/" + enc(user) + ".json", null, false, reply.etag);
+            if (removed.code == 412) report.add("A purchase from " + shortId(user) + " changed while it was handled; it will be looked at again.");
+            report.add("Shop: " + shortId(user) + " asked for " + (item == null ? "something unknown" : item.name) + ", " + result + ".");
+        }
     }
 
     static String seedOwner(String seed) throws IOException {
