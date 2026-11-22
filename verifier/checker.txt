@@ -3651,29 +3651,29 @@ public final class Verifier {
         Map<String, Object> next = new LinkedHashMap<>();
         next.put("d", (double) day);
         int mask = 0;
-        int[] progress = new int[3];
+        int[] progress = new int[Challenges.TIERS];
         if (daily != null && savedDay == day) {
             String ids = Json.string(daily, "g");
             String[] parts = ids.split(",");
-            if (parts.length == 3) {
-                for (int i = 0; i < 3; i++) {
+            if (parts.length == Challenges.TIERS || parts.length == 3) {
+                for (int i = 0; i < parts.length; i++) {
                     Challenges.Goal goal = Challenges.find(parts[i]);
                     goals[i] = goal != null && goal.tier == i ? goal : null;
                 }
             }
-            mask = (int) (Json.number(daily, "m") & 7L);
+            mask = (int) (Json.number(daily, "m") & 15L);
             if (mask < 0) mask = 0;
-            for (int i = 0; i < 3; i++) progress[i] = (int) Math.max(0L, Json.number(daily, "p" + i));
+            for (int i = 0; i < Challenges.TIERS; i++) progress[i] = (int) Math.max(0L, Json.number(daily, "p" + i));
         }
         StringBuilder ids = new StringBuilder();
-        for (int i = 0; i < 3; i++) {
+        for (int i = 0; i < Challenges.TIERS; i++) {
             if (i > 0) ids.append(',');
             ids.append(goals[i] == null ? "" : goals[i].id);
         }
         next.put("g", ids.toString());
         int gain = 0;
         int newly = 0;
-        for (int i = 0; i < 3; i++) {
+        for (int i = 0; i < Challenges.TIERS; i++) {
             Challenges.Goal goal = goals[i];
             if (goal == null || (mask & (1 << i)) != 0 || !Challenges.fits(goal, twist, restMode)) continue;
             progress[i] = Challenges.advance(goal, progress[i], score, seconds, flaps, weekBest);
@@ -3683,16 +3683,22 @@ public final class Verifier {
                 gain += Challenges.REWARD[i];
             }
         }
-        for (int i = 0; i < 3; i++) next.put("p" + i, (double) progress[i]);
+        for (int i = 0; i < Challenges.TIERS; i++) next.put("p" + i, (double) progress[i]);
         next.put("m", (double) mask);
         update.put("wallet/" + user + "/d", next);
-        if (mask == 7 && newly != 0) {
-            long last = wallet.containsKey("l") ? Json.number(wallet, "l") : Long.MIN_VALUE;
-            long streak = Math.max(0L, Json.number(wallet, "s"));
+        long last = wallet.containsKey("l") ? Json.number(wallet, "l") : Long.MIN_VALUE;
+        long streak = Math.max(0L, Json.number(wallet, "s"));
+        if (last != day && last != day - 1) streak = 0L;
+        if ((mask & Challenges.MAIN) == Challenges.MAIN && (newly & Challenges.MAIN) != 0) {
             streak = last == day - 1 ? streak + 1 : last == day ? Math.max(1L, streak) : 1L;
             update.put("wallet/" + user + "/s", (double) streak);
             update.put("wallet/" + user + "/l", (double) day);
             gain += Challenges.bonus((int) Math.min(100000L, streak));
+        }
+        long extremes = Math.max(0L, Json.number(wallet, "x"));
+        if ((newly & (1 << Challenges.EXTREME)) != 0) {
+            extremes++;
+            update.put("wallet/" + user + "/x", (double) extremes);
         }
         if (twist == Challenges.ANY && restMode != SettingsActivity.FAIR_NONE) {
             int week = SettingsActivity.Leaderboard.week(sent);
@@ -3705,13 +3711,32 @@ public final class Verifier {
                 update.put("wallet/" + user + "/k", mark);
             }
         }
+        long earned = Math.max(0L, Json.number(wallet, "e"));
         if (gain > 0) {
             long balance = Math.max(0L, Json.number(wallet, "b"));
-            long earned = Math.max(0L, Json.number(wallet, "e"));
+            earned = Math.min(Integer.MAX_VALUE, earned + gain);
             update.put("wallet/" + user + "/b", (double) Math.min(Challenges.MAX_BALANCE, balance + gain));
-            update.put("wallet/" + user + "/e", (double) Math.min(Integer.MAX_VALUE, earned + gain));
+            update.put("wallet/" + user + "/e", (double) earned);
+        }
+        Map<String, Object> owned = Json.object(wallet.get("o"));
+        StringBuilder unlocked = new StringBuilder();
+        for (Shop.Item item : Shop.ITEMS) {
+            if (!item.earned() || (owned != null && owned.containsKey(item.id))) continue;
+            if (!item.reached((int) Math.min(100000L, streak), (int) Math.min(Integer.MAX_VALUE, earned), (int) Math.min(1000000L, extremes))) continue;
+            update.put("wallet/" + user + "/o/" + item.id, true);
+            if (unlocked.length() > 0) unlocked.append(',');
+            unlocked.append(item.id);
         }
         news(update, user, gain, newly, true, "");
+        if (unlocked.length() > 0) {
+            Object note = update.get("wallet/" + user + "/n");
+            if (note instanceof Map) {
+                @SuppressWarnings("unchecked")
+                Map<String, Object> map = (Map<String, Object>) note;
+                map.put("u", unlocked.toString());
+            }
+            report.add("Unlocked for " + shortId(user) + ": " + unlocked);
+        }
         return gain;
     }
 
@@ -3737,6 +3762,9 @@ public final class Verifier {
             if (item == null) {
                 ok = false;
                 result = "an unknown item";
+            } else if (item.earned() || item.price <= 0) {
+                ok = false;
+                result = "an item that can only be earned";
             } else if (exists("/banned/" + enc(user) + ".json")) {
                 ok = false;
                 result = "a banned player";
