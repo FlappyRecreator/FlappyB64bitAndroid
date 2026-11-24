@@ -1,6 +1,6 @@
 # Flappy Bird 64-bit
 
-An unofficial fan recreation of Flappy Bird, rebuilt from scratch for modern Android devices. It has an online leaderboard with verified scores, replays you can save as videos, and over a hundred optional settings.
+An unofficial fan recreation of Flappy Bird, rebuilt from scratch for modern Android devices. It has an online leaderboard with verified scores, daily challenges that earn Flight Coins for styling your leaderboard spot, replays you can save as videos, and over a hundred optional settings.
 
 <p align="center">
   <img src="https://github.com/user-attachments/assets/fd685be8-0166-4b06-a90b-afc2388b7258" alt="Flappy Bird 64-bit screenshot" width="295">
@@ -17,9 +17,9 @@ An unofficial fan recreation of Flappy Bird, rebuilt from scratch for modern And
 ## Contents
 
 - [About](#about)
-- [What's new in v1.5.4](#whats-new-in-v154)
 - [Features](#features)
 - [Online leaderboard](#online-leaderboard)
+- [Flight Coins](#flight-coins)
 - [Replays](#replays)
 - [Installation](#installation)
 - [Privacy](#privacy)
@@ -36,7 +36,7 @@ Flappy Bird 64-bit is a free, non-commercial fan project that brings the 2013 mo
 
 The original game was removed from app stores in 2014. Its Android release was built for older 32-bit devices, and many modern phones can no longer install or run it. I started this project so the game could stay playable on today's hardware.
 
-The game is written from scratch in Java and is modeled on version 1.3 of the original Android release. Out of the box it plays just like the original. If you want more, you can change nearly everything about how the game looks and feels, compete on a global leaderboard, and watch your best rounds again.
+The game is written from scratch in Java and is modeled on version 1.3 of the original Android release. Out of the box it plays just like the original. If you want more, you can change nearly everything about how the game looks and feels, compete on a global leaderboard, take on daily challenges, and watch your best rounds again.
 
 ---
 
@@ -61,19 +61,23 @@ The game is written from scratch in Java and is modeled on version 1.3 of the or
 - Full support for USB and Bluetooth keyboards. Space flaps by default
 - Every key can be changed, including flap, pause, play and settings
 - Mouse support: click to flap and right-click to pause. The pointer hides automatically during a run
+- Menus work with the keyboard too. Arrow keys move around, Enter picks and Esc goes back
+- Press C on the home screen to open Flight Coins
+- Buttons light up when you hover over them, and the mouse wheel scrolls lists
 - The replay viewer works with keyboards, media keys and game controllers
 
 ### Customization
 A full settings menu with a live preview that plays by itself and shows each change as you make it.
 
-- **Bird:** color, tint, size, hitbox, wing speed, trail, rainbow and ghost effects, and starting position
+- **Bird:** color, tint, size, hitbox, wing speed, trail, rainbow and ghost effects, tilt and starting position
 - **World:** background, sky and ground speed, a day and night cycle, and rain, storm or snow
 - **Pipes:** color, width, gap, spacing, height variation, moving pipes and golden pipes
-- **Physics:** gravity, flap strength, game speed, a difficulty ramp, points per pipe and medal scores
-- **Effects:** screen shake, motion blur, screen dimming and the crash flash
+- **Physics:** gravity, flap strength, hang time, fall speed limit, ceiling, game speed, a difficulty ramp, and fixed-step physics at 30, 60 or 120 Hz with Smooth or Original timing
+- **Scoring:** points per pipe, scoring point and medal scores
 - **Modes:** God mode, extra lives, autopilot, jetpack, drunk mode, upside down and reverse pipes
-- **System:** sound and weather volume, vibration, pause button, auto-pause, replays, FPS counter, hitbox outlines and keyboard controls
-- **Advanced:** fixed-step physics at 30, 60 or 120 Hz with Smooth or Original timing, whole-pixel movement, fall speed limit, tilt behavior, ceiling and scoring point
+- **Screen:** screen shake, motion blur, screen dimming, the crash flash, what shows while playing, frame rate limit, FPS counter and hitbox outlines
+- **Sound:** sound and weather volume, and vibration for flaps, points, crashes, medals and menus
+- **Controls:** keyboard keys, mouse options, pause button and auto-pause
 
 ### Settings tools
 - An **All** tab that lists every setting on one page, with Reset to defaults at the top
@@ -94,7 +98,7 @@ A full settings menu with a live preview that plays by itself and shows each cha
 - An **Activity log** records rounds, setting changes and crashes, along with useful details about your device and app version
 - The log can be viewed, exported as a `.txt` file or shared from **Settings > Presets > Activity log**
 - The **About** tab shows the exact app version and device details, and can copy them for a report
-- The log can be turned off in **Settings > Advanced**
+- The log can be turned off in **Settings > Presets**
 
 ---
 
@@ -102,9 +106,10 @@ A full settings menu with a live preview that plays by itself and shows each cha
 
 Choose a name and your best fair rounds are posted to a global leaderboard automatically.
 
-- **All time** and **Weekly** boards, showing the top 10, 25, 50 or 100 players
+- **Weekly** and **All time** boards, showing the top 10, 25, 50 or 100 players
 - Your own place is always shown, even when you're outside the list
-- Gold, silver and bronze medals for the top three, and a glowing gold name for first place
+- Animated pixel art gold, silver and bronze medals for the top three, and a glowing gold name for first place
+- Players can style their rows with colors, backgrounds, glows, effects and badges bought with Flight Coins. Turn off **Show player styles** to see every row plain
 - Scores that went up since you last looked count up and slide to their new places, with light haptic ticks
 - Scores played with Classic feel are labeled **Classic**
 - Double-tap a row to see which version it was played on
@@ -120,10 +125,51 @@ Every posted score is checked by replaying the round exactly as it was played. S
 - While you play, the game sends a small timing mark every few seconds, so a run must be played in real time. Slow motion is caught, even for a short stretch
 - Each round's pipes come from a seed chosen at the start, and the checker makes sure the round started exactly like a fresh one
 - Changed game files or modified physics are caught because the replay won't match the score
+- Daily challenge runs are checked the same way before any Flight Coins are paid
 - Rejected scores are taken down, and players with 3 rejected runs in a week are banned automatically for 14 days
 - Scores below 5 aren't posted
 
 Turn on **Show unverified** on the leaderboard to also see scores that are still waiting to be checked.
+
+---
+
+## Flight Coins
+
+Complete daily challenges to earn gold Flight Coins, then spend them in the shop to make your spot on the leaderboard stand out. Tap the coin button in the top left of the home screen to open it.
+
+### Daily challenges
+- Four new challenges every day at midnight UTC: Easy, Medium, Hard and Extreme
+- Everyone gets the same challenges each day
+- Harder challenges pay more coins
+- Finish Easy, Medium and Hard on the same day for a bonus that grows with your daily streak
+- Some challenges use a special setup, like Classic physics, a thunderstorm, upside down or a giant bird. Press **Play** to try one. It never changes your own settings and turns off when you're done
+
+### Shop
+- Name colors and name effects, row backgrounds, glows, motion effects and badges
+- Animated VIP backgrounds for the biggest spenders
+- Preview anything on your own row before you buy it
+- Some items can't be bought, only earned with long streaks, lots of coins or Extreme challenges
+- Everything you wear is shown to everyone on the leaderboard
+
+### Good to know
+- Flight Coins need an internet connection and a leaderboard name
+- Coins are earned only by playing and can't be bought with real money
+- Your coins and items are kept on the server and every challenge run is checked, so they can't be cheated in
+- Want a simpler game? Turn off **Show Flight Coins** in **Settings > Leaderboard**. Daily challenges can also be turned off on their own
+
+### Keyboard shortcuts
+
+| Key | Action |
+|---|---|
+| C | Open or close Flight Coins |
+| Arrow keys | Move around |
+| Enter or Space | Pick the highlighted button |
+| Tab / Shift + Tab | Next or previous button |
+| Page Up / Page Down | Scroll the shop a page |
+| Home / End | Jump to the top or bottom of the shop |
+| Esc | Close |
+
+With a mouse, scroll with the wheel or drag the scrollbar, and right-click to close. On a controller, Y opens Flight Coins, A picks, B closes, and the bumpers switch between Daily and Shop.
 
 ---
 
@@ -206,11 +252,15 @@ When you choose a name, the game creates an anonymous ID with Google Firebase. I
 - Basic details about those rounds: how long they lasted, how many times you flapped, time spent paused, whether Classic feel was on, and the app version
 - A recording of the taps in your round, so it can be checked. Recordings are deleted once they've been checked
 - Small timing marks while you play, which prove the round was played in real time
+- If you play daily challenges, recordings of those rounds too, so they can be checked before coins are paid
 
-Entries are removed after 14 days without playing, unless they're in the top 100.
+Your Flight Coins balance, challenge progress, streak, items and chosen style are stored with your anonymous ID. Your style is shown on the leaderboard next to your name.
+
+Entries are removed after 14 days without playing, unless they're in the top 100. Your Flight Coins and items are kept.
 
 - **Stop posting:** turn off **Settings > Leaderboard > Post scores automatically**
-- **Remove your entry:** use **Settings > About > Remove my leaderboard entry**. Your local high score is kept
+- **Stop Flight Coins:** turn off **Settings > Leaderboard > Show Flight Coins**
+- **Remove your entry:** use **Settings > About > Remove my leaderboard entry**. Your local high score is kept. Your Flight Coins and items belong to your anonymous ID, so they can't be recovered afterward
 
 ---
 
