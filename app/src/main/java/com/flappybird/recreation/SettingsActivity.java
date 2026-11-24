@@ -269,7 +269,9 @@ public class SettingsActivity extends AppCompatActivity {
     public static final String PREF_RIGHT_CLICK_PAUSES = "pref_right_click_pauses";
     public static final String PREF_HIDE_CURSOR = "pref_hide_cursor";
     public static final String PREF_BOARD_AUTO_POST = "pref_board_auto_post";
+    public static final String PREF_SHOW_COINS = "pref_show_coins";
     public static final String PREF_DAILY_CHALLENGES = "pref_daily_challenges";
+    public static final String PREF_BOARD_STYLES = "pref_board_styles";
     public static final String PREF_BOARD_SHOW_STATUS = "pref_board_show_status";
     public static final String PREF_BOARD_OPEN_ON_BEST = "pref_board_open_on_best";
     public static final String PREF_BOARD_TAB = "pref_board_tab";
@@ -403,7 +405,9 @@ public class SettingsActivity extends AppCompatActivity {
     public static final boolean DEFAULT_RIGHT_CLICK_PAUSES = true;
     public static final boolean DEFAULT_HIDE_CURSOR = true;
     public static final boolean DEFAULT_BOARD_AUTO_POST = true;
+    public static final boolean DEFAULT_SHOW_COINS = true;
     public static final boolean DEFAULT_DAILY_CHALLENGES = true;
+    public static final boolean DEFAULT_BOARD_STYLES = true;
     public static final boolean DEFAULT_BOARD_SHOW_STATUS = true;
     public static final boolean DEFAULT_BOARD_OPEN_ON_BEST = false;
     public static final int DEFAULT_BOARD_TAB = 1;
@@ -1622,7 +1626,7 @@ public class SettingsActivity extends AppCompatActivity {
         }
 
         private static synchronized String token(SharedPreferences store, boolean fresh) throws IOException, JSONException {
-            long now = System.nanoTime() / 1000000L;
+            long now = SystemClock.elapsedRealtime();
             if (!fresh && idToken != null && now < idTokenUntil && !uid(store).isEmpty()) return idToken;
             String key = URLEncoder.encode(API_KEY.trim(), "UTF-8");
             String refresh = text(store, KEY_REFRESH);
@@ -2173,7 +2177,9 @@ public class SettingsActivity extends AppCompatActivity {
             int earned;
             long day = -1L;
             String[] goals;
-            final int[] progress = new int[3];
+            final int[] progress = new int[Challenges.TIERS];
+            int extremes;
+            String unlocked = "";
             int doneMask;
             int streak;
             long lastFull = -1L;
@@ -2191,7 +2197,7 @@ public class SettingsActivity extends AppCompatActivity {
             long fetchedAt;
 
             int progressFor(long today, int slot) {
-                return day == today && slot >= 0 && slot < 3 ? progress[slot] : 0;
+                return day == today && slot >= 0 && slot < progress.length ? progress[slot] : 0;
             }
 
             boolean doneFor(long today, int slot) {
@@ -2226,16 +2232,18 @@ public class SettingsActivity extends AppCompatActivity {
             wallet.earned = (int) Math.max(0L, Math.min(Integer.MAX_VALUE, number(raw.opt("e"))));
             wallet.streak = (int) Math.max(0L, Math.min(100000L, number(raw.opt("s"))));
             wallet.lastFull = raw.has("l") ? number(raw.opt("l")) : -1L;
+            wallet.extremes = (int) Math.max(0L, Math.min(1000000L, number(raw.opt("x"))));
             JSONObject daily = raw.optJSONObject("d");
             if (daily != null) {
                 wallet.day = number(daily.opt("d"));
                 String goals = string(daily.opt("g"));
                 if (!goals.isEmpty()) {
                     String[] ids = goals.split(",");
-                    if (ids.length == 3) wallet.goals = ids;
+                    if (ids.length == Challenges.TIERS) wallet.goals = ids;
+                    else if (ids.length == 3) wallet.goals = new String[] {ids[0], ids[1], ids[2], null};
                 }
-                for (int i = 0; i < 3; i++) wallet.progress[i] = (int) Math.max(0L, Math.min(1000000L, number(daily.opt("p" + i))));
-                wallet.doneMask = (int) (number(daily.opt("m")) & 7L);
+                for (int i = 0; i < Challenges.TIERS; i++) wallet.progress[i] = (int) Math.max(0L, Math.min(1000000L, number(daily.opt("p" + i))));
+                wallet.doneMask = (int) (number(daily.opt("m")) & 15L);
             }
             JSONObject owned = raw.optJSONObject("o");
             if (owned != null) {
@@ -2256,6 +2264,7 @@ public class SettingsActivity extends AppCompatActivity {
                 wallet.newsMask = (int) (number(news.opt("m")) & 15L);
                 wallet.newsOk = !Boolean.FALSE.equals(news.opt("ok"));
                 wallet.newsWhy = string(news.opt("why"));
+                wallet.unlocked = string(news.opt("u"));
                 if (wallet.newsWhy.length() > 160) wallet.newsWhy = wallet.newsWhy.substring(0, 160);
             }
             JSONObject bought = raw.optJSONObject("r");
@@ -2351,9 +2360,17 @@ public class SettingsActivity extends AppCompatActivity {
                     String user = uid(store);
                     JSONObject look = styleJson(style);
                     String auth = "auth=" + URLEncoder.encode(token, "UTF-8");
-                    String place = base() + "/wallet/" + URLEncoder.encode(user, "UTF-8") + "/y.json?print=silent&" + auth;
-                    if (look.length() == 0) request("DELETE", place, null, null);
-                    else request("PUT", place, look.toString(), JSON_TYPE);
+                    String place = base() + "/wallet/" + URLEncoder.encode(user, "UTF-8") + "/y.json?print=silent&";
+                    try {
+                        if (look.length() == 0) request("DELETE", place + auth, null, null);
+                        else request("PUT", place + auth, look.toString(), JSON_TYPE);
+                    } catch (HttpError e) {
+                        if (e.code != 401) throw e;
+                        token = token(store, true);
+                        auth = "auth=" + URLEncoder.encode(token, "UTF-8");
+                        if (look.length() == 0) request("DELETE", place + auth, null, null);
+                        else request("PUT", place + auth, look.toString(), JSON_TYPE);
+                    }
                     for (String branch : new String[] {"scores", "weekly", "vscores", "vweekly"}) {
                         String spot = base() + "/" + branch + "/" + URLEncoder.encode(user, "UTF-8") + "/y.json?print=silent&" + auth;
                         try {
@@ -4165,7 +4182,7 @@ public class SettingsActivity extends AppCompatActivity {
         page = addPage(6);
         pageIntro(page, "Keyboard, mouse and pausing. Works with USB and Bluetooth keyboards and on PC emulators");
         group = addGroup(page, "Keyboard and mouse");
-        toggleRow(group, "row_keyboard", "Keyboard controls", "Play with a USB or Bluetooth keyboard");
+        toggleRow(group, "row_keyboard", "Keyboard controls", "Play with a USB or Bluetooth keyboard. C opens Flight Coins, then arrows, Enter and Esc move around");
         keyRow(group, "row_key_flap", "Flap", "Also presses Play on the menus", DEFAULT_KEY_FLAP);
         keyRow(group, "row_key_flap_alt", "Flap, second key", null, DEFAULT_KEY_FLAP_ALT);
         keyRow(group, "row_key_pause", "Pause and resume", "Esc also pauses during a run", DEFAULT_KEY_PAUSE);
@@ -4200,8 +4217,10 @@ public class SettingsActivity extends AppCompatActivity {
         actionRow(group, "button_board_rules", "What counts as a real score", "Checking your settings...", COLOR_ON);
         toggleRow(group, "row_board_show_status", "Show posting status", "A short note on the score screen says whether the round was posted");
         group = addGroup(page, "Flight Coins");
+        toggleRow(group, "row_show_coins", "Show Flight Coins", "The coin button, challenges and coin messages. Turn off for a simpler, classic feel");
         toggleRow(group, "row_daily_challenges", "Daily challenges", "Earn Flight Coins from three new challenges every day when you're connected");
         group = addGroup(page, "Leaderboard screen");
+        toggleRow(group, "row_board_styles", "Show player styles", "Colors, badges and effects players bought for their leaderboard rows");
         toggleRow(group, "row_board_open_on_best", "Open the leaderboard after a new best", "Shows where you placed when a posted score beats your best");
         choiceRow(group, "row_board_tab", "Leaderboard opens on", "Weekly", "All time");
         choiceRow(group, "row_board_size", "Scores shown on the leaderboard", "10", "25", "50", "100");
@@ -4613,12 +4632,18 @@ public class SettingsActivity extends AppCompatActivity {
         ToggleSetting autoPost = toggle(PREF_BOARD_AUTO_POST, DEFAULT_BOARD_AUTO_POST, rowView("row_board_auto_post"));
         autoPost.note = "used in the game";
         autoPost.randomizable = false;
+        ToggleSetting showCoins = toggle(PREF_SHOW_COINS, DEFAULT_SHOW_COINS, rowView("row_show_coins"));
+        showCoins.note = "used in the game";
+        showCoins.randomizable = false;
         ToggleSetting dailyChallenges = toggle(PREF_DAILY_CHALLENGES, DEFAULT_DAILY_CHALLENGES, rowView("row_daily_challenges"));
         dailyChallenges.note = "used in the game";
         dailyChallenges.randomizable = false;
         ToggleSetting showStatus = toggle(PREF_BOARD_SHOW_STATUS, DEFAULT_BOARD_SHOW_STATUS, rowView("row_board_show_status"));
         showStatus.note = "used in the game";
         showStatus.randomizable = false;
+        ToggleSetting boardStyles = toggle(PREF_BOARD_STYLES, DEFAULT_BOARD_STYLES, rowView("row_board_styles"));
+        boardStyles.note = "used in the game";
+        boardStyles.randomizable = false;
         ToggleSetting openOnBest = toggle(PREF_BOARD_OPEN_ON_BEST, DEFAULT_BOARD_OPEN_ON_BEST, rowView("row_board_open_on_best"));
         openOnBest.note = "used in the game";
         openOnBest.randomizable = false;

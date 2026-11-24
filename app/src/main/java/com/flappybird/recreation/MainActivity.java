@@ -370,10 +370,6 @@ class GameView extends View implements Choreographer.FrameCallback {
     private static final int BOARD_ORANGE = 0xFFFC7858;
     private static final int BOARD_OWN_ROW = 0x40FC7858;
     private static final int BOARD_VERIFIED = 0xFF8E5CF7;
-    private static final int[][] MEDAL_COLORS = {
-            {0xFFFFE07A, 0xFFF2B01E, 0xFFB97A00, 0xFF7A4E00, 0xFFE0453A},
-            {0xFFF6F8FB, 0xFFC4CBD4, 0xFF8E98A5, 0xFF505A66, 0xFF3F7BD9},
-            {0xFFF6C28F, 0xFFD08443, 0xFF9C5A22, 0xFF5E3210, 0xFF2E9E62}};
     private static final int CHAMPION_TEXT = 0xFF8A5A00;
     private static final int CHAMPION_SHINE = 0xFFFFD45C;
     private static final int CHAMPION_GLOW = 0xFFFFC21A;
@@ -796,7 +792,6 @@ class GameView extends View implements Choreographer.FrameCallback {
     private int replayHashed, replayMarks;
     private float heartbeatTimer;
     private float boardShine;
-    private final Shader[] medalFaces = new Shader[3];
     private final Path medalPath = new Path();
     private final Matrix championMatrix = new Matrix();
     private LinearGradient championShine;
@@ -804,6 +799,8 @@ class GameView extends View implements Choreographer.FrameCallback {
     private long roundRealStart, roundUptimeStart, roundPausedMs, pausedSince = -1L;
     private boolean settingBoardAutoPost = true;
     private boolean settingDailyChallenges = true;
+    private boolean settingShowCoins = true;
+    private boolean settingBoardStyles = true;
     private int challengeTwist = -1;
     private long challengeTwistDay = -1L;
     private boolean roundChallenge;
@@ -826,6 +823,10 @@ class GameView extends View implements Choreographer.FrameCallback {
     private boolean coinDragArmed, coinDragging;
     private final RectF coinPanel = new RectF();
     private final RectF coinListRect = new RectF();
+    private final RectF coinBarRect = new RectF();
+    private int coinFocusAction = 0, coinFocusArg = -1;
+    private boolean coinKeyFocus = false, coinBarDragging = false;
+    private float coinRowHeight = 1f, coinBarTrack = 0f, coinBarThumb = 0f;
     private final List<float[]> coinHits = new ArrayList<>();
     private int coinHitCount;
     private int coinPressAction, coinPressArg = -1;
@@ -833,9 +834,9 @@ class GameView extends View implements Choreographer.FrameCallback {
     private final RectF coinRect = new RectF();
     private float coinSwitchAge = 99f, coinSwitchScroll, coinKindAge = 99f, coinOpenAge = 99f, coinPill, coinKindPill;
     private int coinSwitchFrom, coinKindFrom;
-    private final float[] coinBars = new float[3];
-    private final float[] coinBarTargets = new float[3];
-    private final float[] coinDonePop = {99f, 99f, 99f};
+    private final float[] coinBars = new float[Challenges.TIERS];
+    private final float[] coinBarTargets = new float[Challenges.TIERS];
+    private final float[] coinDonePop = {99f, 99f, 99f, 99f};
     private int coinDoneSeen;
     private float coinShown = -1f, coinBump = 99f;
     private boolean coinCacheLoaded;
@@ -852,7 +853,7 @@ class GameView extends View implements Choreographer.FrameCallback {
     private final Path lookPath = new Path();
     private final Matrix lookMatrix = new Matrix();
     private final Shader[] lookShaders = new Shader[Shop.ITEMS.length];
-    private final String[] coinBlocked = new String[3];
+    private final String[] coinBlocked = new String[Challenges.TIERS];
     private float coinBlockedAge = 99f;
     private long coinBlockedDay = -1L;
     private int coinLabelValue = Integer.MIN_VALUE;
@@ -1349,6 +1350,12 @@ class GameView extends View implements Choreographer.FrameCallback {
         currentFairMode = fairBlocker == null ? fairPlayMode(stored) : FAIR_NONE;
         settingBoardAutoPost = flagPref(stored, PREF_BOARD_AUTO_POST, DEFAULT_BOARD_AUTO_POST);
         settingDailyChallenges = flagPref(stored, PREF_DAILY_CHALLENGES, DEFAULT_DAILY_CHALLENGES);
+        settingShowCoins = flagPref(stored, PREF_SHOW_COINS, DEFAULT_SHOW_COINS);
+        if (!settingShowCoins && toastQueue != null) {
+            toastQueue.clear();
+            toastTitle = null;
+        }
+        settingBoardStyles = flagPref(stored, PREF_BOARD_STYLES, DEFAULT_BOARD_STYLES);
         settingBoardShowStatus = flagPref(stored, PREF_BOARD_SHOW_STATUS, DEFAULT_BOARD_SHOW_STATUS);
         settingBoardOpenOnBest = flagPref(stored, PREF_BOARD_OPEN_ON_BEST, DEFAULT_BOARD_OPEN_ON_BEST);
         settingBoardTab = intPref(stored, PREF_BOARD_TAB, DEFAULT_BOARD_TAB) == 1 ? 1 : 0;
@@ -3138,6 +3145,7 @@ class GameView extends View implements Choreographer.FrameCallback {
     private static final String KEY_COIN_EARNED = "coinEarned";
     private static final String KEY_COIN_DAY = "coinDay";
     private static final String KEY_COIN_DONE = "coinDone";
+    private static final String KEY_COIN_NEWS_SEEN = "coinNewsSeen";
     private static final float WALLET_POLL_SEC = 6f;
     private static final long PENDING_MAX_MS = 5L * 60000L;
     private static final long BUY_MAX_MS = 4L * 60000L;
@@ -3150,7 +3158,7 @@ class GameView extends View implements Choreographer.FrameCallback {
     private static final int COIN_GOLD = 0xFFFFC93C;
     private static final int COIN_RIM = 0xFFE8A317;
     private static final int COIN_SHADE = 0xFFC9811A;
-    private static final int[] TIER_COLORS = {0xFF5DBB4A, 0xFFF5A623, 0xFFE0533D};
+    private static final int[] TIER_COLORS = {0xFF5DBB4A, 0xFFF5A623, 0xFFE0533D, 0xFF8A4FE0};
     private static final int HIT_CLOSE = 1;
     private static final int HIT_TAB = 2;
     private static final int HIT_KIND = 3;
@@ -3191,7 +3199,8 @@ class GameView extends View implements Choreographer.FrameCallback {
     private Challenges.Goal[] todayGoals(long day) {
         Challenges.Goal[] picked = Challenges.forDay(day);
         if (wallet != null && wallet.day == day && wallet.goals != null) {
-            for (int i = 0; i < 3; i++) {
+            for (int i = 0; i < Challenges.TIERS; i++) {
+                if (wallet.goals[i] == null) continue;
                 Challenges.Goal goal = Challenges.find(wallet.goals[i]);
                 picked[i] = goal != null && goal.tier == i ? goal : null;
             }
@@ -3224,7 +3233,7 @@ class GameView extends View implements Choreographer.FrameCallback {
     }
 
     private boolean coinsOn() {
-        return Leaderboard.coinsReady() && !filmMode;
+        return settingShowCoins && Leaderboard.coinsReady() && !filmMode;
     }
 
     private boolean challengeRoundPossible() {
@@ -3232,7 +3241,7 @@ class GameView extends View implements Choreographer.FrameCallback {
         long day = today();
         Challenges.Goal[] goals = todayGoals(day);
         Map<String, ?> current = null;
-        for (int i = 0; i < 3; i++) {
+        for (int i = 0; i < Challenges.TIERS; i++) {
             if (goals[i] == null || goalDone(day, i)) continue;
             if (current == null) current = playPrefs();
             if (Challenges.fits(goals[i], current)) return true;
@@ -3253,7 +3262,7 @@ class GameView extends View implements Choreographer.FrameCallback {
         long day = today();
         Challenges.Goal[] goals = todayGoals(day);
         int mask = 0;
-        for (int i = 0; i < 3; i++) {
+        for (int i = 0; i < Challenges.TIERS; i++) {
             Challenges.Goal goal = goals[i];
             if (goal == null || goalDone(day, i) || !Challenges.fits(goal, current)) continue;
             int before = goalProgress(day, i);
@@ -3312,7 +3321,7 @@ class GameView extends View implements Choreographer.FrameCallback {
         long day = today();
         if (challengeTwistDay != day) return false;
         Challenges.Goal[] goals = todayGoals(day);
-        for (int i = 0; i < 3; i++) {
+        for (int i = 0; i < Challenges.TIERS; i++) {
             if (goals[i] != null && goals[i].twist == challengeTwist && !goalDone(day, i)) return true;
         }
         return wallet == null;
@@ -3350,12 +3359,27 @@ class GameView extends View implements Choreographer.FrameCallback {
         if (fresh.newsTime >= pendingServerTime - 60000L && pendingMask != 0 && fresh.newsTime > 0) pendingMask = 0;
         int gained = knownEarned >= 0 ? fresh.earned - knownEarned : 0;
         if (gained > 0) {
-            boolean all3 = fresh.day == today() && fresh.doneMask == 7 && (old == null || old.doneMask != 7 || old.day != fresh.day);
+            boolean all3 = fresh.day == today() && (fresh.doneMask & Challenges.MAIN) == Challenges.MAIN
+                    && (old == null || (old.doneMask & Challenges.MAIN) != Challenges.MAIN || old.day != fresh.day);
             showToast("+" + gained + " FLIGHT COINS", all3 ? "All three done! " + fresh.streakFor(today()) + " day streak" : "Challenge complete!", true);
             playSound(soundPoint);
             feel(Feel.BEST);
         } else if (!fresh.newsOk && fresh.newsTime >= pendingServerTime - 60000L && fresh.newsTime > 0 && (old == null || old.newsTime != fresh.newsTime)) {
             showToast("RUN NOT COUNTED", fresh.newsWhy.isEmpty() ? "The checker couldn't confirm it" : "The checker said " + fresh.newsWhy, false);
+        }
+        Object newsSeen = all.get(KEY_COIN_NEWS_SEEN);
+        long seenNews = newsSeen instanceof Long ? (Long) newsSeen : 0L;
+        if (fresh.newsTime > seenNews) {
+            prefs.edit().putLong(KEY_COIN_NEWS_SEEN, fresh.newsTime).apply();
+            if (!fresh.unlocked.isEmpty()) {
+                for (String id : fresh.unlocked.split(",")) {
+                    Shop.Item item = Shop.item(id);
+                    if (item == null || !fresh.owned.contains(id)) continue;
+                    showToast("UNLOCKED " + item.name.toUpperCase(Locale.US), "Earned for " + item.goal().toLowerCase(Locale.US), true);
+                    playSound(soundPoint);
+                    feel(Feel.BEST);
+                }
+            }
         }
         if (buyingItem != null) {
             if (fresh.owned.contains(buyingItem)) {
@@ -3397,6 +3421,7 @@ class GameView extends View implements Choreographer.FrameCallback {
     }
 
     private void showToast(String title, String text, boolean coin) {
+        if (!settingShowCoins) return;
         if (toastAge < TOAST_SEC && toastTitle != null) {
             if (toastQueue.size() < 4) toastQueue.add(new String[] {title, text, coin ? "1" : ""});
             return;
@@ -3442,7 +3467,7 @@ class GameView extends View implements Choreographer.FrameCallback {
             if (Math.abs(coinTab - coinPill) < 0.002f) coinPill = coinTab;
             coinKindPill += (coinKind - coinKindPill) * Math.min(1f, step * 16f);
             if (Math.abs(coinKind - coinKindPill) < 0.002f) coinKindPill = coinKind;
-            for (int i = 0; i < 3; i++) {
+            for (int i = 0; i < Challenges.TIERS; i++) {
                 coinBars[i] += (coinBarTargets[i] - coinBars[i]) * Math.min(1f, step * 5f);
                 if (Math.abs(coinBarTargets[i] - coinBars[i]) < 0.001f) coinBars[i] = coinBarTargets[i];
                 if (coinDonePop[i] < 1f) coinDonePop[i] += step;
@@ -3485,8 +3510,8 @@ class GameView extends View implements Choreographer.FrameCallback {
             }
         }
         if (challengeTwist > Challenges.ANY && (gameState == GameState.HOME || gameState == GameState.PANEL_SLIDING)
-                && challengeTwistDay != today()) {
-            endTwist(true);
+                && (challengeTwistDay != today() || !settingShowCoins)) {
+            endTwist(settingShowCoins);
         }
         if (coinOpen) {
             if (!coinDragging && coinFling != 0f) {
@@ -3531,7 +3556,7 @@ class GameView extends View implements Choreographer.FrameCallback {
         coinKindAge = 99f;
         coinPill = coinTab;
         coinKindPill = coinKind;
-        for (int i = 0; i < 3; i++) {
+        for (int i = 0; i < Challenges.TIERS; i++) {
             coinBars[i] = 0f;
             coinBarTargets[i] = 0f;
             coinDonePop[i] = 99f;
@@ -3539,6 +3564,11 @@ class GameView extends View implements Choreographer.FrameCallback {
         coinDoneSeen = -1;
         coinPressAction = 0;
         coinPressArg = -1;
+        coinFocusAction = 0;
+        coinFocusArg = -1;
+        coinKeyFocus = false;
+        coinBarDragging = false;
+        coinBarRect.set(0f, 0f, 0f, 0f);
         coinSample = new Leaderboard.Entry();
         String name = Leaderboard.name(prefs);
         coinSample.name = name.isEmpty() ? "You" : name;
@@ -3609,37 +3639,57 @@ class GameView extends View implements Choreographer.FrameCallback {
         return null;
     }
 
-    private boolean pressedHit(int action, int arg) {
-        return coinPressAction == action && coinPressArg == arg;
+    private float[] coinFocusHit() {
+        if (coinFocusAction == 0) return null;
+        for (int i = 0; i < coinHitCount; i++) {
+            float[] hit = coinHits.get(i);
+            if ((int) hit[4] == coinFocusAction && (int) hit[5] == coinFocusArg) return hit;
+        }
+        return null;
     }
 
-    private void drawCoin(Canvas canvas, float x, float y, float radius) {
-        boardPaint.setColor(faded(BOARD_DARK));
-        canvas.drawCircle(x, y + radius * 0.16f, radius, boardPaint);
-        boardPaint.setColor(faded(COIN_SHADE));
-        canvas.drawCircle(x, y, radius, boardPaint);
-        boardPaint.setColor(faded(COIN_GOLD));
-        canvas.drawCircle(x, y - radius * 0.06f, radius * 0.86f, boardPaint);
-        boardPaint.setColor(faded(COIN_RIM));
-        canvas.drawCircle(x, y - radius * 0.06f, radius * 0.6f, boardPaint);
-        boardPaint.setColor(faded(COIN_GOLD));
-        float arm = radius * 0.42f;
-        lookPath.reset();
-        lookPath.moveTo(x, y - arm - radius * 0.06f);
-        lookPath.quadTo(x, y - radius * 0.06f, x + arm, y - radius * 0.06f);
-        lookPath.quadTo(x, y - radius * 0.06f, x, y + arm - radius * 0.06f);
-        lookPath.quadTo(x, y - radius * 0.06f, x - arm, y - radius * 0.06f);
-        lookPath.quadTo(x, y - radius * 0.06f, x, y - arm - radius * 0.06f);
-        lookPath.close();
-        canvas.drawPath(lookPath, boardPaint);
-        boardPaint.setColor(faded(0x99FFFFFF));
-        boardPaint.setStyle(Paint.Style.STROKE);
-        boardPaint.setStrokeWidth(radius * 0.14f);
-        boardPaint.setStrokeCap(Paint.Cap.ROUND);
-        boardShape.set(x - radius * 0.7f, y - radius * 0.76f, x + radius * 0.7f, y + radius * 0.64f);
-        canvas.drawArc(boardShape, 200f, 60f, false, boardPaint);
-        boardPaint.setStyle(Paint.Style.FILL);
-        boardPaint.setStrokeCap(Paint.Cap.BUTT);
+    private boolean listHit(float[] hit) {
+        return hit[4] == HIT_ITEM || hit[4] == HIT_ACTION;
+    }
+
+    private void drawCoinFocus(Canvas canvas, float unit) {
+        float[] hover = hasMouse && hoverX >= 0f && coinPressAction == 0 && !coinDragging && !coinBarDragging ? coinHitAt((int) hoverX, (int) hoverY) : null;
+        float[] focus = coinKeyFocus ? coinFocusHit() : null;
+        if (hover != null && hover != focus) coinRing(canvas, hover, unit, false);
+        if (focus != null) coinRing(canvas, focus, unit, true);
+    }
+
+    private void coinRing(Canvas canvas, float[] hit, float unit, boolean focus) {
+        boolean list = listHit(hit);
+        canvas.save();
+        if (list) canvas.clipRect(coinListRect.left - 2f * unit, coinListRect.top, coinListRect.right + 2f * unit, coinListRect.bottom);
+        float inset = hit[4] == HIT_ITEM ? unit : 0f;
+        boardShape.set(hit[0] - unit * 0.8f, hit[1] + inset - unit * 0.8f, hit[2] + unit * 0.8f, hit[3] - inset + unit * 0.8f);
+        if (hit[4] == HIT_ACTION) boardShape.set(hit[0] + unit * 0.2f, hit[1] + unit * 3f, hit[2] - unit * 0.2f, hit[3] - unit * 2.5f);
+        float radius = Math.min(unit * 4f, boardShape.height() / 2f);
+        if (focus) {
+            float pulse = 0.5f + 0.5f * (float) Math.sin(coinTime * 6f);
+            boardPaint.setStyle(Paint.Style.STROKE);
+            boardPaint.setStrokeWidth(unit * (1.4f + 0.4f * pulse));
+            boardPaint.setColor(faded(scaleAlpha(BOARD_ORANGE, 0.75f + 0.25f * pulse)));
+            canvas.drawRoundRect(boardShape, radius, radius, boardPaint);
+            boardPaint.setStyle(Paint.Style.FILL);
+            boardPaint.setStrokeWidth(0f);
+        } else {
+            boardPaint.setColor(faded(0x2EFFFFFF));
+            canvas.drawRoundRect(boardShape, radius, radius, boardPaint);
+            boardPaint.setStyle(Paint.Style.STROKE);
+            boardPaint.setStrokeWidth(unit * 0.8f);
+            boardPaint.setColor(faded(0x66FFFFFF));
+            canvas.drawRoundRect(boardShape, radius, radius, boardPaint);
+            boardPaint.setStyle(Paint.Style.FILL);
+            boardPaint.setStrokeWidth(0f);
+        }
+        canvas.restore();
+    }
+
+    private boolean pressedHit(int action, int arg) {
+        return coinPressAction == action && coinPressArg == arg;
     }
 
     private void coinButton(Canvas canvas, RectF rect, String label, float unit, boolean pressed, int textColor, int face) {
@@ -3694,6 +3744,7 @@ class GameView extends View implements Choreographer.FrameCallback {
         canvas.translate(0f, (1f - eased) * 24f * unit);
         coinHitCount = 0;
         drawCoinsContent(canvas, coinPanel.left, coinPanel.top, unit);
+        if (panelScale == 1f && eased == 1f && !coinClosing) drawCoinFocus(canvas, unit);
         canvas.restore();
         if (panelScale != 1f || eased != 1f) coinHitCount = 0;
         boardAlpha = keep;
@@ -3845,93 +3896,108 @@ class GameView extends View implements Choreographer.FrameCallback {
         Challenges.Goal[] goals = todayGoals(day);
         if (coinBlockedAge > 0.5f || coinBlockedDay != day) {
             Map<String, ?> current = playPrefs();
-            for (int i = 0; i < 3; i++) coinBlocked[i] = goals[i] == null ? null : Challenges.blocker(goals[i], withTwist(current, goals[i].twist));
+            for (int i = 0; i < Challenges.TIERS; i++) coinBlocked[i] = goals[i] == null ? null : Challenges.blocker(goals[i], withTwist(current, goals[i].twist));
             coinBlockedAge = 0f;
             coinBlockedDay = day;
         }
-        float cardHeight = 58f * unit;
-        float gap = 6f * unit;
+        float cardHeight = 47f * unit;
+        float gap = 4f * unit;
         float cardLeft = left + 10f * unit;
         float cardRight = left + width - 10f * unit;
-        int doneCount = 0;
         int doneMask = 0;
-        for (int i = 0; i < 3; i++) if (goalDone(day, i)) doneMask |= 1 << i;
+        for (int i = 0; i < Challenges.TIERS; i++) if (goalDone(day, i)) doneMask |= 1 << i;
         if (!coinGhost) {
             if (coinDoneSeen >= 0) {
-                for (int i = 0; i < 3; i++) if ((doneMask & (1 << i)) != 0 && (coinDoneSeen & (1 << i)) == 0) coinDonePop[i] = 0f;
+                for (int i = 0; i < Challenges.TIERS; i++) if ((doneMask & (1 << i)) != 0 && (coinDoneSeen & (1 << i)) == 0) coinDonePop[i] = 0f;
             }
             coinDoneSeen = doneMask;
         }
         float baseAlpha = boardAlpha;
-        for (int i = 0; i < 3; i++) {
+        for (int i = 0; i < Challenges.TIERS; i++) {
             float enter = staggered(i);
             boardAlpha = baseAlpha * Math.max(0f, Math.min(1f, enter * 1.4f));
-            float cardTop = contentTop + i * (cardHeight + gap) + (1f - enter) * 14f * unit;
+            float cardTop = contentTop + i * (cardHeight + gap) + (1f - enter) * 12f * unit;
             Challenges.Goal goal = goals[i];
             boolean done = (doneMask & (1 << i)) != 0;
-            if (done) doneCount++;
+            boolean extreme = i == Challenges.EXTREME;
             boardShape.set(cardLeft, cardTop + unit, cardRight, cardTop + cardHeight + unit);
-            boardPaint.setColor(faded(BOARD_DIVIDER));
+            boardPaint.setColor(faded(extreme ? 0xFF6A3FB0 : BOARD_DIVIDER));
             canvas.drawRoundRect(boardShape, unit * 4f, unit * 4f, boardPaint);
             boardShape.set(cardLeft, cardTop, cardRight, cardTop + cardHeight);
-            boardPaint.setColor(faded(done ? mixColor(BOARD_PANEL_EDGE, 0xFFD8F2C4, 0.6f) : BOARD_PANEL_EDGE));
+            int face = done ? mixColor(BOARD_PANEL_EDGE, 0xFFD8F2C4, 0.6f) : extreme ? mixColor(BOARD_PANEL_EDGE, 0xFFC8A8FF, 0.32f) : BOARD_PANEL_EDGE;
+            boardPaint.setColor(faded(face));
             canvas.drawRoundRect(boardShape, unit * 4f, unit * 4f, boardPaint);
+            if (extreme && !done) {
+                lookPaint.setShader(null);
+                lookPaint.setStyle(Paint.Style.FILL);
+                float px = Math.max(1f, Math.round(0.8f * unit));
+                lookPaint.setColor(faded(scaleAlpha(0xFF8A4FE0, 0.55f + 0.35f * (float) Math.sin(coinTime * 3f))));
+                pixelFrame(canvas, cardLeft, cardTop, cardRight, cardTop + cardHeight, px, Math.round(2f * unit), lookPaint);
+            }
             int tierColor = TIER_COLORS[i];
-            boardShape.set(cardLeft + 6f * unit, cardTop + 6f * unit, cardLeft + 46f * unit, cardTop + 17f * unit);
+            float chipWidth = extreme ? 48f * unit : 40f * unit;
+            boardShape.set(cardLeft + 6f * unit, cardTop + 5f * unit, cardLeft + 6f * unit + chipWidth, cardTop + 14.5f * unit);
             boardPaint.setColor(faded(tierColor));
             canvas.drawRoundRect(boardShape, unit * 2.5f, unit * 2.5f, boardPaint);
-            boardText(canvas, Challenges.TIER_NAMES[i], boardShape.centerX(), cardTop + 14.2f * unit, 6.5f * unit, Color.WHITE,
-                    Paint.Align.CENTER, 36f * unit);
+            boardText(canvas, Challenges.TIER_NAMES[i], boardShape.centerX(), cardTop + 12.2f * unit, 6.2f * unit, Color.WHITE,
+                    Paint.Align.CENTER, chipWidth - 6f * unit);
+            if (extreme) {
+                float glint = 0.5f + 0.5f * (float) Math.sin(coinTime * 2.6f);
+                drawSprite(canvas, SP_SPARK, cardLeft + 6f * unit + chipWidth - 1f * unit, cardTop + 5.5f * unit, 4f * unit, glint);
+            }
             String reward = "+" + Challenges.REWARD[i];
-            boardTextPaint.setTextSize(9f * unit);
+            boardTextPaint.setTextSize(8.5f * unit);
             float rewardWidth = boardTextPaint.measureText(reward);
-            boardText(canvas, reward, cardRight - 8f * unit, cardTop + 15f * unit, 9f * unit, BOARD_DARK, Paint.Align.RIGHT, 0f);
-            drawCoin(canvas, cardRight - 13f * unit - rewardWidth, cardTop + 11.5f * unit, 4.4f * unit);
+            boardText(canvas, reward, cardRight - 8f * unit, cardTop + 13.3f * unit, 8.5f * unit, BOARD_DARK, Paint.Align.RIGHT, 0f);
+            drawCoin(canvas, cardRight - 13f * unit - rewardWidth, cardTop + 10f * unit, 4.2f * unit);
             if (goal == null) {
-                boardText(canvas, "Update the game to see this challenge", cardLeft + 8f * unit, cardTop + 32f * unit, 7.5f * unit, BOARD_DARK,
+                boolean unknown = wallet != null && wallet.goals != null && wallet.goals[i] != null && !wallet.goals[i].isEmpty();
+                boardText(canvas, unknown ? "Update the game to see this challenge" : "No challenge here today", cardLeft + 8f * unit, cardTop + 27f * unit, 7.2f * unit, BOARD_DARK,
                         Paint.Align.LEFT, cardRight - cardLeft - 16f * unit);
                 continue;
             }
-            float buttonWidth = 50f * unit;
-            float textRoom = cardRight - cardLeft - 16f * unit - (done ? 22f * unit : buttonWidth + 4f * unit);
-            boardText(canvas, goal.title(), cardLeft + 8f * unit, cardTop + 31f * unit, 8f * unit, BOARD_DARK, Paint.Align.LEFT,
-                    cardRight - cardLeft - 16f * unit - (done ? 22f * unit : 0f));
+            float buttonWidth = 48f * unit;
+            float textRoom = cardRight - cardLeft - 16f * unit - (done ? 20f * unit : buttonWidth + 4f * unit);
+            boardText(canvas, goal.title(), cardLeft + 8f * unit, cardTop + 25.5f * unit, 7.6f * unit, BOARD_DARK, Paint.Align.LEFT,
+                    cardRight - cardLeft - 16f * unit - (done ? 20f * unit : 0f));
             int progress = Math.min(goal.goal(), goalProgress(day, i));
             if (done) progress = goal.goal();
             float barLeft = cardLeft + 8f * unit;
             float barRight = cardLeft + 8f * unit + textRoom;
-            float barTop = cardTop + 39f * unit;
-            boardShape.set(barLeft, barTop, barRight, barTop + 7f * unit);
+            float barTop = cardTop + 30f * unit;
+            float notch = Math.max(1f, Math.round(unit));
             boardPaint.setColor(faded(BOARD_DIVIDER));
-            canvas.drawRoundRect(boardShape, unit * 3.5f, unit * 3.5f, boardPaint);
+            pixelBox(canvas, barLeft, barTop, barRight, barTop + 6f * unit, notch, boardPaint);
             float share = goal.goal() > 0 ? Math.min(1f, progress / (float) goal.goal()) : 0f;
             if (!coinGhost) coinBarTargets[i] = share;
             float shown = coinGhost ? share : coinBars[i];
             if (shown > 0.002f) {
-                boardShape.set(barLeft, barTop, barLeft + Math.max(7f * unit, (barRight - barLeft) * shown), barTop + 7f * unit);
+                float fillRight = barLeft + Math.max(3f * unit, (barRight - barLeft) * shown);
                 boardPaint.setColor(faded(tierColor));
-                canvas.drawRoundRect(boardShape, unit * 3.5f, unit * 3.5f, boardPaint);
+                pixelBox(canvas, barLeft, barTop, fillRight, barTop + 6f * unit, notch, boardPaint);
+                boardPaint.setColor(faded(0x55FFFFFF));
+                canvas.drawRect(barLeft + notch, barTop + notch, fillRight - notch, barTop + notch * 2f, boardPaint);
             }
             String count = goal.goal() == 1 ? (done ? "DONE" : "NOT YET") : progress + " / " + goal.goal();
             String blocked = done ? null : coinBlocked[i];
             if (blocked != null) count = blocked.isEmpty() ? "Needs fair settings" : "Turn off " + blocked + " first";
-            boardText(canvas, count, barLeft, barTop + 15f * unit, 6.3f * unit, blocked != null ? BOARD_DROP : BOARD_DARK, Paint.Align.LEFT, textRoom);
+            boardText(canvas, count, barLeft, barTop + 13f * unit, 6f * unit, blocked != null ? BOARD_DROP : BOARD_DARK, Paint.Align.LEFT, textRoom);
             if (done) {
                 float pop = coinDonePop[i] < 0.5f ? 1f + 0.45f * (float) Math.sin(coinDonePop[i] / 0.5f * Math.PI) : 1f;
                 canvas.save();
-                canvas.scale(pop, pop, cardRight - 16f * unit, cardTop + 40f * unit);
-                drawCheck(canvas, cardRight - 16f * unit, cardTop + 40f * unit, unit);
+                canvas.scale(pop, pop, cardRight - 15f * unit, cardTop + 34f * unit);
+                drawCheck(canvas, cardRight - 15f * unit, cardTop + 34f * unit, unit);
                 canvas.restore();
                 continue;
             }
             RectF button = coinRect;
-            button.set(cardRight - 8f * unit - buttonWidth, cardTop + 35f * unit, cardRight - 8f * unit, cardTop + 53f * unit);
+            button.set(cardRight - 8f * unit - buttonWidth, cardTop + 27f * unit, cardRight - 8f * unit, cardTop + 43f * unit);
             boolean checking = (pendingMask & (1 << i)) != 0;
             boolean active = goal.twist > Challenges.ANY && goal.twist == challengeTwist;
             if (checking) {
                 int dots = 1 + (int) ((coinTime * 3f) % 3f);
                 String label = "CHECKING" + "...".substring(0, dots);
-                boardText(canvas, label, button.centerX(), button.centerY() + 2.5f * unit, 6.6f * unit, BOARD_ORANGE, Paint.Align.CENTER, buttonWidth);
+                boardText(canvas, label, button.centerX(), button.centerY() + 2.4f * unit, 6.3f * unit, BOARD_ORANGE, Paint.Align.CENTER, buttonWidth);
             } else if (active) {
                 coinButton(canvas, button, "STOP", unit, pressedHit(HIT_STOP, i), Color.WHITE, BOARD_ORANGE);
                 coinHit(button.left, button.top, button.right, button.bottom, HIT_STOP, i);
@@ -3940,31 +4006,23 @@ class GameView extends View implements Choreographer.FrameCallback {
                 coinHit(button.left, button.top, button.right, button.bottom, HIT_PLAY, i);
             }
         }
-        float enterBonus = staggered(3);
+        float enterBonus = staggered(Challenges.TIERS);
         boardAlpha = baseAlpha * Math.max(0f, Math.min(1f, enterBonus * 1.4f));
-        float bonusTop = contentTop + 3f * (cardHeight + gap) + 2f * unit + (1f - enterBonus) * 5f * unit;
+        float bonusTop = contentTop + Challenges.TIERS * (cardHeight + gap) + (1f - enterBonus) * 4f * unit;
         int streak = wallet != null ? wallet.streakFor(day) : 0;
-        boolean allDone = doneCount == 3;
+        boolean allDone = (doneMask & Challenges.MAIN) == Challenges.MAIN;
         int nextStreak = allDone ? streak : (wallet != null && wallet.lastFull == day - 1 ? wallet.streak + 1 : 1);
         int bonus = Challenges.bonus(Math.max(1, nextStreak));
-        String line = allDone ? "ALL DONE! COME BACK TOMORROW" : "FINISH ALL 3 FOR +" + bonus;
-        boardShape.set(left + 10f * unit, bonusTop, left + width - 10f * unit, bonusTop + 18f * unit);
+        String line = allDone ? "BONUS EARNED! " + Math.max(1, streak) + " DAY STREAK"
+                : "FINISH THE FIRST 3: +" + bonus + (nextStreak > 1 ? " (DAY " + nextStreak + ")" : "");
+        boardShape.set(left + 10f * unit, bonusTop, left + width - 10f * unit, bonusTop + 17f * unit);
         boardPaint.setColor(faded(allDone ? 0xFF5DBB4A : BOARD_DARK));
         canvas.drawRoundRect(boardShape, unit * 4f, unit * 4f, boardPaint);
-        boardText(canvas, line, left + width / 2f + (allDone ? 0f : 5f * unit), bonusTop + 12.3f * unit, 8f * unit, Color.WHITE,
-                Paint.Align.CENTER, width - 46f * unit);
-        if (!allDone) {
-            boardTextPaint.setTextSize(8f * unit);
-            float lineWidth = Math.min(width - 46f * unit, boardTextPaint.measureText(line));
-            drawCoin(canvas, left + width / 2f + 5f * unit - lineWidth / 2f - 8f * unit, bonusTop + 9f * unit, 4.6f * unit);
-        }
-        if (!allDone && nextStreak > 1) {
-            boardText(canvas, "Includes a streak bonus for day " + nextStreak, left + width / 2f, bonusTop + 28f * unit, 6.5f * unit, BOARD_ORANGE,
-                    Paint.Align.CENTER, width - 30f * unit);
-        } else if (!allDone) {
-            boardText(canvas, "Finish every day in a row for a bigger bonus", left + width / 2f, bonusTop + 28f * unit, 6.5f * unit, BOARD_DARK,
-                    Paint.Align.CENTER, width - 30f * unit);
-        }
+        boardTextPaint.setTextSize(7.6f * unit);
+        float lineWidth = Math.min(width - 46f * unit, boardTextPaint.measureText(line));
+        boardText(canvas, line, left + width / 2f + 6f * unit, bonusTop + 11.6f * unit, 7.6f * unit, Color.WHITE, Paint.Align.CENTER, width - 46f * unit);
+        if (allDone) drawBadge(canvas, 4, left + width / 2f + 6f * unit - lineWidth / 2f - 9f * unit, bonusTop + 8.5f * unit, unit * 0.85f);
+        else drawCoin(canvas, left + width / 2f + 6f * unit - lineWidth / 2f - 8f * unit, bonusTop + 8.5f * unit, 4.4f * unit);
         boardAlpha = baseAlpha;
     }
 
@@ -3975,23 +4033,12 @@ class GameView extends View implements Choreographer.FrameCallback {
         return merged;
     }
 
-    private void drawCheck(Canvas canvas, float x, float y, float unit) {
-        boardPaint.setColor(faded(BOARD_DARK));
-        canvas.drawCircle(x, y + unit * 0.9f, 8f * unit, boardPaint);
-        boardPaint.setColor(faded(0xFF5DBB4A));
-        canvas.drawCircle(x, y, 8f * unit, boardPaint);
-        boardPaint.setColor(faded(Color.WHITE));
-        boardPaint.setStyle(Paint.Style.STROKE);
-        boardPaint.setStrokeWidth(2.2f * unit);
-        boardPaint.setStrokeCap(Paint.Cap.ROUND);
-        canvas.drawLine(x - 3.6f * unit, y + 0.2f * unit, x - 0.9f * unit, y + 2.9f * unit, boardPaint);
-        canvas.drawLine(x - 0.9f * unit, y + 2.9f * unit, x + 3.9f * unit, y - 2.8f * unit, boardPaint);
-        boardPaint.setStyle(Paint.Style.FILL);
-        boardPaint.setStrokeCap(Paint.Cap.BUTT);
-    }
+
+    private final String[] previewLook = new String[5];
 
     private String[] previewStyle() {
-        String[] style = wallet != null ? wallet.style.clone() : new String[5];
+        String[] style = previewLook;
+        for (int i = 0; i < style.length; i++) style[i] = wallet != null && i < wallet.style.length ? wallet.style[i] : null;
         Shop.Item item = Shop.item(coinPreview);
         if (item != null) style[item.kind] = item.id;
         return style;
@@ -4011,7 +4058,7 @@ class GameView extends View implements Choreographer.FrameCallback {
         Leaderboard.Entry sample = coinSample;
         String[] look = previewStyle();
         if (!Arrays.equals(look, sample.look)) {
-            sample.look = look;
+            sample.look = look.clone();
             sample.lookCache = null;
         }
         plainBoardRow();
@@ -4052,6 +4099,8 @@ class GameView extends View implements Choreographer.FrameCallback {
             coinListRect.set(boxLeft, listTop, boxRight, listBottom);
             coinScrollMax = scrollMax;
             coinScroll = scroll;
+            coinRowHeight = rowHeight;
+            coinBarRect.set(0f, 0f, 0f, 0f);
         }
         float slide = 0f;
         float baseAlpha = boardAlpha;
@@ -4075,10 +4124,16 @@ class GameView extends View implements Choreographer.FrameCallback {
             float track = listBottom - listTop - 4f * unit;
             float thumb = Math.max(14f * unit, track * (listBottom - listTop) / (items.size() * rowHeight));
             float thumbTop = listTop + 2f * unit + (track - thumb) * (scroll / scrollMax);
+            if (!coinGhost) {
+                coinBarRect.set(boxRight + 0.5f * unit, listTop, boxRight + 7f * unit, listBottom);
+                coinBarTrack = track;
+                coinBarThumb = thumb;
+            }
+            boolean grabbed = coinBarDragging || (hasMouse && coinBarRect.contains(hoverX, hoverY));
             boardPaint.setColor(faded(BOARD_DIVIDER));
             boardShape.set(boxRight + 1.5f * unit, listTop + 2f * unit, boxRight + 4f * unit, listTop + 2f * unit + track);
             canvas.drawRoundRect(boardShape, unit * 1.25f, unit * 1.25f, boardPaint);
-            boardPaint.setColor(faded(BOARD_DARK));
+            boardPaint.setColor(faded(grabbed ? BOARD_ORANGE : BOARD_DARK));
             boardShape.set(boxRight + 1.5f * unit, thumbTop, boxRight + 4f * unit, thumbTop + thumb);
             canvas.drawRoundRect(boardShape, unit * 1.25f, unit * 1.25f, boardPaint);
         }
@@ -4094,11 +4149,28 @@ class GameView extends View implements Choreographer.FrameCallback {
         float swatch = left + 13f * unit;
         float middle = rowTop + rowHeight / 2f;
         drawSwatch(canvas, item, swatch, middle, unit);
-        boardText(canvas, item.name, left + 27f * unit, middle + 3f * unit, 8f * unit, BOARD_DARK, Paint.Align.LEFT, 74f * unit);
+        boardText(canvas, item.name, left + 27f * unit, middle + 3f * unit, 8f * unit, BOARD_DARK, Paint.Align.LEFT,
+                !owned && item.earned() ? 56f * unit : 74f * unit);
+        if (item.price >= Shop.VIP_PRICE) {
+            boardTextPaint.setTextSize(8f * unit);
+            float tagLeft = left + 27f * unit + Math.min(74f * unit, boardTextPaint.measureText(item.name)) + 3f * unit;
+            float glow = 0.5f + 0.5f * (float) Math.sin(coinTime * 3f + index);
+            boardPaint.setColor(faded(mixColor(0xFFE8A317, 0xFFFFD45C, glow)));
+            boardShape.set(tagLeft, middle - 4.2f * unit, tagLeft + 15f * unit, middle + 3.8f * unit);
+            canvas.drawRoundRect(boardShape, unit * 1.5f, unit * 1.5f, boardPaint);
+            boardText(canvas, "VIP", tagLeft + 7.5f * unit, middle + 2f * unit, 5.6f * unit, 0xFF6A3A00, Paint.Align.CENTER, 13f * unit);
+        }
         float buttonWidth = 44f * unit;
         RectF button = coinRect;
         button.set(right - 5f * unit - buttonWidth, rowTop + 4f * unit, right - 5f * unit, rowTop + rowHeight - 4f * unit);
-        if (!owned) {
+        if (!owned && item.earned()) {
+            int have = item.earn == Shop.EARN_STREAK ? (wallet != null ? wallet.streakFor(today()) : 0)
+                    : item.earn == Shop.EARN_COINS ? (wallet != null ? wallet.earned : 0) : (wallet != null ? wallet.extremes : 0);
+            String need = item.goal().toUpperCase(Locale.US);
+            String got = String.format(Locale.US, "%,d / %,d", Math.min(have, item.need), item.need);
+            boardText(canvas, need, button.left - 5f * unit, middle - 0.6f * unit, 5.8f * unit, BOARD_ORANGE, Paint.Align.RIGHT, 58f * unit);
+            boardText(canvas, got, button.left - 5f * unit, middle + 6.2f * unit, 5.6f * unit, BOARD_DARK, Paint.Align.RIGHT, 58f * unit);
+        } else if (!owned) {
             String price = String.format(Locale.US, "%,d", item.price);
             boardTextPaint.setTextSize(7.5f * unit);
             float priceWidth = boardTextPaint.measureText(price);
@@ -4111,7 +4183,11 @@ class GameView extends View implements Choreographer.FrameCallback {
         int face;
         int text;
         float pulse = 1f;
-        if (item.id.equals(buyingItem)) {
+        if (!owned && item.earned()) {
+            label = "LOCKED";
+            face = BOARD_TAB_IDLE;
+            text = BOARD_DARK;
+        } else if (item.id.equals(buyingItem)) {
             label = "BUYING" + "...".substring(0, 1 + (int) ((coinTime * 3f) % 3f));
             face = BOARD_TAB_IDLE;
             text = BOARD_DARK;
@@ -4171,6 +4247,8 @@ class GameView extends View implements Choreographer.FrameCallback {
                 canvas.clipRect(boardShape.left, boardShape.top, boardShape.right, boardShape.bottom);
                 lookMotion(canvas, item, x - 9f * unit, y - 6f * unit, x + 9f * unit, y + 6f * unit, unit, 7);
                 canvas.restore();
+                int icon = MOTION_ICONS[Math.max(0, Math.min(MOTION_ICONS.length - 1, item.effect))];
+                if (icon >= 0) drawSprite(canvas, icon, x, y, icon == SP_FEATHER ? 9f * unit : 6f * unit, 1f);
                 break;
             default:
                 drawBadge(canvas, item.effect, x, y, unit * 1.15f);
@@ -4178,9 +4256,31 @@ class GameView extends View implements Choreographer.FrameCallback {
         }
     }
 
+    private void dragCoinBar(float y) {
+        float room = coinBarTrack - coinBarThumb;
+        if (room <= 0f || coinScrollMax <= 0f) return;
+        float at = (y - coinListRect.top - 2f * baseBoardUnit() - coinBarThumb / 2f) / room;
+        coinScroll = Math.max(0f, Math.min(coinScrollMax, at * coinScrollMax));
+        coinFling = 0f;
+    }
+
     private boolean onCoinsTouch(int action, int x, int y) {
         boolean ready = !coinClosing && coinAnim >= 1f;
+        if (action == MotionEvent.ACTION_DOWN && ready && coinTab == 1 && coinScrollMax > 0f && coinBarRect.contains(x, y)) {
+            coinBarDragging = true;
+            coinKeyFocus = false;
+            coinPressAction = 0;
+            coinDragArmed = false;
+            dragCoinBar(y);
+            return true;
+        }
+        if (coinBarDragging) {
+            if (action == MotionEvent.ACTION_MOVE) dragCoinBar(y);
+            else if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) coinBarDragging = false;
+            return true;
+        }
         if (action == MotionEvent.ACTION_DOWN) {
+            coinKeyFocus = false;
             float[] hit = ready ? coinHitAt(x, y) : null;
             coinPressAction = hit == null ? 0 : (int) hit[4];
             coinPressArg = hit == null ? -1 : (int) hit[5];
@@ -4222,9 +4322,14 @@ class GameView extends View implements Choreographer.FrameCallback {
             }
             coinFling = 0f;
             float[] released = ready ? coinHitAt(x, y) : null;
-            if (pressedAction != 0 && released != null && pressedAction == (int) released[4] && pressedArg == (int) released[5]) coinAction(pressedAction, pressedArg);
+            if (pressedAction != 0 && released != null && pressedAction == (int) released[4] && pressedArg == (int) released[5]) {
+                coinFocusAction = pressedAction;
+                coinFocusArg = pressedArg;
+                coinAction(pressedAction, pressedArg);
+            }
         } else if (action == MotionEvent.ACTION_CANCEL) {
             coinPressAction = 0;
+            coinBarDragging = false;
             coinDragArmed = false;
             coinDragging = false;
             coinFling = 0f;
@@ -4335,6 +4440,12 @@ class GameView extends View implements Choreographer.FrameCallback {
             coinPreview = null;
             return;
         }
+        if (item.earned()) {
+            feel(Feel.REJECT);
+            coinPreview = item.id;
+            setCoinNote("Can't be bought. Unlock it: " + item.goal().toLowerCase(Locale.US));
+            return;
+        }
         if (buyingItem != null) {
             setCoinNote("Wait for your last purchase to finish");
             return;
@@ -4369,25 +4480,203 @@ class GameView extends View implements Choreographer.FrameCallback {
     }
 
     private boolean onCoinsKey(int keyCode, KeyEvent event, boolean down) {
-        if (!down || event.getRepeatCount() > 0) return true;
-        if (keyCode == KeyEvent.KEYCODE_ESCAPE || keyCode == KeyEvent.KEYCODE_BACK || keyCode == KeyEvent.KEYCODE_ENTER
-                || keyCode == keyPlay || keyCode == keyFlap || keyCode == keyFlapAlt || keyCode == KeyEvent.KEYCODE_BUTTON_A) {
-            closeCoins();
+        if (!down) return keyCode != KeyEvent.KEYCODE_VOLUME_UP && keyCode != KeyEvent.KEYCODE_VOLUME_DOWN && keyCode != KeyEvent.KEYCODE_VOLUME_MUTE;
+        boolean repeat = event.getRepeatCount() > 0;
+        boolean ready = !coinClosing && coinAnim >= 1f;
+        boolean toggle = (keyCode == KeyEvent.KEYCODE_C || keyCode == KeyEvent.KEYCODE_BUTTON_Y) && keyCode != keyFlap && keyCode != keyFlapAlt
+                && keyCode != keyPlay && keyCode != keySettings;
+        if (keyCode == KeyEvent.KEYCODE_ESCAPE || keyCode == KeyEvent.KEYCODE_BACK || keyCode == KeyEvent.KEYCODE_BUTTON_B || toggle) {
+            if (!repeat) closeCoins();
             return true;
         }
-        if (keyCode == KeyEvent.KEYCODE_DPAD_LEFT || keyCode == KeyEvent.KEYCODE_DPAD_RIGHT || keyCode == KeyEvent.KEYCODE_TAB
-                || keyCode == KeyEvent.KEYCODE_BUTTON_L1 || keyCode == KeyEvent.KEYCODE_BUTTON_R1) {
-            int tab = keyCode == KeyEvent.KEYCODE_DPAD_LEFT || keyCode == KeyEvent.KEYCODE_BUTTON_L1 ? 0
-                    : keyCode == KeyEvent.KEYCODE_DPAD_RIGHT || keyCode == KeyEvent.KEYCODE_BUTTON_R1 ? 1 : 1 - coinTab;
-            coinAction(HIT_TAB, tab);
+        if (keyCode == KeyEvent.KEYCODE_BUTTON_L1 || keyCode == KeyEvent.KEYCODE_BUTTON_R1) {
+            if (!repeat) coinAction(HIT_TAB, keyCode == KeyEvent.KEYCODE_BUTTON_L1 ? 0 : 1);
             return true;
         }
-        if (coinTab == 1 && (keyCode == KeyEvent.KEYCODE_DPAD_UP || keyCode == KeyEvent.KEYCODE_DPAD_DOWN)) {
-            if (keyCode == KeyEvent.KEYCODE_DPAD_UP) coinAction(HIT_KIND, (coinKind + 4) % 5);
-            else coinAction(HIT_KIND, (coinKind + 1) % 5);
+        boolean moves = keyCode == KeyEvent.KEYCODE_DPAD_UP || keyCode == KeyEvent.KEYCODE_DPAD_DOWN || keyCode == KeyEvent.KEYCODE_DPAD_LEFT
+                || keyCode == KeyEvent.KEYCODE_DPAD_RIGHT || keyCode == KeyEvent.KEYCODE_TAB || keyCode == KeyEvent.KEYCODE_PAGE_UP
+                || keyCode == KeyEvent.KEYCODE_PAGE_DOWN || keyCode == KeyEvent.KEYCODE_MOVE_HOME || keyCode == KeyEvent.KEYCODE_MOVE_END;
+        boolean select = !moves && (keyCode == KeyEvent.KEYCODE_ENTER || keyCode == KeyEvent.KEYCODE_NUMPAD_ENTER || keyCode == KeyEvent.KEYCODE_SPACE
+                || keyCode == KeyEvent.KEYCODE_DPAD_CENTER || keyCode == KeyEvent.KEYCODE_BUTTON_A
+                || keyCode == keyPlay || keyCode == keyFlap || keyCode == keyFlapAlt);
+        if (!moves && !select) return false;
+        if (!ready || coinHitCount == 0) return true;
+        if (select) {
+            if (repeat) return true;
+            float[] focus = coinKeyFocus ? coinFocusHit() : null;
+            if (focus == null) {
+                showCoinFocus();
+                return true;
+            }
+            coinAction((int) focus[4], (int) focus[5]);
+            if ((int) focus[4] == HIT_PLAY || (int) focus[4] == HIT_CLOSE) coinKeyFocus = false;
             return true;
         }
-        return true;
+        switch (keyCode) {
+            case KeyEvent.KEYCODE_TAB:
+                moveCoinFocusInOrder(event.isShiftPressed() ? -1 : 1);
+                return true;
+            case KeyEvent.KEYCODE_DPAD_UP:
+                moveCoinFocus(0, -1);
+                return true;
+            case KeyEvent.KEYCODE_DPAD_DOWN:
+                moveCoinFocus(0, 1);
+                return true;
+            case KeyEvent.KEYCODE_DPAD_LEFT:
+                moveCoinFocus(-1, 0);
+                return true;
+            case KeyEvent.KEYCODE_DPAD_RIGHT:
+                moveCoinFocus(1, 0);
+                return true;
+            case KeyEvent.KEYCODE_PAGE_UP:
+            case KeyEvent.KEYCODE_PAGE_DOWN:
+            case KeyEvent.KEYCODE_MOVE_HOME:
+            case KeyEvent.KEYCODE_MOVE_END:
+                pageCoins(keyCode);
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    private void showCoinFocus() {
+        boolean first = !coinKeyFocus;
+        coinKeyFocus = true;
+        if (coinFocusHit() == null) {
+            float[] pick = null;
+            for (int i = 0; i < coinHitCount && pick == null; i++) {
+                float[] hit = coinHits.get(i);
+                int action = (int) hit[4];
+                if (action == HIT_PLAY || action == HIT_STOP || (action == HIT_ITEM && visibleHit(hit))) pick = hit;
+            }
+            for (int i = 0; i < coinHitCount && pick == null; i++) {
+                if ((int) coinHits.get(i)[4] == HIT_TAB && (int) coinHits.get(i)[5] == coinTab) pick = coinHits.get(i);
+            }
+            if (pick == null) pick = coinHits.get(0);
+            coinFocusAction = (int) pick[4];
+            coinFocusArg = (int) pick[5];
+        }
+        if (first) {
+            feel(Feel.TICK);
+            setCoinNote("Arrows move, Enter picks, Esc closes");
+        }
+    }
+
+    private boolean visibleHit(float[] hit) {
+        if (!listHit(hit)) return true;
+        float middle = (hit[1] + hit[3]) / 2f;
+        return middle >= coinListRect.top && middle <= coinListRect.bottom;
+    }
+
+    private void focusCoinHit(int action, int arg) {
+        focusCoinHit(action, arg, true);
+    }
+
+    private void focusCoinHit(int action, int arg, boolean follow) {
+        boolean changed = action != coinFocusAction || arg != coinFocusArg;
+        coinFocusAction = action;
+        coinFocusArg = arg;
+        if (!changed) return;
+        if (!follow) feel(Feel.TICK);
+        else if (action == HIT_TAB && arg != coinTab) coinAction(HIT_TAB, arg);
+        else if (action == HIT_KIND && arg != coinKind) coinAction(HIT_KIND, arg);
+        else feel(Feel.TICK);
+    }
+
+    private void showCoinRow(int at) {
+        float listHeight = coinListRect.height();
+        float rowTop = at * coinRowHeight;
+        if (rowTop < coinScroll) coinScroll = rowTop;
+        else if (rowTop + coinRowHeight > coinScroll + listHeight) coinScroll = rowTop + coinRowHeight - listHeight;
+        coinScroll = Math.max(0f, Math.min(coinScrollMax, coinScroll));
+        coinFling = 0f;
+    }
+
+    private void moveCoinFocus(int dx, int dy) {
+        float[] from = coinKeyFocus ? coinFocusHit() : null;
+        if (from == null && dx != 0) {
+            coinKeyFocus = true;
+            focusCoinHit(HIT_TAB, dx > 0 ? 1 : 0);
+            return;
+        }
+        if (from == null) {
+            showCoinFocus();
+            return;
+        }
+        if (dy != 0 && listHit(from)) {
+            int at = (int) from[5] % 100;
+            int next = at + dy;
+            if (next >= 0 && next < Shop.of(coinKind).size()) {
+                focusCoinHit((int) from[4], (int) from[5] / 100 * 100 + next);
+                showCoinRow(next);
+                return;
+            }
+            if (next >= 0) return;
+            showCoinRow(0);
+        }
+        float fromX = (from[0] + from[2]) / 2f;
+        float fromY = (from[1] + from[3]) / 2f;
+        float[] best = null;
+        float bestScore = Float.MAX_VALUE;
+        for (int i = 0; i < coinHitCount; i++) {
+            float[] hit = coinHits.get(i);
+            if (hit == from || !visibleHit(hit)) continue;
+            if (listHit(from) && listHit(hit) && dy != 0) continue;
+            float toX = (hit[0] + hit[2]) / 2f;
+            float toY = (hit[1] + hit[3]) / 2f;
+            float along = dx != 0 ? (toX - fromX) * dx : (toY - fromY) * dy;
+            if (dx != 0 && (dx > 0 ? hit[0] < from[2] - 1f : hit[2] > from[0] + 1f)) continue;
+            if (dy != 0 && (dy > 0 ? hit[1] < from[3] - 1f : hit[3] > from[1] + 1f)) continue;
+            if (along <= 0f) continue;
+            float across = dx != 0 ? Math.abs(toY - fromY) : Math.abs(toX - fromX);
+            float score = along + across * 2f;
+            if (score < bestScore) {
+                bestScore = score;
+                best = hit;
+            }
+        }
+        if (best != null) {
+            int action = (int) best[4];
+            int arg = (int) best[5];
+            if (action == HIT_TAB && from[4] != HIT_TAB) arg = coinTab;
+            else if (action == HIT_KIND && from[4] != HIT_KIND) arg = coinKind;
+            focusCoinHit(action, arg);
+        } else if (dx != 0 && !listHit(from)) {
+            focusCoinHit(HIT_TAB, dx > 0 ? 1 : 0);
+        }
+    }
+
+    private void moveCoinFocusInOrder(int step) {
+        float[] from = coinKeyFocus ? coinFocusHit() : null;
+        if (from == null) {
+            showCoinFocus();
+            return;
+        }
+        int index = coinHits.indexOf(from);
+        for (int tries = 0; tries < coinHitCount; tries++) {
+            index = (index + step + coinHitCount) % coinHitCount;
+            float[] hit = coinHits.get(index);
+            if (!visibleHit(hit)) continue;
+            focusCoinHit((int) hit[4], (int) hit[5], false);
+            return;
+        }
+    }
+
+    private void pageCoins(int keyCode) {
+        if (coinTab != 1 || coinScrollMax <= 0f) return;
+        int count = Shop.of(coinKind).size();
+        int page = Math.max(1, (int) (coinListRect.height() / coinRowHeight));
+        float[] from = coinKeyFocus ? coinFocusHit() : null;
+        int at = from != null && listHit(from) ? (int) from[5] % 100 : (int) (coinScroll / coinRowHeight);
+        int next = keyCode == KeyEvent.KEYCODE_PAGE_UP ? at - page : keyCode == KeyEvent.KEYCODE_PAGE_DOWN ? at + page
+                : keyCode == KeyEvent.KEYCODE_MOVE_HOME ? 0 : count - 1;
+        next = Math.max(0, Math.min(count - 1, next));
+        if (from != null && listHit(from)) focusCoinHit((int) from[4], (int) from[5] / 100 * 100 + next);
+        if (keyCode == KeyEvent.KEYCODE_MOVE_HOME) coinScroll = 0f;
+        else if (keyCode == KeyEvent.KEYCODE_MOVE_END) coinScroll = coinScrollMax;
+        else coinScroll = Math.max(0f, Math.min(coinScrollMax, coinScroll + (keyCode == KeyEvent.KEYCODE_PAGE_UP ? -page : page) * coinRowHeight));
+        showCoinRow(next);
+        coinFling = 0f;
     }
 
     private boolean scrollCoins(float amount) {
@@ -4397,6 +4686,14 @@ class GameView extends View implements Choreographer.FrameCallback {
         return true;
     }
 
+    private static float coinButtonPixel(float height) {
+        return Math.max(1f, (float) Math.floor(height * 0.54f / 12f));
+    }
+
+    private static float coinTextLeft(float height) {
+        return height * 0.5f + 8f * coinButtonPixel(height) + height * 0.14f;
+    }
+
     private void layoutCoinButton() {
         float height = settingsButtonBitmap != null ? settingsButtonBitmap.getHeight() : 28f * scale;
         float x = safeInsetLeft + cornerMargin;
@@ -4404,7 +4701,7 @@ class GameView extends View implements Choreographer.FrameCallback {
         ensureBoardPaints();
         boardTextPaint.setTextSize(height * 0.56f);
         String balance = balanceLabel();
-        float width = height * 1.05f + boardTextPaint.measureText(balance) + height * 0.42f;
+        float width = coinTextLeft(height) + boardTextPaint.measureText(balance) + height * 0.42f;
         coinButtonRect.set((int) x, (int) y, (int) (x + width), (int) (y + height));
     }
 
@@ -4429,9 +4726,16 @@ class GameView extends View implements Choreographer.FrameCallback {
         boardShape.inset(2f * unit, 2f * unit);
         boardPaint.setColor(Color.WHITE);
         canvas.drawRoundRect(boardShape, radius - 2f * unit, radius - 2f * unit, boardPaint);
-        drawCoin(canvas, rect.left + rect.height() * 0.5f, rect.centerY() + drop - unit * 0.5f, rect.height() * 0.3f * coinBumpScale());
+        float bump = coinBumpScale();
+        float pixel = coinButtonPixel(rect.height());
+        float faceX = rect.left + rect.height() * 0.5f;
+        float faceY = rect.centerY() + drop;
+        canvas.save();
+        canvas.scale(bump, bump, faceX, faceY);
+        drawCoinSprite(canvas, Math.round(faceX + pixel), Math.round(faceY), pixel);
+        canvas.restore();
         String balance = balanceLabel();
-        boardText(canvas, balance, rect.left + rect.height() * 0.9f, rect.centerY() + drop + rect.height() * 0.19f, rect.height() * 0.56f,
+        boardText(canvas, balance, rect.left + coinTextLeft(rect.height()), rect.centerY() + drop + rect.height() * 0.19f, rect.height() * 0.56f,
                 BOARD_ORANGE, Paint.Align.LEFT, 0f);
         if (coinDot()) {
             float pulse = 0.5f + 0.5f * (float) Math.sin(coinTime * 4f);
@@ -4444,7 +4748,7 @@ class GameView extends View implements Choreographer.FrameCallback {
     }
 
     private void drawTwistChip(Canvas canvas, boolean interactive) {
-        if (challengeTwist <= Challenges.ANY) {
+        if (challengeTwist <= Challenges.ANY || !settingShowCoins) {
             twistChipRect.setEmpty();
             return;
         }
@@ -4487,7 +4791,7 @@ class GameView extends View implements Choreographer.FrameCallback {
     }
 
     private void drawToast(Canvas canvas) {
-        if (toastTitle == null || toastAge >= TOAST_SEC) return;
+        if (toastTitle == null || toastAge >= TOAST_SEC || !settingShowCoins) return;
         if ((gameState == GameState.PLAYING && !isPaused) || gameState == GameState.WAITING) return;
         ensureBoardPaints();
         float keep = boardAlpha;
@@ -4550,6 +4854,7 @@ class GameView extends View implements Choreographer.FrameCallback {
 
     private Shop.Item[] lookOf(Leaderboard.Entry entry) {
         if (entry == null || entry.look == null) return null;
+        if (!settingBoardStyles && entry != coinSample) return null;
         if (!(entry.lookCache instanceof Shop.Item[])) entry.lookCache = Shop.look(entry.look);
         return (Shop.Item[]) entry.lookCache;
     }
@@ -4573,15 +4878,109 @@ class GameView extends View implements Choreographer.FrameCallback {
         return 0xFF000000 | (Math.round(r * 255f) << 16) | (Math.round(g * 255f) << 8) | Math.round(b * 255f);
     }
 
-    private Shader lookShader(Shop.Item item) {
-        int index = -1;
-        for (int i = 0; i < Shop.ITEMS.length; i++) {
-            if (Shop.ITEMS[i] == item) {
-                index = i;
-                break;
-            }
+    private static final int SP_COIN = 0;
+    private static final float COIN_SHINE_SEC = 3.4f;
+    private static final float COIN_SWEEP_SEC = 0.55f;
+    private static final int SP_FLAME = 4;
+    private static final int SP_CHECK = 17;
+    private static final int SP_SPARK = 18;
+    private static final int SP_HEART = 19;
+    private static final int SP_NOTE = 20;
+    private static final int SP_PCOIN = 21;
+    private static final int SP_SNOW = 22;
+    private static final int SP_BUBBLE = 23;
+    private static final int SP_FEATHER = 24;
+    private static final int SP_MEDAL = 26;
+    private static final float MEDAL_DROP_SEC = 0.45f;
+    private static final float MEDAL_STAGGER_SEC = 0.12f;
+    private static final float MEDAL_CYCLE_SEC = 5f;
+    private static final float MEDAL_SPIN_SEC = 0.55f;
+    private static final float MEDAL_SHINE_SEC = 0.5f;
+    private float medalAge = 9f;
+    private static final int[] BADGE_SPRITES = {1, 2, 0, 3, 4, -1, 5, 6, 9, 12, 13, 8, 10, 11, 14, 7, 15, 16};
+    private static final int[] MOTION_ICONS = {-1, 18, 23, 22, 19, -1, 24, 20, -1, 21, -1};
+    private Paint spritePaint;
+    private final Rect lookSrc = new Rect();
+
+    private void drawSprite(Canvas canvas, int index, float cx, float cy, float height, float alpha) {
+        drawArt(canvas, Pixels.get(index), cx, cy, height, alpha);
+    }
+
+    private void drawArt(Canvas canvas, Bitmap art, float cx, float cy, float height, float alpha) {
+        if (art == null || alpha <= 0.003f) return;
+        if (spritePaint == null) {
+            spritePaint = new Paint();
+            spritePaint.setFilterBitmap(false);
         }
-        if (index < 0) return null;
+        float pixel = Math.max(1f, Math.round(height / Math.max(art.getHeight(), art.getWidth())));
+        float w = art.getWidth() * pixel;
+        float h = art.getHeight() * pixel;
+        float left = Math.round(cx - w / 2f);
+        float top = Math.round(cy - h / 2f);
+        spritePaint.setAlpha(Math.round(255f * Math.max(0f, Math.min(1f, boardAlpha * alpha))));
+        boardShape.set(left, top, left + w, top + h);
+        canvas.drawBitmap(art, null, boardShape, spritePaint);
+    }
+
+    private void drawCoin(Canvas canvas, float x, float y, float radius) {
+        float pixel = Math.max(1f, Math.round(radius * 2.5f / 14f));
+        x -= pixel;
+        drawCoinSprite(canvas, x, y, pixel);
+    }
+
+    private void drawCoinSprite(Canvas canvas, float x, float y, float pixel) {
+        float size = 14f * pixel;
+        float offset = (x * 0.6f + y) / Math.max(1f, screenHeight) * 0.9f;
+        float t = ((coinTime - offset) % COIN_SHINE_SEC + COIN_SHINE_SEC) % COIN_SHINE_SEC;
+        int frame = t < COIN_SWEEP_SEC ? (int) (t / COIN_SWEEP_SEC * Pixels.SHINE_FRAMES) : -1;
+        if (pixel >= 2f) drawArt(canvas, Pixels.shadow(SP_COIN), x, y + pixel, size, 0.9f);
+        drawArt(canvas, Pixels.shine(SP_COIN, frame), x, y, size, 1f);
+        float glint = (t - COIN_SWEEP_SEC * 0.55f) / 0.5f;
+        if (glint > 0f && glint < 1f && pixel >= 2f) {
+            float pop = (float) Math.sin(glint * Math.PI);
+            float spark = Math.max(3f, Math.round(5f * pop)) * Math.max(1f, Math.round(pixel * 0.75f));
+            drawSprite(canvas, SP_SPARK, x + pixel * 3.5f, y - pixel * 4f, spark, pop);
+        }
+    }
+
+    private void drawCheck(Canvas canvas, float x, float y, float unit) {
+        drawSprite(canvas, SP_CHECK, x, y, 9.5f * unit, 1f);
+    }
+
+    private void pixelBox(Canvas canvas, float left, float top, float right, float bottom, float notch, Paint paint) {
+        canvas.drawRect(left + notch, top, right - notch, bottom, paint);
+        canvas.drawRect(left, top + notch, left + notch, bottom - notch, paint);
+        canvas.drawRect(right - notch, top + notch, right, bottom - notch, paint);
+    }
+
+    private void pixelFrame(Canvas canvas, float left, float top, float right, float bottom, float width, float notch, Paint paint) {
+        canvas.drawRect(left + notch, top, right - notch, top + width, paint);
+        canvas.drawRect(left + notch, bottom - width, right - notch, bottom, paint);
+        canvas.drawRect(left, top + notch, left + width, bottom - notch, paint);
+        canvas.drawRect(right - width, top + notch, right, bottom - notch, paint);
+        if (notch > 0f) {
+            canvas.drawRect(left + width, top + width, left + notch, top + notch, paint);
+            canvas.drawRect(right - notch, top + width, right - width, top + notch, paint);
+            canvas.drawRect(left + width, bottom - notch, left + notch, bottom - width, paint);
+            canvas.drawRect(right - notch, bottom - notch, right - width, bottom - width, paint);
+        }
+    }
+
+    private static Shader stepped(int[] colors, boolean vertical) {
+        int[] hard = new int[colors.length * 2];
+        float[] stops = new float[colors.length * 2];
+        for (int i = 0; i < colors.length; i++) {
+            hard[i * 2] = colors[i];
+            hard[i * 2 + 1] = colors[i];
+            stops[i * 2] = i / (float) colors.length;
+            stops[i * 2 + 1] = (i + 1) / (float) colors.length;
+        }
+        return new LinearGradient(0f, 0f, vertical ? 0f : 1f, vertical ? 1f : 0f, hard, stops, Shader.TileMode.CLAMP);
+    }
+
+    private Shader lookShader(Shop.Item item) {
+        int index = item.slot;
+        if (index < 0 || index >= lookShaders.length) return null;
         if (lookShaders[index] != null) return lookShaders[index];
         Shader shader;
         int a = item.color;
@@ -4599,20 +4998,16 @@ class GameView extends View implements Choreographer.FrameCallback {
         } else if (item.kind == Shop.ROW) {
             switch (item.effect) {
                 case 1:
-                    shader = new LinearGradient(0f, 0f, 1f, 0f, new int[] {a, mixColor(a, b, 0.5f), b}, null, Shader.TileMode.CLAMP);
+                    shader = stepped(new int[] {a, mixColor(a, b, 0.2f), mixColor(a, b, 0.4f), mixColor(a, b, 0.6f), mixColor(a, b, 0.8f), b}, false);
                     break;
                 case 3:
-                    shader = new LinearGradient(0f, 0f, 0f, 1f, new int[] {b, a, mixColor(a, 0xFF8A5A10, 0.35f)}, new float[] {0f, 0.55f, 1f},
-                            Shader.TileMode.CLAMP);
-                    break;
-                case 4:
-                    shader = new LinearGradient(0f, 0f, 1f, 0f, new int[] {a, b, a}, null, Shader.TileMode.CLAMP);
+                    shader = stepped(new int[] {b, mixColor(a, b, 0.5f), a, a, mixColor(a, 0xFF8A5A10, 0.35f)}, true);
                     break;
                 case 5:
-                    shader = new LinearGradient(0f, 0f, 1f, 0f, new int[] {a, b, a}, null, Shader.TileMode.REPEAT);
+                    shader = stepped(new int[] {a, mixColor(a, b, 0.35f), mixColor(a, b, 0.7f), b}, true);
                     break;
                 default:
-                    shader = new LinearGradient(0f, 0f, 0f, 1f, new int[] {b, a}, null, Shader.TileMode.CLAMP);
+                    shader = stepped(new int[] {b, mixColor(a, b, 0.66f), mixColor(a, b, 0.33f), a}, true);
                     break;
             }
         } else {
@@ -4625,6 +5020,10 @@ class GameView extends View implements Choreographer.FrameCallback {
     private void lookText(Canvas canvas, Shop.Item item, String text, float x, float baseline, float size, Paint.Align align, float room, int seed) {
         if (item == null || item.kind != Shop.NAME) {
             boardText(canvas, text, x, baseline, size, BOARD_DARK, align, room);
+            return;
+        }
+        if (item.effect >= 4) {
+            fancyText(canvas, item, text, x, baseline, size, align, room, seed);
             return;
         }
         outlineText(canvas, text, x, baseline, size, align, room);
@@ -4669,86 +5068,641 @@ class GameView extends View implements Choreographer.FrameCallback {
         boardTextPaint.setStrokeWidth(0f);
     }
 
+
+    private void bandTiles(Canvas canvas, Bitmap source, int srcTop, int srcBottom, float left, float top, float right, float bottom, float offset) {
+        if (source == null) return;
+        if (spritePaint == null) {
+            spritePaint = new Paint();
+            spritePaint.setFilterBitmap(false);
+        }
+        spritePaint.setAlpha(Math.round(255f * Math.max(0f, Math.min(1f, boardAlpha))));
+        float scaleY = (bottom - top) / (srcBottom - srcTop);
+        float tile = source.getWidth() * scaleY;
+        if (tile < 1f) return;
+        float start = left - (((offset % tile) + tile) % tile);
+        lookSrc.set(0, srcTop, source.getWidth(), srcBottom);
+        for (float x = start; x < right; x += tile) {
+            boardShape.set(x, top, x + tile, bottom);
+            canvas.drawBitmap(source, lookSrc, boardShape, spritePaint);
+        }
+    }
+
     private void lookBackground(Canvas canvas, Shop.Item item, float left, float top, float right, float bottom, float unit, int seed) {
         if (item == null) return;
         ensureBoardPaints();
-        float radius = unit * 3f;
-        boardShape.set(left, top, right, bottom);
+        float notch = Math.max(1f, Math.round(1.2f * unit));
         lookPaint.setStyle(Paint.Style.FILL);
         lookPaint.setShader(null);
-        if (item.effect == 2) {
-            lookPaint.setColor(faded(item.second));
-            canvas.drawRoundRect(boardShape, radius, radius, lookPaint);
-            canvas.save();
-            canvas.clipRect(left + radius * 0.6f, top, right - radius * 0.6f, bottom);
-            lookPaint.setColor(faded(scaleAlpha(item.color, 0.75f)));
-            float band = 6f * unit;
-            float shift = (boardShine * 6f * unit) % (band * 2f);
-            for (float x = left - (bottom - top) - band * 2f + shift; x < right; x += band * 2f) {
-                lookPath.reset();
-                lookPath.moveTo(x, bottom);
-                lookPath.lineTo(x + band, bottom);
-                lookPath.lineTo(x + band + (bottom - top), top);
-                lookPath.lineTo(x + (bottom - top), top);
-                lookPath.close();
-                canvas.drawPath(lookPath, lookPaint);
+        canvas.save();
+        canvas.clipRect(left, top, right, bottom);
+        switch (item.effect) {
+            case 9:
+            case 10:
+            case 11:
+            case 12:
+            case 13:
+            case 14:
+            case 15:
+                vipBackground(canvas, item, left, top, right, bottom, unit, seed, notch);
+                break;
+            case 2: {
+                lookPaint.setColor(faded(item.second));
+                pixelBox(canvas, left, top, right, bottom, notch, lookPaint);
+                canvas.clipRect(left + notch, top, right - notch, bottom);
+                lookPaint.setColor(faded(item.color));
+                float band = 5f * unit;
+                float step = Math.max(1f, Math.round(unit));
+                float shift = (float) Math.floor((boardShine * 6f * unit) / step) * step % (band * 2f);
+                float height = bottom - top;
+                for (float x = left - height - band * 2f + shift; x < right; x += band * 2f) {
+                    for (float y = top; y < bottom; y += step) {
+                        float dx = x + (bottom - y);
+                        canvas.drawRect(dx, y, dx + band, Math.min(bottom, y + step), lookPaint);
+                    }
+                }
+                break;
             }
-            canvas.restore();
-            return;
-        }
-        Shader shader = lookShader(item);
-        lookMatrix.reset();
-        if (item.effect == 5) {
-            float span = (right - left) * 0.7f;
-            lookMatrix.setScale(span, bottom - top);
-            lookMatrix.postTranslate(left - boardShine * span * 0.08f, top);
-        } else {
-            lookMatrix.setScale(right - left, bottom - top);
-            lookMatrix.postTranslate(left, top);
-        }
-        if (shader != null) {
-            shader.setLocalMatrix(lookMatrix);
-            lookPaint.setShader(shader);
-            lookPaint.setColor(Color.WHITE);
-            lookPaint.setAlpha(Math.round(255f * Math.max(0f, Math.min(1f, boardAlpha))));
-        } else {
-            lookPaint.setColor(faded(item.color));
-        }
-        canvas.drawRoundRect(boardShape, radius, radius, lookPaint);
-        lookPaint.setShader(null);
-        if (item.effect == 3) {
-            canvas.save();
-            canvas.clipRect(left + radius * 0.6f, top, right - radius * 0.6f, bottom);
-            float cycle = (boardShine % 3.2f) / 3.2f;
-            float bandX = left - 20f * unit + (right - left + 40f * unit) * cycle;
-            lookPaint.setColor(faded(0x88FFFFFF));
-            lookPath.reset();
-            lookPath.moveTo(bandX, bottom);
-            lookPath.lineTo(bandX + 6f * unit, bottom);
-            lookPath.lineTo(bandX + 6f * unit + (bottom - top), top);
-            lookPath.lineTo(bandX + (bottom - top), top);
-            lookPath.close();
-            canvas.drawPath(lookPath, lookPaint);
-            canvas.restore();
-        } else if (item.effect == 4) {
-            for (int k = 0; k < 9; k++) {
-                float sx = left + 4f * unit + (right - left - 8f * unit) * lookHash(seed, k + 11);
-                float sy = top + 2.5f * unit + (bottom - top - 5f * unit) * lookHash(seed, k + 37);
-                float twinkle = 0.5f + 0.5f * (float) Math.sin(boardShine * (1.6f + lookHash(seed, k) * 2f) + k * 1.7f);
-                lookPaint.setColor(faded(scaleAlpha(0xFFFFFFFF, 0.25f + 0.75f * twinkle)));
-                canvas.drawCircle(sx, sy, (0.45f + 0.45f * twinkle) * unit, lookPaint);
+            case 4:
+                lookPaint.setColor(faded(item.color));
+                pixelBox(canvas, left, top, right, bottom, notch, lookPaint);
+                bandTiles(canvas, unscaledBgNight, 318, 372, left, top + (bottom - top) * 0.18f, right, bottom, boardShine * 3f * unit);
+                for (int k = 0; k < 7; k++) {
+                    float sx = left + 4f * unit + (right - left - 8f * unit) * lookHash(seed, k + 11);
+                    float sy = top + 1.5f * unit + (bottom - top) * 0.3f * lookHash(seed, k + 37);
+                    float twinkle = 0.5f + 0.5f * (float) Math.sin(boardShine * (1.6f + lookHash(seed, k) * 2f) + k * 1.7f);
+                    lookPaint.setColor(faded(scaleAlpha(0xFFFFFFFF, 0.3f + 0.7f * twinkle)));
+                    float px = Math.max(1f, Math.round(0.7f * unit));
+                    float bx = Math.round(sx);
+                    float by = Math.round(sy);
+                    canvas.drawRect(bx, by, bx + px, by + px, lookPaint);
+                }
+                break;
+            case 6:
+                lookPaint.setColor(faded(item.color));
+                pixelBox(canvas, left, top, right, bottom, notch, lookPaint);
+                bandTiles(canvas, unscaledBgDay, 310, 372, left, top, right, bottom, boardShine * 3f * unit);
+                break;
+            case 7:
+                lookPaint.setColor(faded(item.second));
+                pixelBox(canvas, left, top, right, bottom, notch, lookPaint);
+                bandTiles(canvas, unscaledLand, 1, 12, left, top, right, top + (bottom - top) * 0.6f, boardShine * 22f * unit);
+                break;
+            case 8: {
+                lookPaint.setColor(faded(item.color));
+                pixelBox(canvas, left, top, right, bottom, notch, lookPaint);
+                float brickH = (bottom - top - unit) / 3f;
+                float brickW = brickH * 2.6f;
+                for (int row = 0; row < 3; row++) {
+                    float y = top + unit * 0.5f + row * brickH;
+                    float start = left + (row % 2 == 0 ? 0f : -brickW / 2f);
+                    for (float x = start; x < right; x += brickW) {
+                        float shine = 0.5f + 0.5f * (float) Math.sin(boardShine * 2f + x * 0.03f + row);
+                        lookPaint.setColor(faded(mixColor(item.second, 0xFFFFF1B8, shine * 0.35f)));
+                        canvas.drawRect(x + unit * 0.5f, y + unit * 0.5f, x + brickW - unit * 0.5f, y + brickH - unit * 0.5f, lookPaint);
+                        lookPaint.setColor(faded(0x66FFFFFF));
+                        canvas.drawRect(x + unit * 0.5f, y + unit * 0.5f, x + brickW - unit * 0.5f, y + unit * 1.2f, lookPaint);
+                    }
+                }
+                break;
             }
-        } else if (item.effect == 5) {
-            canvas.save();
-            canvas.clipRect(left + radius * 0.4f, top, right - radius * 0.4f, bottom);
-            for (int k = 0; k < 4; k++) {
-                float phase = (boardShine * (0.12f + 0.05f * lookHash(seed, k)) + lookHash(seed, k + 5)) % 1f;
-                float bx = left + (right - left) * phase;
-                float by = top + (bottom - top) * (0.3f + 0.4f * lookHash(seed, k + 9));
-                lookPaint.setColor(faded(scaleAlpha(0xFFFFB43B, 0.35f)));
-                canvas.drawCircle(bx, by, 3.2f * unit, lookPaint);
+            default: {
+                Shader shader = lookShader(item);
+                lookMatrix.reset();
+                lookMatrix.setScale(right - left, bottom - top);
+                lookMatrix.postTranslate(left, top);
+                if (shader != null) {
+                    shader.setLocalMatrix(lookMatrix);
+                    lookPaint.setShader(shader);
+                    lookPaint.setColor(Color.WHITE);
+                    lookPaint.setAlpha(Math.round(255f * Math.max(0f, Math.min(1f, boardAlpha))));
+                } else {
+                    lookPaint.setColor(faded(item.color));
+                }
+                pixelBox(canvas, left, top, right, bottom, notch, lookPaint);
+                lookPaint.setShader(null);
+                if (item.effect == 3) {
+                    float cycle = (boardShine % 3.2f) / 3.2f;
+                    float bandX = left - 20f * unit + (right - left + 40f * unit) * cycle;
+                    float step = Math.max(1f, Math.round(unit));
+                    lookPaint.setColor(faded(0x88FFFFFF));
+                    for (float y = top; y < bottom; y += step) {
+                        float dx = Math.round(bandX + (bottom - y));
+                        canvas.drawRect(dx, y, dx + 5f * unit, Math.min(bottom, y + step), lookPaint);
+                    }
+                } else if (item.effect == 5) {
+                    float px = Math.max(1f, Math.round(unit));
+                    for (int k = 0; k < 6; k++) {
+                        float phase = (boardShine * (0.12f + 0.05f * lookHash(seed, k)) + lookHash(seed, k + 5)) % 1f;
+                        float bx = Math.round(left + (right - left) * phase);
+                        float by = Math.round(top + (bottom - top) * (0.25f + 0.5f * lookHash(seed, k + 9)));
+                        float size = px * (2f + (k % 3));
+                        lookPaint.setColor(faded(scaleAlpha(0xFFFFB43B, 0.55f)));
+                        canvas.drawRect(bx - size, by - px, bx + size, by + px, lookPaint);
+                        canvas.drawRect(bx - size + px, by - px * 2f, bx + size - px, by + px * 2f, lookPaint);
+                    }
+                }
+                break;
             }
-            canvas.restore();
+        }
+        canvas.restore();
+    }
+
+    private static final int[] AURORA_SKY = {0xFF050A24, 0xFF0A1434, 0xFF0F1C44, 0xFF14244E};
+    private static final int[] GALAXY_SKY = {0xFF0A0420, 0xFF140A36, 0xFF1E0E4A, 0xFF140A36, 0xFF0A0420};
+    private static final int[] WARP_SKY = {0xFF02030C, 0xFF060A22, 0xFF0A1032, 0xFF060A22, 0xFF02030C};
+    private static final int[] STORM_SKY = {0xFF161B30, 0xFF1D2440, 0xFF252E50, 0xFF2C375C};
+    private static final int[] SYNTH_SKY = {0xFF1B0B3A, 0xFF34104F, 0xFF561566, 0xFF861C76, 0xFFB82A7C};
+    private static final int[] INFERNO_SKY = {0xFF160303, 0xFF2A0606, 0xFF420A05, 0xFF5E1206};
+    private static final int[] ROYAL_SKY = {0xFF26053A, 0xFF34084E, 0xFF420C62, 0xFF34084E, 0xFF26053A};
+    private static final int[] ROYAL_METAL = {0xFFFFF7D0, 0xFFFFE27A, 0xFFF5B42A, 0xFFD08A14, 0xFFA86A08, 0xFFF5C84A};
+    private static final int[] BLAZE_FIRE = {0xFFE0281A, 0xFFFF5A1A, 0xFFFF9A2A, 0xFFFFD23C, 0xFFFFF2A0};
+    private Shader royalMetal, blazeFire;
+    private final HashMap<String, float[]> glyphEdges = new HashMap<>();
+    private final HashMap<String, String[]> glyphChars = new HashMap<>();
+
+    private int[] vipSky(int effect) {
+        switch (effect) {
+            case 9: return AURORA_SKY;
+            case 10: return GALAXY_SKY;
+            case 11: return WARP_SKY;
+            case 12: return STORM_SKY;
+            case 13: return SYNTH_SKY;
+            case 14: return INFERNO_SKY;
+            default: return ROYAL_SKY;
+        }
+    }
+
+    private void stripes(Canvas canvas, float left, float top, float right, float bottom, int[] colors) {
+        float band = (bottom - top) / colors.length;
+        for (int i = 0; i < colors.length; i++) {
+            lookPaint.setColor(faded(colors[i]));
+            float y0 = Math.round(top + band * i);
+            float y1 = i == colors.length - 1 ? bottom : Math.round(top + band * (i + 1));
+            canvas.drawRect(left, y0, right, y1, lookPaint);
+        }
+    }
+
+    private void stars(Canvas canvas, float left, float top, float width, float height, float px, int seed, int count, float t, float drift) {
+        if (width <= 0f || height <= 0f) return;
+        for (int k = 0; k < count; k++) {
+            float sx = left + ((width * lookHash(seed, k + 101) - t * drift * (0.5f + lookHash(seed, k + 131))) % width + width) % width;
+            float sy = top + height * lookHash(seed, k + 151);
+            float twinkle = 0.5f + 0.5f * (float) Math.sin(t * (1.5f + 2f * lookHash(seed, k + 171)) + k * 2.1f);
+            lookPaint.setColor(faded(scaleAlpha(0xFFFFFFFF, 0.25f + 0.75f * twinkle)));
+            float size = k % 5 == 0 ? px * 2f : px;
+            float bx = Math.round(sx);
+            float by = Math.round(sy);
+            canvas.drawRect(bx, by, bx + size, by + size, lookPaint);
+        }
+    }
+
+    private float grid(float value, float px) {
+        return Math.round(value / px) * px;
+    }
+
+    private void vipBackground(Canvas canvas, Shop.Item item, float left, float top, float right, float bottom, float unit, int seed, float notch) {
+        float px = Math.max(1f, Math.round(unit));
+        float width = right - left;
+        float height = bottom - top;
+        float t = boardShine + lookHash(seed, 2) * 30f;
+        int[] sky = vipSky(item.effect);
+        lookPaint.setColor(faded(sky[sky.length / 2]));
+        pixelBox(canvas, left, top, right, bottom, notch, lookPaint);
+        canvas.clipRect(left + notch, top, right - notch, bottom);
+        if (item.effect != 13) stripes(canvas, left, top, right, bottom, sky);
+        switch (item.effect) {
+            case 9: {
+                stars(canvas, left, top, width, height * 0.55f, px, seed, 10, t, 0f);
+                float step = 3f * px;
+                for (int c = 0; c < 2; c++) {
+                    for (float x = left; x < right; x += step) {
+                        float u = (x - left) / unit;
+                        float center = top + height * (0.4f + 0.14f * (float) Math.sin(u * 0.05f + t * 0.8f + c * 2.3f));
+                        float reach = height * (0.24f + 0.12f * (float) Math.sin(u * 0.09f - t * 1.4f + c * 1.1f));
+                        float glow = 0.5f + 0.5f * (float) Math.sin(u * 0.035f + t * 0.7f + c * 3.1f);
+                        int color = mixColor(item.color, item.second, 0.5f + 0.5f * (float) Math.sin(u * 0.02f + t * 0.35f + c * 1.7f));
+                        float y0 = grid(center - reach, px);
+                        float y1 = grid(center + reach * 0.5f, px);
+                        lookPaint.setColor(faded(scaleAlpha(color, 0.14f + 0.26f * glow)));
+                        canvas.drawRect(x, y0, x + step, y1, lookPaint);
+                        lookPaint.setColor(faded(scaleAlpha(color, 0.2f + 0.3f * glow)));
+                        canvas.drawRect(x, grid(center - reach * 0.2f, px), x + step, y1, lookPaint);
+                        lookPaint.setColor(faded(scaleAlpha(mixColor(color, 0xFFFFFFFF, 0.55f), 0.35f + 0.55f * glow)));
+                        canvas.drawRect(x, y1, x + step, y1 + px, lookPaint);
+                    }
+                }
+                lookPaint.setColor(faded(0xFF040714));
+                for (float x = left; x < right; x += 2f * px) {
+                    float u = (x - left) / unit;
+                    float hill = height * (0.13f + 0.07f * (float) Math.sin(u * 0.13f + seed) + 0.05f * (float) Math.sin(u * 0.31f));
+                    canvas.drawRect(x, grid(bottom - hill, px), x + 2f * px, bottom, lookPaint);
+                }
+                break;
+            }
+            case 10: {
+                for (int k = 0; k < 3; k++) {
+                    float span = width + 60f * unit;
+                    float nx = left - 30f * unit + ((span * lookHash(seed, k + 201) - t * 3f * unit) % span + span) % span;
+                    float ny = top + height * (0.3f + 0.4f * lookHash(seed, k + 211));
+                    float radius = (7f + 5f * lookHash(seed, k + 221)) * unit;
+                    int color = k % 2 == 0 ? item.color : item.second;
+                    for (int ring = 0; ring < 3; ring++) {
+                        float r = grid(radius * (1f - ring * 0.3f), px);
+                        lookPaint.setColor(faded(scaleAlpha(color, 0.12f + ring * 0.08f)));
+                        pixelBox(canvas, nx - r * 1.7f, ny - r * 0.6f, nx + r * 1.7f, ny + r * 0.6f, grid(r * 0.35f, px), lookPaint);
+                    }
+                }
+                stars(canvas, left, top, width, height, px, seed, 12, t, 2f * unit);
+                stars(canvas, left, top, width, height, px, seed + 7, 7, t, 7f * unit);
+                for (int k = 0; k < 2; k++) {
+                    float sx = left + ((width * lookHash(seed, k + 241) - t * 12f * unit) % width + width) % width;
+                    float sy = top + height * (0.2f + 0.6f * lookHash(seed, k + 251));
+                    float twinkle = 0.5f + 0.5f * (float) Math.sin(t * 3f + k * 2f);
+                    drawSprite(canvas, SP_SPARK, Math.round(sx), Math.round(sy), 5f * px, 0.4f + 0.6f * twinkle);
+                }
+                float cycle = 2.4f + lookHash(seed, 5);
+                float run = t / cycle;
+                int n = (int) run;
+                float life = (run - n) * cycle / 0.6f;
+                if (life < 1f) {
+                    float sx = left + width * (0.35f + 0.6f * lookHash(n, seed));
+                    float sy = top + height * 0.1f;
+                    float hx = sx - life * 42f * unit;
+                    float hy = sy + life * height * 0.75f;
+                    float slope = height * 0.75f / (42f * unit);
+                    for (int i = 6; i >= 0; i--) {
+                        float tx = grid(hx + i * 2f * px, px);
+                        float ty = grid(hy - i * 2f * px * slope, px);
+                        float fade = (1f - i / 7f) * (1f - life * 0.4f);
+                        lookPaint.setColor(faded(scaleAlpha(i == 0 ? 0xFFFFFFFF : item.second, fade)));
+                        float s = i == 0 ? 2f * px : px;
+                        canvas.drawRect(tx, ty, tx + s, ty + s, lookPaint);
+                    }
+                }
+                break;
+            }
+            case 11: {
+                float cx = left + width / 2f;
+                float cy = top + height / 2f;
+                float pulse = 0.5f + 0.5f * (float) Math.sin(t * 6f);
+                for (int ring = 0; ring < 3; ring++) {
+                    float w = grid((14f - ring * 4f) * unit, px);
+                    float h = grid((5f - ring * 1.3f) * unit, px);
+                    lookPaint.setColor(faded(scaleAlpha(ring == 2 ? 0xFFFFFFFF : item.color, 0.1f + 0.1f * ring + 0.1f * pulse)));
+                    pixelBox(canvas, cx - w, cy - h, cx + w, cy + h, px * 2f, lookPaint);
+                }
+                for (int k = 0; k < 24; k++) {
+                    float speed = 0.6f + 0.8f * lookHash(seed, k + 301);
+                    float life = (t * speed + lookHash(seed, k + 311)) % 1f;
+                    float lane = (lookHash(seed, k + 321) - 0.5f) * 2f;
+                    float side = k % 2 == 0 ? 1f : -1f;
+                    float reach = life * life;
+                    float x = cx + side * reach * width * 0.56f;
+                    float y = grid(cy + lane * height * 0.5f * (0.25f + 0.75f * reach), px);
+                    float length = (1.5f + 28f * reach) * unit;
+                    int color = k % 3 == 0 ? 0xFFFFFFFF : k % 3 == 1 ? item.color : item.second;
+                    lookPaint.setColor(faded(scaleAlpha(color, Math.min(0.85f, life * 2.5f))));
+                    float thick = reach > 0.45f ? px * 2f : px;
+                    float x0 = side > 0f ? x - length : x;
+                    float x1 = side > 0f ? x : x + length;
+                    canvas.drawRect(Math.round(x0), y, Math.round(x1), y + thick, lookPaint);
+                }
+                break;
+            }
+            case 12: {
+                for (int k = 0; k < 6; k++) {
+                    float span = width + 30f * unit;
+                    float cx = left - 15f * unit + ((span * lookHash(seed, k + 401) - t * 4f * unit) % span + span) % span;
+                    float w = grid((7f + 5f * lookHash(seed, k + 411)) * unit, px);
+                    float h = grid((3f + 3f * lookHash(seed, k + 421)) * unit, px);
+                    lookPaint.setColor(faded(0xFF3D4668));
+                    pixelBox(canvas, cx - w, top - px * 2f, cx + w, top + h, px * 2f, lookPaint);
+                    lookPaint.setColor(faded(0xFF56628C));
+                    pixelBox(canvas, cx - w * 0.6f, top - px * 2f, cx + w * 0.5f, top + h - px * 2f, px * 2f, lookPaint);
+                }
+                lookPaint.setColor(faded(0x99A8C8FF));
+                for (int k = 0; k < 16; k++) {
+                    float speed = 1.6f + 0.8f * lookHash(seed, k + 431);
+                    float life = (t * speed + lookHash(seed, k + 441)) % 1f;
+                    float rx = grid(left + width * lookHash(seed, k + 451) - life * 6f * unit, px);
+                    float ry = grid(top - 4f * unit + (height + 8f * unit) * life, px);
+                    canvas.drawRect(rx, ry, rx + px, ry + px * 2f, lookPaint);
+                    canvas.drawRect(rx - px, ry + px * 2f, rx, ry + px * 4f, lookPaint);
+                }
+                float cycle = 2.3f + lookHash(seed, 6) * 1.2f;
+                float run = t / cycle;
+                int n = (int) run;
+                float phase = (run - n) * cycle;
+                if (phase < 0.5f) {
+                    float flash = phase < 0.08f ? 1f - phase / 0.08f : phase > 0.14f && phase < 0.26f ? 0.7f * (1f - (phase - 0.14f) / 0.12f) : 0f;
+                    if (flash > 0f) {
+                        lookPaint.setColor(faded(scaleAlpha(item.color, flash * 0.45f)));
+                        canvas.drawRect(left, top, right, bottom, lookPaint);
+                    }
+                    if (phase < 0.32f) {
+                        float alpha = 1f - phase / 0.32f;
+                        float x = grid(left + width * (0.12f + 0.76f * lookHash(n, seed + 3)), px);
+                        float y = top;
+                        float segment = height / 5f;
+                        for (int i = 0; i < 5; i++) {
+                            float next = grid(x + (lookHash(n * 11 + i, seed) - 0.5f) * 9f * unit, px);
+                            float end = i == 4 ? bottom : grid(y + segment, px);
+                            lookPaint.setColor(faded(scaleAlpha(item.color, alpha * 0.55f)));
+                            canvas.drawRect(x - px, y, x + px * 2f, end, lookPaint);
+                            canvas.drawRect(Math.min(x, next) - px, end - px * 2f, Math.max(x, next) + px * 2f, end + px, lookPaint);
+                            lookPaint.setColor(faded(scaleAlpha(0xFFFFFFFF, alpha)));
+                            canvas.drawRect(x, y, x + px, end, lookPaint);
+                            canvas.drawRect(Math.min(x, next), end - px, Math.max(x, next) + px, end, lookPaint);
+                            if (i == 1) {
+                                float fork = x + (next > x ? -1f : 1f) * 4f * unit;
+                                lookPaint.setColor(faded(scaleAlpha(item.color, alpha * 0.8f)));
+                                canvas.drawRect(Math.min(x, fork), end, Math.max(x, fork) + px, end + px, lookPaint);
+                                canvas.drawRect(fork, end, fork + px, end + segment * 0.7f, lookPaint);
+                            }
+                            x = next;
+                            y = end;
+                        }
+                    }
+                }
+                break;
+            }
+            case 13: {
+                float horizon = grid(top + height * 0.56f, px);
+                stripes(canvas, left, top, right, horizon, SYNTH_SKY);
+                stars(canvas, left, top, width, (horizon - top) * 0.55f, px, seed, 7, t, 0f);
+                float sunX = Math.round(left + width * 0.76f);
+                float radius = grid(height * 0.44f, px);
+                float pulse = 0.5f + 0.5f * (float) Math.sin(t * 2f);
+                lookPaint.setColor(faded(scaleAlpha(0xFFFF7AB0, 0.18f + 0.12f * pulse)));
+                pixelBox(canvas, sunX - radius - 3f * px, horizon - radius - 3f * px, sunX + radius + 3f * px, horizon, px * 3f, lookPaint);
+                for (float y = horizon - radius; y < horizon; y += px) {
+                    float dy = horizon - y - px * 0.5f;
+                    float half = grid((float) Math.sqrt(Math.max(0f, radius * radius - dy * dy)), px);
+                    float k = (y - (horizon - radius)) / radius;
+                    if (k > 0.45f && (((int) Math.floor((y - horizon) / px + t * 5f)) % 4 + 4) % 4 == 0) continue;
+                    lookPaint.setColor(faded(k < 0.33f ? 0xFFFFE45C : k < 0.66f ? 0xFFFF9A3C : 0xFFFF4F8A));
+                    canvas.drawRect(sunX - half, y, sunX + half, y + px, lookPaint);
+                }
+                lookPaint.setColor(faded(0xFF14062A));
+                canvas.drawRect(left, horizon, right, bottom, lookPaint);
+                for (int i = 0; i < 6; i++) {
+                    float z = ((i + t * 1.4f) % 6f) / 6f;
+                    float y = grid(horizon + (bottom - horizon) * z * z, px);
+                    lookPaint.setColor(faded(scaleAlpha(item.color, 0.3f + 0.7f * z)));
+                    canvas.drawRect(left, y, right, y + px, lookPaint);
+                }
+                float vx = left + width * 0.5f;
+                lookPaint.setStyle(Paint.Style.STROKE);
+                lookPaint.setStrokeWidth(px);
+                lookPaint.setColor(faded(scaleAlpha(item.color, 0.75f)));
+                for (int k = -16; k <= 16; k++) {
+                    canvas.drawLine(vx + k * 2.4f * unit, horizon, vx + k * 11f * unit, bottom + px, lookPaint);
+                }
+                lookPaint.setStyle(Paint.Style.FILL);
+                lookPaint.setStrokeWidth(0f);
+                lookPaint.setColor(faded(item.second));
+                canvas.drawRect(left, horizon, right, horizon + px, lookPaint);
+                break;
+            }
+            case 14: {
+                float step = 2f * px;
+                for (float x = left; x < right; x += step) {
+                    float u = (x - left) / unit;
+                    float f = 0.45f + 0.22f * (float) Math.sin(u * 0.23f + t * 6.1f) * (float) Math.sin(u * 0.071f - t * 2.7f)
+                            + 0.14f * (float) Math.sin(u * 0.53f - t * 9.3f);
+                    float h = height * f;
+                    lookPaint.setColor(faded(0xFFB81E0A));
+                    canvas.drawRect(x, grid(bottom - h, px), x + step, bottom, lookPaint);
+                    lookPaint.setColor(faded(item.color));
+                    canvas.drawRect(x, grid(bottom - h * 0.64f, px), x + step, bottom, lookPaint);
+                    lookPaint.setColor(faded(item.second));
+                    canvas.drawRect(x, grid(bottom - h * 0.3f, px), x + step, bottom, lookPaint);
+                }
+                for (int k = 0; k < 9; k++) {
+                    float speed = 0.5f + 0.4f * lookHash(seed, k + 501);
+                    float life = (t * speed + lookHash(seed, k + 511)) % 1f;
+                    float ex = grid(left + width * lookHash(seed, k + 521) + (float) Math.sin(t * 3f + k) * 1.5f * unit, px);
+                    float ey = grid(bottom - height * 0.3f - height * 0.8f * life, px);
+                    lookPaint.setColor(faded(scaleAlpha(life < 0.4f ? item.second : item.color, 1f - life)));
+                    float size = life < 0.5f ? px * 2f : px;
+                    canvas.drawRect(ex, ey, ex + size, ey + size, lookPaint);
+                }
+                break;
+            }
+            default: {
+                float cell = 9f * unit;
+                float shift = (t * 2f * unit) % cell;
+                float sweep = left - 20f * unit + ((t % 3.5f) / 3.5f) * (width + 40f * unit);
+                for (int row = 0; row < 3; row++) {
+                    float cy = grid(top + height * (0.2f + 0.3f * row), px);
+                    for (float x = left - cell + shift + (row % 2) * cell / 2f; x < right + cell; x += cell) {
+                        float cx = grid(x, px);
+                        float gloss = Math.max(0f, 1f - Math.abs(cx - sweep) / (14f * unit));
+                        lookPaint.setColor(faded(mixColor(0xFF5A1884, 0xFFB878E8, gloss)));
+                        canvas.drawRect(cx - px, cy - px * 2f, cx + px, cy + px * 2f, lookPaint);
+                        canvas.drawRect(cx - px * 2f, cy - px, cx + px * 2f, cy + px, lookPaint);
+                    }
+                }
+                float trim = Math.max(px, grid(1.4f * unit, px));
+                lookPaint.setColor(faded(item.second));
+                canvas.drawRect(left, top, right, top + trim, lookPaint);
+                canvas.drawRect(left, bottom - trim, right, bottom, lookPaint);
+                lookPaint.setColor(faded(0xFF9A6A10));
+                canvas.drawRect(left, top + trim, right, top + trim + px, lookPaint);
+                canvas.drawRect(left, bottom - trim - px, right, bottom - trim, lookPaint);
+                float run = (t * 40f * unit) % (width + 40f * unit) - 20f * unit;
+                lookPaint.setColor(faded(0xFFFFF6C8));
+                canvas.drawRect(left + run, top, left + run + 10f * unit, top + trim, lookPaint);
+                canvas.drawRect(right - run - 10f * unit, bottom - trim, right - run, bottom, lookPaint);
+                for (int k = 0; k < 3; k++) {
+                    float go = t * (0.6f + 0.15f * k) + k / 3f;
+                    int cycle = (int) go;
+                    float strength = (float) Math.sin((go - cycle) * Math.PI);
+                    float sx = left + 6f * unit + (width - 12f * unit) * lookHash(cycle * 3 + k, seed);
+                    float sy = top + height * (0.25f + 0.5f * lookHash(cycle * 5 + k, seed + 1));
+                    drawSprite(canvas, SP_SPARK, grid(sx, px), grid(sy, px), 5f * px, strength);
+                }
+                break;
+            }
+        }
+    }
+
+    private float[] glyphEdges(String text) {
+        float[] edges = glyphEdges.get(text);
+        if (edges != null) return edges;
+        if (glyphEdges.size() > 96) {
+            glyphEdges.clear();
+            glyphChars.clear();
+        }
+        List<String> parts = new ArrayList<>();
+        for (int i = 0; i < text.length(); ) {
+            int next = i + Character.charCount(text.codePointAt(i));
+            parts.add(text.substring(i, next));
+            i = next;
+        }
+        edges = new float[parts.size() + 1];
+        float keep = boardTextPaint.getTextSize();
+        boardTextPaint.setTextSize(100f);
+        StringBuilder prefix = new StringBuilder();
+        for (int i = 0; i < parts.size(); i++) {
+            prefix.append(parts.get(i));
+            edges[i + 1] = boardTextPaint.measureText(prefix.toString());
+        }
+        boardTextPaint.setTextSize(keep);
+        glyphEdges.put(text, edges);
+        glyphChars.put(text, parts.toArray(new String[0]));
+        return edges;
+    }
+
+    private void fancyText(Canvas canvas, Shop.Item item, String text, float x, float baseline, float size, Paint.Align align, float room, int seed) {
+        if (text == null || text.isEmpty()) return;
+        float[] edges = glyphEdges(text);
+        String[] chars = glyphChars.get(text);
+        int count = chars.length;
+        float fit = size;
+        float full = edges[count] * size / 100f;
+        if (room > 0f && full > room) {
+            fit = size * room / full;
+            full = room;
+        }
+        float start = align == Paint.Align.CENTER ? x - full / 2f : align == Paint.Align.RIGHT ? x - full : x;
+        float scale = fit / 100f;
+        float px = Math.max(1f, Math.round(size / 10f));
+        float t = boardShine + lookHash(seed, 1) * 7f;
+        int a = item.color;
+        int b = item.second;
+        switch (item.effect) {
+            case 4:
+            case 8:
+                for (int i = 0; i < count; i++) {
+                    float wave = (float) Math.sin(t * 5f - i * 0.7f);
+                    float gx = start + edges[i] * scale;
+                    float gy = baseline + Math.round(wave * 1.6f) * px;
+                    int color = item.effect == 4 ? mixColor(a, b, 0.5f - 0.5f * wave) : hueColor(t * 0.4f - i * 0.09f, 0.72f, 1f);
+                    outlineText(canvas, chars[i], gx, gy, fit, Paint.Align.LEFT, 0f);
+                    boardText(canvas, chars[i], gx, gy, fit, color, Paint.Align.LEFT, 0f);
+                }
+                break;
+            case 5: {
+                float cycle = t % 2.2f;
+                boolean burst = cycle < 0.25f || (cycle > 1.1f && cycle < 1.18f);
+                int tick = (int) (t * 24f);
+                float split = burst ? 3f * px : Math.max(px, Math.round(fit * 0.15f));
+                for (int pass = 0; pass < 2; pass++) {
+                    float shift = pass == 0 ? -split : split;
+                    int color = scaleAlpha(pass == 0 ? a : b, 0.85f);
+                    for (int i = 0; i < count; i++) {
+                        float jitter = burst && lookHash(tick * 31 + i, seed + pass) > 0.6f ? (lookHash(tick + i, seed) > 0.5f ? px : -px) : 0f;
+                        boardText(canvas, chars[i], start + edges[i] * scale + shift, baseline + jitter, fit, color, Paint.Align.LEFT, 0f);
+                    }
+                }
+                outlineText(canvas, text, start, baseline, fit, Paint.Align.LEFT, 0f);
+                for (int i = 0; i < count; i++) {
+                    float jitter = burst && lookHash(tick * 17 + i, seed) > 0.7f ? px : 0f;
+                    boardText(canvas, chars[i], start + edges[i] * scale, baseline - jitter, fit, Color.WHITE, Paint.Align.LEFT, 0f);
+                }
+                if (burst) {
+                    float sliceTop = baseline - fit * (0.2f + 0.5f * lookHash(tick, seed));
+                    canvas.save();
+                    canvas.clipRect(start - 6f * px, sliceTop, start + full + 6f * px, sliceTop + fit * 0.2f);
+                    canvas.translate((lookHash(tick, seed + 1) - 0.5f) * 8f * px, 0f);
+                    boardText(canvas, text, start, baseline, fit, b, Paint.Align.LEFT, 0f);
+                    canvas.restore();
+                }
+                break;
+            }
+            case 6: {
+                float cycle = t % 3.7f;
+                float flicker = (cycle > 1.2f && cycle < 1.27f) || (cycle > 1.34f && cycle < 1.38f) || (cycle > 2.9f && cycle < 2.95f) ? 0.25f : 1f;
+                float hum = 0.85f + 0.15f * (float) Math.sin(t * 3f);
+                boardTextPaint.setShader(null);
+                boardTextPaint.setShadowLayer(Math.max(0.5f, fit * 0.5f * hum * flicker), 0f, 0f, faded(scaleAlpha(a, 0.95f * flicker)));
+                boardTextPaint.setStyle(Paint.Style.STROKE);
+                boardTextPaint.setStrokeWidth(fit * 0.17f);
+                boardTextPaint.setStrokeJoin(Paint.Join.ROUND);
+                boardText(canvas, text, start, baseline, fit, scaleAlpha(a, 0.45f + 0.55f * flicker), Paint.Align.LEFT, 0f);
+                boardTextPaint.clearShadowLayer();
+                boardTextPaint.setStyle(Paint.Style.FILL);
+                boardTextPaint.setStrokeWidth(0f);
+                boardText(canvas, text, start, baseline, fit, mixColor(b, mixColor(a, 0xFF202020, 0.4f), 1f - flicker), Paint.Align.LEFT, 0f);
+                break;
+            }
+            case 7: {
+                outlineText(canvas, text, start, baseline, fit, Paint.Align.LEFT, 0f);
+                if (royalMetal == null) royalMetal = stepped(ROYAL_METAL, true);
+                lookMatrix.reset();
+                lookMatrix.setScale(1f, fit * 0.8f);
+                lookMatrix.postTranslate(0f, baseline - fit * 0.74f);
+                royalMetal.setLocalMatrix(lookMatrix);
+                boardTextPaint.setShader(royalMetal);
+                boardText(canvas, text, start, baseline, fit, Color.WHITE, Paint.Align.LEFT, 0f);
+                boardTextPaint.setShader(null);
+                float travel = (t % 2.8f) / 2.8f * 1.7f;
+                if (travel < 1f) {
+                    float bandX = start - fit + (full + fit * 2f) * travel;
+                    canvas.save();
+                    canvas.clipRect(bandX, baseline - fit, bandX + fit * 0.3f, baseline + fit * 0.3f);
+                    boardText(canvas, text, start, baseline, fit, 0xDDFFFFFF, Paint.Align.LEFT, 0f);
+                    canvas.restore();
+                    canvas.save();
+                    canvas.clipRect(bandX + fit * 0.45f, baseline - fit, bandX + fit * 0.55f, baseline + fit * 0.3f);
+                    boardText(canvas, text, start, baseline, fit, 0x99FFFFFF, Paint.Align.LEFT, 0f);
+                    canvas.restore();
+                }
+                float spark = Math.max(1f, Math.round(fit / 11f));
+                for (int k = 0; k < 2; k++) {
+                    float go = t * 0.7f + k * 0.5f;
+                    int cycle = (int) go;
+                    float strength = (float) Math.sin((go - cycle) * Math.PI);
+                    int at = Math.min(count - 1, (int) (lookHash(cycle * 3 + k, seed) * count));
+                    float sx = start + (edges[at] + edges[at + 1]) * 0.5f * scale;
+                    float sy = baseline - fit * (0.55f + 0.25f * lookHash(cycle, seed + k));
+                    drawSprite(canvas, SP_SPARK, Math.round(sx), Math.round(sy), 5f * spark, Math.min(1f, strength * 1.5f));
+                }
+                break;
+            }
+            case 9: {
+                int tick = (int) (t * 10f);
+                for (int i = 0; i < count; i++) {
+                    float jump = Math.round((lookHash(tick * 7 + i, seed) - 0.5f) * 1.4f) * px;
+                    outlineText(canvas, chars[i], start + edges[i] * scale, baseline + jump, fit, Paint.Align.LEFT, 0f);
+                }
+                if (blazeFire == null) blazeFire = stepped(BLAZE_FIRE, true);
+                lookMatrix.reset();
+                lookMatrix.setScale(1f, fit * 0.85f);
+                lookMatrix.postTranslate(0f, baseline - fit * 0.78f + (float) Math.sin(t * 13f) * fit * 0.05f);
+                blazeFire.setLocalMatrix(lookMatrix);
+                boardTextPaint.setShader(blazeFire);
+                boardTextPaint.setShadowLayer(fit * (0.3f + 0.1f * (float) Math.sin(t * 17f)), 0f, -fit * 0.08f, faded(0xCCFF4A10));
+                for (int i = 0; i < count; i++) {
+                    float jump = Math.round((lookHash(tick * 7 + i, seed) - 0.5f) * 1.4f) * px;
+                    boardText(canvas, chars[i], start + edges[i] * scale, baseline + jump, fit, Color.WHITE, Paint.Align.LEFT, 0f);
+                }
+                boardTextPaint.clearShadowLayer();
+                boardTextPaint.setShader(null);
+                lookPaint.setShader(null);
+                lookPaint.setStyle(Paint.Style.FILL);
+                for (int k = 0; k < 6; k++) {
+                    float life = (t * (0.9f + 0.4f * lookHash(seed, k + 601)) + lookHash(seed, k + 611)) % 1f;
+                    float ex = grid(start + full * lookHash(seed, k + 621) + (float) Math.sin(t * 4f + k) * px, px);
+                    float ey = grid(baseline - fit * 0.6f - life * fit * 0.6f, px);
+                    lookPaint.setColor(faded(scaleAlpha(life < 0.4f ? 0xFFFFE27A : 0xFFFF6A1A, 1f - life)));
+                    canvas.drawRect(ex, ey, ex + px, ey + px, lookPaint);
+                }
+                break;
+            }
+            default: {
+                float breathe = 0.5f + 0.5f * (float) Math.sin(t * 1.8f);
+                float bob = Math.round((float) Math.sin(t * 2f)) * px;
+                for (int k = 3; k >= 1; k--) {
+                    float dx = Math.round((float) Math.sin(t * 1.3f - k * 0.6f) * k * 1.6f) * px;
+                    float dy = -Math.round(k * 0.8f) * px;
+                    boardText(canvas, text, start + dx, baseline + bob + dy, fit, scaleAlpha(b, 0.75f / k), Paint.Align.LEFT, 0f);
+                }
+                outlineText(canvas, text, start, baseline + bob, fit, Paint.Align.LEFT, 0f);
+                boardText(canvas, text, start, baseline + bob, fit, scaleAlpha(a, 0.72f + 0.28f * breathe), Paint.Align.LEFT, 0f);
+                break;
+            }
         }
     }
 
@@ -4756,19 +5710,24 @@ class GameView extends View implements Choreographer.FrameCallback {
         if (item == null) return;
         ensureBoardPaints();
         float pulse = 0.5f + 0.5f * (float) Math.sin(boardShine * 3.1f);
-        int color = item.effect == 1 ? hueColor(boardShine * 0.25f, 0.8f, 1f) : item.color;
+        int color;
+        if (item.effect == 1) color = hueColor(boardShine * 0.25f, 0.8f, 1f);
+        else if (item.effect == 2) color = mixColor(item.color, item.second, 0.5f + 0.5f * (float) Math.sin(boardShine * 11f + Math.sin(boardShine * 4.3f) * 2f));
+        else color = item.color;
         lookPaint.setShader(null);
-        lookPaint.setStyle(Paint.Style.STROKE);
-        float[] widths = {3.6f, 2.2f, 1.1f};
-        float[] alphas = {0.18f, 0.32f, 0.85f};
-        for (int i = 0; i < 3; i++) {
-            float w = widths[i] * unit * (0.85f + 0.3f * pulse);
-            lookPaint.setStrokeWidth(w);
-            lookPaint.setColor(faded(scaleAlpha(color, alphas[i] * (0.65f + 0.35f * pulse))));
-            boardShape.set(left + w * 0.5f, top + w * 0.5f, right - w * 0.5f, bottom - w * 0.5f);
-            canvas.drawRoundRect(boardShape, unit * 3f, unit * 3f, lookPaint);
-        }
         lookPaint.setStyle(Paint.Style.FILL);
+        float px = Math.max(1f, Math.round(0.9f * unit));
+        float notch = Math.max(1f, Math.round(1.2f * unit));
+        float[] alphas = {0.95f, 0.5f, 0.2f};
+        for (int i = 0; i < 3; i++) {
+            float inset = i * px;
+            lookPaint.setColor(faded(scaleAlpha(color, alphas[i] * (0.6f + 0.4f * pulse))));
+            pixelFrame(canvas, left + inset, top + inset, right - inset, bottom - inset, px, i == 0 ? notch : 0f, lookPaint);
+        }
+    }
+
+    private float snap(float value) {
+        return Math.round(value);
     }
 
     private void lookMotion(Canvas canvas, Shop.Item item, float left, float top, float right, float bottom, float unit, int seed) {
@@ -4777,6 +5736,7 @@ class GameView extends View implements Choreographer.FrameCallback {
         float width = right - left;
         float height = bottom - top;
         float time = boardShine + lookHash(seed, 3) * 9f;
+        float px = Math.max(1f, Math.round(0.75f * unit));
         lookPaint.setShader(null);
         lookPaint.setStyle(Paint.Style.FILL);
         switch (item.effect) {
@@ -4784,254 +5744,164 @@ class GameView extends View implements Choreographer.FrameCallback {
                 float cycle = (time % 2.8f) / 2.8f;
                 float bandX = left - 16f * unit + (width + 32f * unit) * cycle;
                 lookPaint.setColor(faded(0x55FFFFFF));
-                lookPath.reset();
-                lookPath.moveTo(bandX, bottom);
-                lookPath.lineTo(bandX + 9f * unit, bottom);
-                lookPath.lineTo(bandX + 9f * unit + height * 0.6f, top);
-                lookPath.lineTo(bandX + height * 0.6f, top);
-                lookPath.close();
-                canvas.drawPath(lookPath, lookPaint);
+                for (float y = top; y < bottom; y += px) {
+                    float dx = snap(bandX + (bottom - y) * 0.6f);
+                    canvas.drawRect(dx, y, dx + 7f * unit, Math.min(bottom, y + px), lookPaint);
+                    lookPaint.setColor(faded(0x33FFFFFF));
+                    canvas.drawRect(dx + 9f * unit, y, dx + 10.5f * unit, Math.min(bottom, y + px), lookPaint);
+                    lookPaint.setColor(faded(0x55FFFFFF));
+                }
                 break;
             }
             case 1:
                 for (int k = 0; k < 6; k++) {
                     float speed = 0.7f + lookHash(seed, k + 20);
-                    float life = (time * speed + lookHash(seed, k + 40)) % 1f;
+                    float run = time * speed + lookHash(seed, k + 40);
+                    float life = run % 1f;
+                    int cycle = (int) run;
                     float strength = (float) Math.sin(life * Math.PI);
-                    float sx = left + 3f * unit + (width - 6f * unit) * lookHash(seed, k + 60 + (int) (time * speed + lookHash(seed, k + 40)));
-                    float sy = top + 2.5f * unit + (height - 5f * unit) * lookHash(seed, k + 80 + (int) (time * speed + lookHash(seed, k + 40)));
-                    lookStar(canvas, sx, sy, (1.4f + 1.2f * lookHash(seed, k)) * unit * strength, scaleAlpha(item.color, strength));
+                    float sx = left + 3f * unit + (width - 6f * unit) * lookHash(seed, k + 60 + cycle);
+                    float sy = top + 3f * unit + (height - 6f * unit) * lookHash(seed, k + 80 + cycle);
+                    drawSprite(canvas, SP_SPARK, sx, sy, 5f * px, Math.min(1f, strength * 1.6f));
                 }
                 break;
             case 2:
-                lookPaint.setStyle(Paint.Style.STROKE);
-                lookPaint.setStrokeWidth(0.6f * unit);
-                for (int k = 0; k < 7; k++) {
+                for (int k = 0; k < 6; k++) {
                     float speed = 0.25f + 0.25f * lookHash(seed, k + 3);
                     float life = (time * speed + lookHash(seed, k + 13)) % 1f;
-                    float bx = left + width * lookHash(seed, k + 23) + (float) Math.sin(time * 2f + k) * 1.2f * unit;
-                    float by = bottom + 2f * unit - (height + 4f * unit) * life;
-                    lookPaint.setColor(faded(scaleAlpha(item.color, 0.9f * (1f - life * 0.6f))));
-                    canvas.drawCircle(bx, by, (0.9f + 1.3f * lookHash(seed, k + 33)) * unit, lookPaint);
+                    float bx = left + width * lookHash(seed, k + 23) + snap((float) Math.sin(time * 2f + k) * 1.2f * unit);
+                    float by = bottom + 3f * unit - (height + 6f * unit) * life;
+                    drawSprite(canvas, SP_BUBBLE, bx, by, (lookHash(seed, k + 33) > 0.5f ? 10f : 5f) * px, 0.95f - life * 0.5f);
                 }
-                lookPaint.setStyle(Paint.Style.FILL);
                 break;
             case 3:
                 for (int k = 0; k < 10; k++) {
                     float speed = 0.22f + 0.2f * lookHash(seed, k + 7);
                     float life = (time * speed + lookHash(seed, k + 17)) % 1f;
-                    float fx = left + width * lookHash(seed, k + 27) + (float) Math.sin(time * 1.5f + k * 2f) * 2f * unit;
-                    float fy = top - 1f * unit + (height + 2f * unit) * life;
-                    lookPaint.setColor(faded(scaleAlpha(0xFFFFFFFF, 0.9f)));
-                    canvas.drawCircle(fx, fy, (0.5f + 0.6f * lookHash(seed, k + 47)) * unit, lookPaint);
+                    float fx = snap(left + width * lookHash(seed, k + 27) + (float) Math.sin(time * 1.5f + k * 2f) * 2f * unit);
+                    float fy = snap(top - 2f * unit + (height + 4f * unit) * life);
+                    if (k % 4 == 0) {
+                        drawSprite(canvas, SP_SNOW, fx, fy, 5f * px, 0.9f);
+                    } else {
+                        lookPaint.setColor(faded(0xEEFFFFFF));
+                        float size = k % 2 == 0 ? px * 2f : px;
+                        canvas.drawRect(fx, fy, fx + size, fy + size, lookPaint);
+                    }
                 }
                 break;
             case 4:
                 for (int k = 0; k < 4; k++) {
                     float speed = 0.3f + 0.15f * lookHash(seed, k + 5);
                     float life = (time * speed + lookHash(seed, k + 15)) % 1f;
-                    float hx = left + 8f * unit + (width - 16f * unit) * lookHash(seed, k + 25);
-                    float hy = bottom - (height + 2f * unit) * life;
-                    float fade = (float) Math.sin(life * Math.PI);
-                    lookHeart(canvas, hx, hy, 1.7f * unit, scaleAlpha(item.color, 0.85f * fade));
+                    float hx = left + 8f * unit + (width - 16f * unit) * lookHash(seed, k + 25) + snap((float) Math.sin(time * 3f + k) * unit);
+                    float hy = bottom + 2f * unit - (height + 4f * unit) * life;
+                    drawSprite(canvas, SP_HEART, hx, hy, 5f * px, (float) Math.sin(life * Math.PI));
                 }
                 break;
             case 5:
-                for (int k = 0; k < 9; k++) {
+                for (int k = 0; k < 10; k++) {
                     float speed = 0.45f + 0.35f * lookHash(seed, k + 2);
                     float life = (time * speed + lookHash(seed, k + 12)) % 1f;
-                    float ex = left + width * lookHash(seed, k + 22) + (float) Math.sin(time * 3f + k) * 1.4f * unit;
-                    float ey = bottom - height * life;
+                    float ex = snap(left + width * lookHash(seed, k + 22) + (float) Math.sin(time * 3f + k) * 1.4f * unit);
+                    float ey = snap(bottom - height * life);
+                    int color = life < 0.33f ? 0xFFFFE27A : life < 0.66f ? item.color : 0xFFC9381A;
                     float flicker = 0.6f + 0.4f * (float) Math.sin(time * 14f + k * 3f);
-                    int color = mixColor(0xFFFFE27A, item.color, life);
                     lookPaint.setColor(faded(scaleAlpha(color, (1f - life) * flicker)));
-                    canvas.drawCircle(ex, ey, (0.5f + 0.7f * (1f - life)) * unit, lookPaint);
+                    float size = life < 0.5f ? px * 2f : px;
+                    canvas.drawRect(ex, ey, ex + size, ey + size, lookPaint);
                 }
                 break;
-            default:
+            case 6:
                 for (int k = 0; k < 3; k++) {
                     float speed = 0.12f + 0.06f * lookHash(seed, k + 4);
                     float life = (time * speed + lookHash(seed, k + 14)) % 1f;
                     float fx = left - 6f * unit + (width + 12f * unit) * life;
-                    float fy = top + height * (0.25f + 0.5f * lookHash(seed, k + 24)) + (float) Math.sin(time * 2.2f + k * 2f) * 2.5f * unit;
+                    float fy = top + height * (0.3f + 0.4f * lookHash(seed, k + 24)) + snap((float) Math.sin(time * 2.2f + k * 2f) * 2.5f * unit);
+                    drawSprite(canvas, SP_FEATHER, fx, fy, 9f * px, 0.95f);
+                }
+                break;
+            case 7:
+                for (int k = 0; k < 4; k++) {
+                    float speed = 0.28f + 0.12f * lookHash(seed, k + 6);
+                    float life = (time * speed + lookHash(seed, k + 16)) % 1f;
+                    float nx = left + 10f * unit + (width - 20f * unit) * lookHash(seed, k + 26) + snap((float) Math.sin(time * 4f + k) * 1.5f * unit);
+                    float ny = bottom + 2f * unit - (height + 4f * unit) * life;
+                    drawSprite(canvas, SP_NOTE, nx, ny, 5f * px, (float) Math.sin(life * Math.PI));
+                }
+                break;
+            case 8: {
+                int[] colors = {0xFFFF5A5A, 0xFFFFC93C, 0xFF5AB4FF, 0xFF73BF2E, 0xFFC89CFF, 0xFFFF9CC0};
+                for (int k = 0; k < 14; k++) {
+                    float speed = 0.3f + 0.25f * lookHash(seed, k + 8);
+                    float life = (time * speed + lookHash(seed, k + 18)) % 1f;
+                    float cx = snap(left + width * lookHash(seed, k + 28) + (float) Math.sin(time * 2.5f + k) * 2f * unit);
+                    float cy = snap(top - 2f * unit + (height + 4f * unit) * life);
+                    boolean flat = ((int) (time * 8f + k)) % 2 == 0;
+                    lookPaint.setColor(faded(colors[k % colors.length]));
+                    canvas.drawRect(cx, cy, cx + (flat ? px * 2f : px), cy + (flat ? px : px * 2f), lookPaint);
+                }
+                break;
+            }
+            case 9:
+                for (int k = 0; k < 6; k++) {
+                    float speed = 0.3f + 0.2f * lookHash(seed, k + 9);
+                    float life = (time * speed + lookHash(seed, k + 19)) % 1f;
+                    float cx = left + 4f * unit + (width - 8f * unit) * lookHash(seed, k + 29);
+                    float cy = top - 4f * unit + (height + 8f * unit) * life;
+                    float spin = Math.abs((float) Math.cos(time * 6f + k));
                     canvas.save();
-                    canvas.rotate((float) Math.sin(time * 1.7f + k) * 35f + 20f, fx, fy);
-                    lookPaint.setColor(faded(scaleAlpha(BOARD_DARK, 0.5f)));
-                    boardShape.set(fx - 3.6f * unit, fy - 1.1f * unit + 0.4f * unit, fx + 3.6f * unit, fy + 1.1f * unit + 0.4f * unit);
-                    canvas.drawRoundRect(boardShape, 1.1f * unit, 1.1f * unit, lookPaint);
-                    lookPaint.setColor(faded(item.color));
-                    boardShape.set(fx - 3.6f * unit, fy - 1.1f * unit, fx + 3.6f * unit, fy + 1.1f * unit);
-                    canvas.drawRoundRect(boardShape, 1.1f * unit, 1.1f * unit, lookPaint);
-                    lookPaint.setColor(faded(scaleAlpha(BOARD_DARK, 0.6f)));
-                    lookPaint.setStyle(Paint.Style.STROKE);
-                    lookPaint.setStrokeWidth(0.4f * unit);
-                    canvas.drawLine(fx - 3.4f * unit, fy, fx + 3.4f * unit, fy, lookPaint);
-                    lookPaint.setStyle(Paint.Style.FILL);
+                    canvas.scale(Math.max(0.25f, Math.round(spin * 4f) / 4f), 1f, cx, cy);
+                    drawSprite(canvas, SP_PCOIN, cx, cy, 5f * px, 1f);
                     canvas.restore();
                 }
                 break;
+            default: {
+                if (birdBitmaps[0] == null) break;
+                if (spritePaint == null) {
+                    spritePaint = new Paint();
+                    spritePaint.setFilterBitmap(false);
+                }
+                spritePaint.setAlpha(Math.round(255f * Math.max(0f, Math.min(1f, boardAlpha))));
+                for (int k = 0; k < 3; k++) {
+                    float speed = 0.16f + 0.06f * lookHash(seed, k + 10);
+                    float life = (time * speed + k / 3f) % 1f;
+                    Bitmap bird = birdBitmaps[(int) (time * 9f + k) % 3];
+                    if (bird == null) continue;
+                    float w = 7f * unit;
+                    float h = w * bird.getHeight() / Math.max(1f, bird.getWidth());
+                    float bx = snap(left - w + (width + w * 2f) * life);
+                    float by = snap(top + height * (0.25f + 0.25f * k) + (float) Math.sin(time * 5f + k * 2f) * unit);
+                    boardShape.set(bx, by - h / 2f, bx + w, by + h / 2f);
+                    canvas.drawBitmap(bird, null, boardShape, spritePaint);
+                }
+                break;
+            }
         }
-    }
-
-    private void lookStar(Canvas canvas, float x, float y, float arm, int color) {
-        if (arm <= 0.05f) return;
-        lookPaint.setColor(faded(color));
-        lookPath.reset();
-        lookPath.moveTo(x, y - arm);
-        lookPath.quadTo(x, y, x + arm, y);
-        lookPath.quadTo(x, y, x, y + arm);
-        lookPath.quadTo(x, y, x - arm, y);
-        lookPath.quadTo(x, y, x, y - arm);
-        lookPath.close();
-        canvas.drawPath(lookPath, lookPaint);
-    }
-
-    private void lookHeart(Canvas canvas, float x, float y, float size, int color) {
-        lookPaint.setColor(faded(color));
-        lookPath.reset();
-        lookPath.moveTo(x, y + size * 1.1f);
-        lookPath.quadTo(x - size * 2.1f, y - size * 0.3f, x - size, y - size * 1.2f);
-        lookPath.quadTo(x - size * 0.3f, y - size * 1.6f, x, y - size * 0.6f);
-        lookPath.quadTo(x + size * 0.3f, y - size * 1.6f, x + size, y - size * 1.2f);
-        lookPath.quadTo(x + size * 2.1f, y - size * 0.3f, x, y + size * 1.1f);
-        lookPath.close();
-        canvas.drawPath(lookPath, lookPaint);
     }
 
     private void drawBadge(Canvas canvas, int kind, float x, float y, float unit) {
         ensureBoardPaints();
-        lookPaint.setShader(null);
-        lookPaint.setStyle(Paint.Style.FILL);
-        switch (kind) {
-            case 0: {
-                lookPath.reset();
-                for (int i = 0; i < 10; i++) {
-                    double angle = -Math.PI / 2 + i * Math.PI / 5;
-                    float r = (i % 2 == 0 ? 4.6f : 2f) * unit;
-                    float px = x + (float) Math.cos(angle) * r;
-                    float py = y + 0.4f * unit + (float) Math.sin(angle) * r;
-                    if (i == 0) lookPath.moveTo(px, py);
-                    else lookPath.lineTo(px, py);
-                }
-                lookPath.close();
-                lookPaint.setColor(faded(BOARD_DARK));
-                canvas.save();
-                canvas.translate(0f, 0.7f * unit);
-                canvas.drawPath(lookPath, lookPaint);
-                canvas.restore();
-                lookPaint.setColor(faded(0xFFFFC93C));
-                canvas.drawPath(lookPath, lookPaint);
-                break;
+        if (kind == 5) {
+            Bitmap bird = birdBitmaps[(int) (boardShine * 8f) % birdBitmaps.length];
+            if (bird == null) return;
+            if (spritePaint == null) {
+                spritePaint = new Paint();
+                spritePaint.setFilterBitmap(false);
             }
-            case 1:
-                lookHeart(canvas, x, y + 0.6f * unit, 2.5f * unit, BOARD_DARK);
-                lookHeart(canvas, x, y, 2.5f * unit, 0xFFFF4F7B);
-                lookPaint.setColor(faded(0x88FFFFFF));
-                canvas.drawCircle(x - 1.6f * unit, y - 1.3f * unit, 0.8f * unit, lookPaint);
-                break;
-            case 2: {
-                float keep = boardAlpha;
-                drawCoin(canvas, x, y, 4.4f * unit);
-                boardAlpha = keep;
-                break;
-            }
-            case 3:
-                lookPath.reset();
-                lookPath.moveTo(x + 1.2f * unit, y - 5f * unit);
-                lookPath.lineTo(x - 3.2f * unit, y + 0.8f * unit);
-                lookPath.lineTo(x - 0.2f * unit, y + 0.8f * unit);
-                lookPath.lineTo(x - 1.4f * unit, y + 5f * unit);
-                lookPath.lineTo(x + 3.4f * unit, y - 1.2f * unit);
-                lookPath.lineTo(x + 0.4f * unit, y - 1.2f * unit);
-                lookPath.close();
-                lookPaint.setColor(faded(BOARD_DARK));
-                canvas.save();
-                canvas.translate(0.5f * unit, 0.7f * unit);
-                canvas.drawPath(lookPath, lookPaint);
-                canvas.restore();
-                lookPaint.setColor(faded(0xFFFFE04A));
-                canvas.drawPath(lookPath, lookPaint);
-                break;
-            case 4: {
-                float flick = 0.92f + 0.08f * (float) Math.sin(boardShine * 9f + x);
-                lookPath.reset();
-                lookPath.moveTo(x, y - 5f * unit * flick);
-                lookPath.quadTo(x + 5.4f * unit, y + 0.6f * unit, x, y + 4.4f * unit);
-                lookPath.quadTo(x - 5.4f * unit, y + 0.6f * unit, x, y - 5f * unit * flick);
-                lookPath.close();
-                lookPaint.setColor(faded(0xFFE0401F));
-                canvas.drawPath(lookPath, lookPaint);
-                lookPath.reset();
-                lookPath.moveTo(x, y - 1.6f * unit * flick);
-                lookPath.quadTo(x + 2.8f * unit, y + 1.8f * unit, x, y + 4f * unit);
-                lookPath.quadTo(x - 2.8f * unit, y + 1.8f * unit, x, y - 1.6f * unit * flick);
-                lookPath.close();
-                lookPaint.setColor(faded(0xFFFFD45C));
-                canvas.drawPath(lookPath, lookPaint);
-                break;
-            }
-            case 5: {
-                Bitmap bird = birdBitmaps != null && birdBitmaps.length > 1 ? birdBitmaps[(int) (boardShine * 8f) % birdBitmaps.length] : null;
-                if (bird != null) {
-                    lookPaint.setAlpha(Math.round(255f * Math.max(0f, Math.min(1f, boardAlpha))));
-                    lookPaint.setFilterBitmap(false);
-                    float w = 11f * unit;
-                    float h = w * bird.getHeight() / Math.max(1f, bird.getWidth());
-                    boardShape.set(x - w / 2f, y - h / 2f, x + w / 2f, y + h / 2f);
-                    canvas.drawBitmap(bird, null, boardShape, lookPaint);
-                    lookPaint.setFilterBitmap(true);
-                    lookPaint.setAlpha(255);
-                }
-                break;
-            }
-            case 6:
-                lookPath.reset();
-                lookPath.moveTo(x - 4.6f * unit, y + 3.4f * unit);
-                lookPath.lineTo(x - 4.8f * unit, y - 3f * unit);
-                lookPath.lineTo(x - 2.2f * unit, y - 0.4f * unit);
-                lookPath.lineTo(x, y - 4.4f * unit);
-                lookPath.lineTo(x + 2.2f * unit, y - 0.4f * unit);
-                lookPath.lineTo(x + 4.8f * unit, y - 3f * unit);
-                lookPath.lineTo(x + 4.6f * unit, y + 3.4f * unit);
-                lookPath.close();
-                lookPaint.setColor(faded(BOARD_DARK));
-                canvas.save();
-                canvas.translate(0f, 0.8f * unit);
-                canvas.drawPath(lookPath, lookPaint);
-                canvas.restore();
-                lookPaint.setColor(faded(0xFFFFC93C));
-                canvas.drawPath(lookPath, lookPaint);
-                lookPaint.setColor(faded(0xFFE0533D));
-                canvas.drawCircle(x, y + 1.4f * unit, 0.95f * unit, lookPaint);
-                lookPaint.setColor(faded(0xFF3FA9F5));
-                canvas.drawCircle(x - 2.6f * unit, y + 1.8f * unit, 0.7f * unit, lookPaint);
-                canvas.drawCircle(x + 2.6f * unit, y + 1.8f * unit, 0.7f * unit, lookPaint);
-                break;
-            default:
-                lookPath.reset();
-                lookPath.moveTo(x, y - 4.6f * unit);
-                lookPath.lineTo(x + 4.4f * unit, y - 1f * unit);
-                lookPath.lineTo(x, y + 4.8f * unit);
-                lookPath.lineTo(x - 4.4f * unit, y - 1f * unit);
-                lookPath.close();
-                lookPaint.setColor(faded(BOARD_DARK));
-                canvas.save();
-                canvas.translate(0f, 0.7f * unit);
-                canvas.drawPath(lookPath, lookPaint);
-                canvas.restore();
-                lookPaint.setColor(faded(0xFF7FE3FF));
-                canvas.drawPath(lookPath, lookPaint);
-                lookPaint.setColor(faded(0xFFD8F8FF));
-                lookPath.reset();
-                lookPath.moveTo(x, y - 4.6f * unit);
-                lookPath.lineTo(x + 1.6f * unit, y - 1f * unit);
-                lookPath.lineTo(x, y + 4.8f * unit);
-                lookPath.lineTo(x - 1.6f * unit, y - 1f * unit);
-                lookPath.close();
-                canvas.drawPath(lookPath, lookPaint);
-                float glint = 0.5f + 0.5f * (float) Math.sin(boardShine * 2.4f);
-                lookStar(canvas, x + 2.6f * unit, y - 3.4f * unit, 1.6f * unit * glint, scaleAlpha(0xFFFFFFFF, glint));
-                break;
+            spritePaint.setAlpha(Math.round(255f * Math.max(0f, Math.min(1f, boardAlpha))));
+            float w = 11f * unit;
+            float h = w * bird.getHeight() / Math.max(1f, bird.getWidth());
+            boardShape.set(snap(x - w / 2f), snap(y - h / 2f), snap(x + w / 2f), snap(y + h / 2f));
+            canvas.drawBitmap(bird, null, boardShape, spritePaint);
+            return;
+        }
+        int sprite = kind >= 0 && kind < BADGE_SPRITES.length ? BADGE_SPRITES[kind] : -1;
+        if (sprite < 0) return;
+        float bob = kind == 4 || kind == 16 ? snap((float) Math.sin(boardShine * 6f + x) * 0.5f * unit) : 0f;
+        drawSprite(canvas, sprite, x, y + bob, 10.5f * unit, 1f);
+        if (kind == 7 || kind == 17) {
+            float glint = 0.5f + 0.5f * (float) Math.sin(boardShine * 2.4f + x);
+            if (glint > 0.7f) drawSprite(canvas, SP_SPARK, x + 3.5f * unit, y - 3.5f * unit, 4f * unit, (glint - 0.7f) / 0.3f);
         }
     }
 
@@ -6787,6 +7657,7 @@ class GameView extends View implements Choreographer.FrameCallback {
         boardOpen = true;
         boardClosing = false;
         boardAnim = 0f;
+        medalAge = 0f;
         boardPressed = null;
         hideBoardBubble();
         if (boardHost != null) boardHost.boardVisible(true);
@@ -6849,7 +7720,10 @@ class GameView extends View implements Choreographer.FrameCallback {
 
     private void animateBoard(float deltaTime) {
         float step = Math.min(0.1f, Math.max(0f, deltaTime));
-        if (boardOpen) boardShine = (boardShine + step) % 600f;
+        if (boardOpen) {
+            boardShine = (boardShine + step) % 600f;
+            medalAge = Math.min(9f, medalAge + step);
+        }
         float glide = Math.min(step, 1f / 30f);
         animateBoardStatus(glide);
         settle(keyboardSpring, Math.max(imeInset, keyboardCut), glide, 18f, 0.5f);
@@ -7463,8 +8337,10 @@ class GameView extends View implements Choreographer.FrameCallback {
         boardTextPaint.setTextSize(size);
         boardTextPaint.setTextAlign(align);
         boardTextPaint.setColor(faded(color));
-        float width = boardTextPaint.measureText(text);
-        if (maxWidth > 0f && width > maxWidth) boardTextPaint.setTextSize(size * maxWidth / width);
+        if (maxWidth > 0f) {
+            float width = boardTextPaint.measureText(text);
+            if (width > maxWidth) boardTextPaint.setTextSize(size * maxWidth / width);
+        }
         canvas.drawText(text, x, y, boardTextPaint);
     }
 
@@ -7518,6 +8394,7 @@ class GameView extends View implements Choreographer.FrameCallback {
         if (medal > 0) {
             medal(canvas, medal, left + 23f * unit, rowTop + 9f * unit, unit);
         } else {
+            if (dark) outlineText(canvas, rank, left + 32f * unit, baseline, 10f * unit, Paint.Align.RIGHT, 26f * unit);
             boardText(canvas, rank, left + 32f * unit, baseline, 10f * unit, BOARD_ORANGE, Paint.Align.RIGHT, 26f * unit);
         }
         String score = String.valueOf(entry.score);
@@ -7721,51 +8598,48 @@ class GameView extends View implements Choreographer.FrameCallback {
     }
 
     private void medal(Canvas canvas, int place, float x, float y, float unit) {
-        int[] colors = MEDAL_COLORS[place - 1];
-        if (medalFaces[place - 1] == null) {
-            medalFaces[place - 1] = new LinearGradient(-4f, -5f, 4f, 5f, colors[0], colors[1], Shader.TileMode.CLAMP);
-        }
-        canvas.save();
-        canvas.translate(x, y);
-        canvas.scale(unit, unit);
+        float pixel = Math.max(1f, Math.min(Math.round(unit), (float) Math.floor(unit * 1.03f)));
+        float delay = (place - 1) * MEDAL_STAGGER_SEC;
+        float enter = Math.max(0f, Math.min(1f, (medalAge - delay) / MEDAL_DROP_SEC));
+        if (enter <= 0f) return;
+        float back = enter - 1f;
+        float eased = 1f + 2.7f * back * back * back + 1.7f * back * back;
+        float drop = -9f * unit * (1f - eased);
+        float bob = Math.round((float) Math.sin(boardShine * 2.2f + place * 1.9f) * 0.9f) * pixel;
+        float cy = Math.round(y + 0.3f * unit + drop + bob);
+        float cx = Math.round(x);
+        float discY = cy + 2.5f * pixel;
         if (place == 1) {
             float pulse = 0.5f - 0.5f * (float) Math.cos(boardShine * 2.0 * Math.PI / CHAMPION_PULSE_SEC);
-            boardPaint.setColor(faded((Math.round(40f + 50f * pulse) << 24) | (CHAMPION_GLOW & 0x00FFFFFF)));
-            canvas.drawCircle(0f, 0f, 7.6f + 0.9f * pulse, boardPaint);
+            float reach = (7.5f + 1.5f * pulse) * pixel;
+            boardPaint.setColor(faded(scaleAlpha(CHAMPION_GLOW, (0.12f + 0.14f * pulse) * enter)));
+            canvas.drawCircle(cx, discY, reach, boardPaint);
+            boardPaint.setColor(faded(scaleAlpha(CHAMPION_GLOW, (0.16f + 0.16f * pulse) * enter)));
+            canvas.drawCircle(cx, discY, reach - 1.6f * pixel, boardPaint);
         }
-        medalPath.reset();
-        medalPath.moveTo(-3.6f, 2f);
-        medalPath.lineTo(-5f, 8.4f);
-        medalPath.lineTo(-3.2f, 7.4f);
-        medalPath.lineTo(-1.9f, 9f);
-        medalPath.lineTo(-0.6f, 3f);
-        medalPath.close();
-        medalPath.moveTo(3.6f, 2f);
-        medalPath.lineTo(5f, 8.4f);
-        medalPath.lineTo(3.2f, 7.4f);
-        medalPath.lineTo(1.9f, 9f);
-        medalPath.lineTo(0.6f, 3f);
-        medalPath.close();
-        boardPaint.setColor(faded(colors[4]));
-        canvas.drawPath(medalPath, boardPaint);
-        boardPaint.setColor(faded(BOARD_DARK));
-        canvas.drawCircle(0f, 0.8f, 6f, boardPaint);
-        boardPaint.setColor(faded(colors[2]));
-        canvas.drawCircle(0f, 0f, 6f, boardPaint);
-        boardPaint.setColor(faded(Color.WHITE));
-        boardPaint.setShader(medalFaces[place - 1]);
-        canvas.drawCircle(0f, 0f, 4.7f, boardPaint);
-        boardPaint.setShader(null);
-        boardPaint.setColor(faded(0x8CFFFFFF));
-        boardPaint.setStyle(Paint.Style.STROKE);
-        boardPaint.setStrokeWidth(0.9f);
-        boardPaint.setStrokeCap(Paint.Cap.ROUND);
-        boardShape.set(-3.5f, -3.5f, 3.5f, 3.5f);
-        canvas.drawArc(boardShape, 200f, 70f, false, boardPaint);
-        boardPaint.setStyle(Paint.Style.FILL);
-        boardPaint.setStrokeCap(Paint.Cap.BUTT);
-        boardText(canvas, String.valueOf(place), 0f, 2.6f, 7.2f, colors[3], Paint.Align.CENTER, 0f);
+        float t = ((boardShine - (place - 1) * 0.3f) % MEDAL_CYCLE_SEC + MEDAL_CYCLE_SEC) % MEDAL_CYCLE_SEC;
+        float spin = t < MEDAL_SPIN_SEC ? t / MEDAL_SPIN_SEC : -1f;
+        int frame = -1;
+        float after = t - MEDAL_SPIN_SEC;
+        if (after >= 0f && after < MEDAL_SHINE_SEC) frame = (int) (after / MEDAL_SHINE_SEC * Pixels.SHINE_FRAMES);
+        int index = SP_MEDAL + place - 1;
+        float wide = spin >= 0f ? Math.max(1f, Math.round(13f * Math.abs((float) Math.cos(spin * Math.PI)))) / 13f : 1f;
+        canvas.save();
+        if (wide < 1f) canvas.scale(wide, 1f, cx, cy);
+        drawArt(canvas, Pixels.shadow(index), cx, cy + pixel, 17f * pixel, 0.8f * enter);
+        drawArt(canvas, spin >= 0f ? Pixels.get(index) : Pixels.shine(index, frame), cx, cy, 17f * pixel, enter);
         canvas.restore();
+        int sparks = place == 1 ? 3 : place == 2 ? 1 : 0;
+        for (int k = 0; k < sparks; k++) {
+            float run = boardShine * (0.55f + 0.12f * k) + k / 3f + place * 0.4f;
+            int cycle = (int) run;
+            float strength = (float) Math.sin((run - cycle) * Math.PI);
+            float angle = lookHash(cycle * 7 + k, place) * 6.283f;
+            float distance = (6.5f + 2.5f * lookHash(cycle * 5 + k, place + 9)) * pixel;
+            float sx = cx + (float) Math.cos(angle) * distance;
+            float sy = discY + (float) Math.sin(angle) * distance;
+            drawSprite(canvas, SP_SPARK, Math.round(sx), Math.round(sy), 5f * pixel, Math.min(1f, strength * 1.4f) * enter);
+        }
     }
 
     private void championName(Canvas canvas, String name, float x, float baseline, float unit, float room) {
@@ -7794,6 +8668,11 @@ class GameView extends View implements Choreographer.FrameCallback {
 
     private void sparkle(Canvas canvas, float x, float y, float size, float strength) {
         if (strength <= 0.02f) return;
+        if (size >= 2f) {
+            float pixel = Math.max(1f, Math.round(size / 2.4f));
+            drawSprite(canvas, SP_SPARK, Math.round(x), Math.round(y), 5f * pixel, Math.min(1f, strength * 1.3f));
+            return;
+        }
         float arm = size * strength;
         boardPaint.setColor(faded((Math.round(255f * strength) << 24) | (CHAMPION_SHINE & 0x00FFFFFF)));
         medalPath.reset();
@@ -9157,7 +10036,18 @@ class GameView extends View implements Choreographer.FrameCallback {
         int action = event.getActionMasked();
         if (event.getToolType(0) == MotionEvent.TOOL_TYPE_MOUSE) hasMouse = true;
         if (nameOverlayOpen) return true;
-        if (coinOpen) return onCoinsTouch(action, touchX, touchY);
+        if (coinOpen) {
+            if (action == MotionEvent.ACTION_DOWN && isSecondaryClick(event)) {
+                secondaryClickHeld = true;
+                closeCoins();
+                return true;
+            }
+            if (secondaryClickHeld) {
+                if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) secondaryClickHeld = false;
+                return true;
+            }
+            return onCoinsTouch(action, touchX, touchY);
+        }
         if (boardOpen) return onBoardTouch(action, touchX, touchY);
         if (action == MotionEvent.ACTION_DOWN && isSecondaryClick(event)) {
             secondaryClickHeld = true;
@@ -9235,7 +10125,7 @@ class GameView extends View implements Choreographer.FrameCallback {
 
     private boolean overButton(int x, int y) {
         if (x < 0 || y < 0) return false;
-        if (coinOpen) return coinHitAt(x, y) != null;
+        if (coinOpen) return coinHitAt(x, y) != null || (coinTab == 1 && coinScrollMax > 0f && coinBarRect.contains(x, y));
         if (boardOpen && (nameOverlayOpen || nameSpring[0] >= 0.02f)) return false;
         if (boardOpen) return boardCloseRect.contains(x, y) || boardJoinRect.contains(x, y)
                 || boardTabAllRect.contains(x, y) || boardTabWeekRect.contains(x, y) || boardToggleRect.contains(x, y)
@@ -9307,6 +10197,12 @@ class GameView extends View implements Choreographer.FrameCallback {
                 }
             }
             return closes || settingsKey || pauseKey;
+        }
+        boolean coinsKey = (keyCode == KeyEvent.KEYCODE_C || keyCode == KeyEvent.KEYCODE_BUTTON_Y) && !flapKey && !playKey && !settingsKey
+                && keyCode != keyPause;
+        if (coinsKey && gameState == GameState.HOME) {
+            if (!down) return keyUp(keyCode, false);
+            return event.getRepeatCount() > 0 || pressByKey(coinButtonRect, keyCode);
         }
         if (!flapKey && !playKey && !settingsKey && !(pauseKey && running)) return false;
         if (down && event.getRepeatCount() > 0) return true;
@@ -11348,11 +12244,14 @@ final class Challenges {
     static final int EASY = 0;
     static final int MEDIUM = 1;
     static final int HARD = 2;
-    static final int[] REWARD = {40, 80, 150};
-    static final String[] TIER_NAMES = {"EASY", "MEDIUM", "HARD"};
-    static final int BONUS = 100;
-    static final int STREAK_STEP = 20;
-    static final int STREAK_CAP = 5;
+    static final int EXTREME = 3;
+    static final int TIERS = 4;
+    static final int MAIN = 7;
+    static final int[] REWARD = {50, 100, 200, 500};
+    static final String[] TIER_NAMES = {"EASY", "MEDIUM", "HARD", "EXTREME"};
+    static final int BONUS = 150;
+    static final int STREAK_STEP = 25;
+    static final int STREAK_CAP = 6;
     static final int MAX_BALANCE = 99999999;
 
     static final int SCORE = 1;
@@ -11429,7 +12328,7 @@ final class Challenges {
                 case SECONDS: return "Stay alive for " + target + " seconds" + where;
                 case EXACT: return "Crash on exactly " + target + " points" + where;
                 case THRIFTY: return "Score " + target + " using " + extra + " flaps or fewer" + where;
-                case BEAT_WEEK: return "Beat your best score this week" + where;
+                case BEAT_WEEK: return target > 5 ? "Beat your best this week with " + target + "+" + where : "Beat your best score this week" + where;
                 case FLAPS: return "Flap " + target + " times" + where;
                 default: return "Challenge";
             }
@@ -11511,6 +12410,29 @@ final class Challenges {
             new Goal("h18", HARD, SCORE, 30, 0, WIDE),
     };
 
+    static final Goal[] EXTREME_POOL = {
+            new Goal("x1", EXTREME, SCORE, 150, 0, ANY),
+            new Goal("x2", EXTREME, SCORE, 250, 0, ANY),
+            new Goal("x3", EXTREME, TOTAL, 1000, 0, ANY),
+            new Goal("x4", EXTREME, SECONDS, 240, 0, ANY),
+            new Goal("x5", EXTREME, SCORE, 75, 0, STORM),
+            new Goal("x6", EXTREME, SCORE, 60, 0, UPSIDE),
+            new Goal("x7", EXTREME, SCORE, 60, 0, REVERSE),
+            new Goal("x8", EXTREME, SCORE, 100, 0, CLASSIC),
+            new Goal("x9", EXTREME, EXACT, 100, 0, ANY),
+            new Goal("x10", EXTREME, THRIFTY, 50, 125, ANY),
+            new Goal("x11", EXTREME, SCORE, 60, 0, SHRINK),
+            new Goal("x12", EXTREME, SCORE, 50, 0, GIANT),
+            new Goal("x13", EXTREME, SCORE, 80, 0, RAMP),
+            new Goal("x14", EXTREME, SCORE, 50, 0, DIZZY),
+            new Goal("x15", EXTREME, SCORE, 75, 0, WIDE),
+            new Goal("x16", EXTREME, ROUNDS, 10, 30, ANY),
+            new Goal("x17", EXTREME, FLAPS, 3000, 0, ANY),
+            new Goal("x18", EXTREME, TOTAL, 300, 0, STORM),
+            new Goal("x19", EXTREME, BEAT_WEEK, 50, 0, ANY),
+            new Goal("x20", EXTREME, ROUNDS, 5, 25, UPSIDE),
+    };
+
     private Challenges() {
     }
 
@@ -11524,7 +12446,7 @@ final class Challenges {
 
     static Goal find(String id) {
         if (id == null) return null;
-        for (Goal[] pool : new Goal[][] {EASY_POOL, MEDIUM_POOL, HARD_POOL}) {
+        for (Goal[] pool : new Goal[][] {EASY_POOL, MEDIUM_POOL, HARD_POOL, EXTREME_POOL}) {
             for (Goal goal : pool) if (goal.id.equals(id)) return goal;
         }
         return null;
@@ -11532,9 +12454,9 @@ final class Challenges {
 
     static Goal[] forDay(long day) {
         Random random = new Random(day * 0x9E3779B97F4A7C15L + 0x2545F4914F6CDD1DL);
-        Goal[] picked = new Goal[3];
-        Goal[][] pools = {EASY_POOL, MEDIUM_POOL, HARD_POOL};
-        for (int tier = 0; tier < 3; tier++) {
+        Goal[] picked = new Goal[TIERS];
+        Goal[][] pools = {EASY_POOL, MEDIUM_POOL, HARD_POOL, EXTREME_POOL};
+        for (int tier = 0; tier < TIERS; tier++) {
             Goal[] pool = pools[tier];
             Goal choice = pool[random.nextInt(pool.length)];
             for (int tries = 0; tries < 12 && clashes(choice, picked, tier); tries++) choice = pool[random.nextInt(pool.length)];
@@ -11649,6 +12571,10 @@ final class Shop {
     static final int BADGE = 4;
     static final String KINDS = "nbgai";
     static final String[] KIND_NAMES = {"NAME", "ROW", "GLOW", "MOTION", "BADGE"};
+    static final int EARN_STREAK = 1;
+    static final int EARN_COINS = 2;
+    static final int EARN_EXTREME = 3;
+    static final int VIP_PRICE = 20000;
 
     static final class Item {
         final String id;
@@ -11658,8 +12584,15 @@ final class Shop {
         final int color;
         final int second;
         final int effect;
+        final int earn;
+        final int need;
+        int slot = -1;
 
         Item(String id, String name, int price, int color, int second, int effect) {
+            this(id, name, price, color, second, effect, 0, 0);
+        }
+
+        Item(String id, String name, int price, int color, int second, int effect, int earn, int need) {
             this.id = id;
             this.kind = KINDS.indexOf(id.charAt(0));
             this.name = name;
@@ -11667,53 +12600,122 @@ final class Shop {
             this.color = color;
             this.second = second;
             this.effect = effect;
+            this.earn = earn;
+            this.need = need;
+        }
+
+        boolean earned() {
+            return earn != 0;
         }
 
         boolean dark() {
-            return kind == ROW && effect >= 4;
+            return kind == ROW && (effect == 4 || effect == 5 || effect >= 8);
+        }
+
+        String goal() {
+            switch (earn) {
+                case EARN_STREAK: return need + " day streak";
+                case EARN_COINS: return "Earn " + String.format(java.util.Locale.US, "%,d", need) + " coins";
+                case EARN_EXTREME: return "Beat " + need + " extreme";
+                default: return "";
+            }
+        }
+
+        boolean reached(int streak, int earnedTotal, int extremes) {
+            switch (earn) {
+                case EARN_STREAK: return streak >= need;
+                case EARN_COINS: return earnedTotal >= need;
+                case EARN_EXTREME: return extremes >= need;
+                default: return false;
+            }
         }
     }
 
     static final Item[] ITEMS = {
-            new Item("n_gold", "Gold", 300, 0xFFE8A317, 0xFFFFD45C, 0),
-            new Item("n_ruby", "Ruby", 300, 0xFFD62F4B, 0xFFFF6B81, 0),
-            new Item("n_emerald", "Emerald", 300, 0xFF15955A, 0xFF4FD08E, 0),
-            new Item("n_sapphire", "Sapphire", 300, 0xFF2A62D9, 0xFF6F9BFF, 0),
-            new Item("n_violet", "Violet", 350, 0xFF8A3FD6, 0xFFC08BFF, 0),
-            new Item("n_bubblegum", "Bubblegum", 350, 0xFFF0559D, 0xFFFF9CCB, 0),
-            new Item("n_ice", "Frost", 600, 0xFF3AA7D8, 0xFFB8F1FF, 1),
-            new Item("n_fire", "Fire", 900, 0xFFE0401F, 0xFFFFB43B, 2),
-            new Item("n_ocean", "Ocean", 900, 0xFF1F6FD0, 0xFF2BD3C0, 2),
-            new Item("n_rainbow", "Rainbow", 1500, 0xFFFF5A5A, 0xFF5AB4FF, 3),
-            new Item("b_sky", "Sky", 400, 0xFF9FDDF5, 0xFFDDF6FF, 0),
-            new Item("b_mint", "Mint", 400, 0xFFA8E8C4, 0xFFE4FBEC, 0),
-            new Item("b_peach", "Peach", 400, 0xFFFFC2A1, 0xFFFFE7D6, 0),
-            new Item("b_sunset", "Sunset", 700, 0xFFFF9A5C, 0xFFE86BB5, 1),
-            new Item("b_candy", "Candy", 800, 0xFFFFB3D1, 0xFFFFF3F8, 2),
-            new Item("b_gold", "Gold bar", 1200, 0xFFE8B23A, 0xFFFFE79A, 3),
-            new Item("b_night", "Night sky", 900, 0xFF1C2350, 0xFF3A3F86, 4),
-            new Item("b_lava", "Lava", 900, 0xFF5C1210, 0xFFC93A16, 5),
-            new Item("g_gold", "Gold glow", 600, 0xFFFFC93C, 0, 0),
-            new Item("g_pink", "Pink glow", 500, 0xFFFF5FA8, 0, 0),
-            new Item("g_cyan", "Cyan glow", 500, 0xFF3FD8F0, 0, 0),
-            new Item("g_lime", "Lime glow", 500, 0xFF8CE04A, 0, 0),
-            new Item("g_rainbow", "Rainbow glow", 1200, 0xFFFF5A5A, 0, 1),
-            new Item("a_shimmer", "Shimmer", 700, 0xFFFFFFFF, 0, 0),
-            new Item("a_sparkle", "Sparkles", 900, 0xFFFFE27A, 0, 1),
-            new Item("a_bubbles", "Bubbles", 800, 0xFF8FDBFF, 0, 2),
-            new Item("a_snow", "Snowfall", 800, 0xFFFFFFFF, 0, 3),
-            new Item("a_hearts", "Hearts", 900, 0xFFFF5F8A, 0, 4),
-            new Item("a_embers", "Embers", 1000, 0xFFFF8A2B, 0, 5),
-            new Item("a_feathers", "Feathers", 1000, 0xFFF8F0B0, 0, 6),
-            new Item("i_star", "Star", 250, 0xFFFFC93C, 0, 0),
-            new Item("i_heart", "Heart", 250, 0xFFFF4F7B, 0, 1),
-            new Item("i_coin", "Coin", 300, 0xFFFFC93C, 0, 2),
-            new Item("i_bolt", "Lightning", 350, 0xFFFFE04A, 0, 3),
-            new Item("i_flame", "Flame", 400, 0xFFFF7A1F, 0, 4),
-            new Item("i_bird", "Little bird", 600, 0xFFFFC93C, 0, 5),
-            new Item("i_crown", "Crown", 700, 0xFFFFC93C, 0, 6),
-            new Item("i_diamond", "Diamond", 900, 0xFF7FE3FF, 0, 7),
+            new Item("n_gold", "Gold", 1500, 0xFFE8A317, 0xFFFFD45C, 0),
+            new Item("n_ruby", "Ruby", 1500, 0xFFD62F4B, 0xFFFF6B81, 0),
+            new Item("n_emerald", "Emerald", 1500, 0xFF15955A, 0xFF4FD08E, 0),
+            new Item("n_sapphire", "Sapphire", 1500, 0xFF2A62D9, 0xFF6F9BFF, 0),
+            new Item("n_violet", "Violet", 2000, 0xFF8A3FD6, 0xFFC08BFF, 0),
+            new Item("n_bubblegum", "Bubblegum", 2000, 0xFFF0559D, 0xFFFF9CCB, 0),
+            new Item("n_mint", "Mint", 2000, 0xFF1FB58E, 0xFF8FF0D0, 0),
+            new Item("n_coral", "Coral", 2500, 0xFFFF6F4F, 0xFFFFB09A, 0),
+            new Item("n_midnight", "Midnight", 2500, 0xFF2B2F7A, 0xFF6A70D8, 0),
+            new Item("n_ice", "Frost", 6000, 0xFF3AA7D8, 0xFFDDF8FF, 1),
+            new Item("n_fire", "Fire", 9000, 0xFFE0401F, 0xFFFFB43B, 2),
+            new Item("n_ocean", "Ocean", 9000, 0xFF1F6FD0, 0xFF2BD3C0, 2),
+            new Item("n_toxic", "Toxic", 9000, 0xFF4FAE16, 0xFFD4FF3A, 2),
+            new Item("n_dusk", "Dusk", 12000, 0xFFFF7A3C, 0xFFB44CE0, 2),
+            new Item("n_wave", "Wavy", 8000, 0xFF2E9BFF, 0xFFBFF0FF, 4),
+            new Item("n_ghost", "Ghost", 12000, 0xFFF2F6FF, 0xFF8FA8FF, 10),
+            new Item("n_neon", "Neon", 14000, 0xFFFF3CD2, 0xFFFFE6FA, 6),
+            new Item("n_glitch", "Glitch", 18000, 0xFF3CF0FF, 0xFFFF2E88, 5),
+            new Item("n_blaze", "Blaze", 22000, 0xFFFF6A1A, 0xFFFFD23C, 9),
+            new Item("n_rainbow", "Rainbow", 25000, 0xFFFF5A5A, 0xFF5AB4FF, 3),
+            new Item("n_royal", "Royal gold", 28000, 0xFFFFC93C, 0xFFFFF7D0, 7),
+            new Item("n_rainwave", "Rainbow wave", 35000, 0xFFFF5A5A, 0xFF5AB4FF, 8),
+            new Item("n_legend", "Legend", 0, 0xFFE8A317, 0xFFFFFFFF, 1, EARN_STREAK, 30),
+            new Item("b_sky", "Sky", 2500, 0xFF7FCDEB, 0xFFD6F4FF, 0),
+            new Item("b_mint", "Mint", 2500, 0xFF8FDDB0, 0xFFE0FAEA, 0),
+            new Item("b_peach", "Peach", 2500, 0xFFFFAF8A, 0xFFFFE5D2, 0),
+            new Item("b_sunset", "Sunset", 5000, 0xFFFF9A5C, 0xFFD85FB0, 1),
+            new Item("b_candy", "Candy", 6000, 0xFFFFA8C8, 0xFFFFF0F6, 2),
+            new Item("b_day", "Daytime", 8000, 0xFF4EC0CA, 0xFFE4F8D8, 6),
+            new Item("b_grass", "Grass", 8000, 0xFF73BF2E, 0xFFDED895, 7),
+            new Item("b_night", "Night city", 10000, 0xFF0A8292, 0xFF00B0C0, 4),
+            new Item("b_lava", "Lava", 12000, 0xFF5C1210, 0xFFC93A16, 5),
+            new Item("b_gold", "Gold bar", 15000, 0xFFE8B23A, 0xFFFFE79A, 3),
+            new Item("b_aurora", "Aurora", 20000, 0xFF2CF5A8, 0xFFB15CFF, 9),
+            new Item("b_galaxy", "Galaxy", 25000, 0xFF7B3CFF, 0xFFFF5CC8, 10),
+            new Item("b_thunder", "Thunderstorm", 28000, 0xFFDDEBFF, 0xFF5A6FA8, 12),
+            new Item("b_synth", "Synthwave", 30000, 0xFFFF3CAC, 0xFF3CE6FF, 13),
+            new Item("b_inferno", "Inferno", 32000, 0xFFFF6A1A, 0xFFFFD23C, 14),
+            new Item("b_warp", "Hyperspeed", 36000, 0xFF39E6FF, 0xFFFF4FD8, 11),
+            new Item("b_royal", "Royal", 40000, 0xFF420C62, 0xFFFFC93C, 15),
+            new Item("b_vault", "Vault", 0, 0xFF8A5A10, 0xFFE8B23A, 8, EARN_COINS, 50000),
+            new Item("g_gold", "Gold glow", 4000, 0xFFFFC93C, 0, 0),
+            new Item("g_pink", "Pink glow", 3500, 0xFFFF5FA8, 0, 0),
+            new Item("g_cyan", "Cyan glow", 3500, 0xFF3FD8F0, 0, 0),
+            new Item("g_lime", "Lime glow", 3500, 0xFF8CE04A, 0, 0),
+            new Item("g_purple", "Purple glow", 4000, 0xFFA05CFF, 0, 0),
+            new Item("g_halo", "Halo", 5000, 0xFFFFFFFF, 0, 0),
+            new Item("g_fire", "Fire glow", 8000, 0xFFFF7A1F, 0xFFFFD45C, 2),
+            new Item("g_rainbow", "Rainbow glow", 15000, 0xFFFF5A5A, 0, 1),
+            new Item("g_streak", "Unstoppable", 0, 0xFF3FA9F5, 0xFFD8F8FF, 2, EARN_STREAK, 14),
+            new Item("a_shimmer", "Shimmer", 5000, 0xFFFFFFFF, 0, 0),
+            new Item("a_sparkle", "Sparkles", 8000, 0xFFFFE27A, 0, 1),
+            new Item("a_bubbles", "Bubbles", 7000, 0xFF8FDBFF, 0, 2),
+            new Item("a_snow", "Snowfall", 7000, 0xFFFFFFFF, 0, 3),
+            new Item("a_hearts", "Hearts", 8000, 0xFFFF5F8A, 0, 4),
+            new Item("a_notes", "Music", 8000, 0xFFC89CFF, 0, 7),
+            new Item("a_embers", "Embers", 10000, 0xFFFF8A2B, 0, 5),
+            new Item("a_feathers", "Feathers", 10000, 0xFFF8F0B0, 0, 6),
+            new Item("a_confetti", "Confetti", 12000, 0xFFFF5A5A, 0, 8),
+            new Item("a_coins", "Coin shower", 0, 0xFFFFC93C, 0, 9, EARN_COINS, 10000),
+            new Item("a_flock", "Flock", 0, 0xFFFFC93C, 0, 10, EARN_EXTREME, 25),
+            new Item("i_star", "Star", 1500, 0xFFFFC93C, 0, 0),
+            new Item("i_heart", "Heart", 1500, 0xFFFF4F7B, 0, 1),
+            new Item("i_coin", "Coin", 2000, 0xFFFFC93C, 0, 2),
+            new Item("i_bolt", "Lightning", 2500, 0xFFFFE04A, 0, 3),
+            new Item("i_clover", "Clover", 2500, 0xFF73BF2E, 0, 8),
+            new Item("i_cherry", "Cherry", 2500, 0xFFF0503C, 0, 9),
+            new Item("i_note", "Music note", 3000, 0xFFC89CFF, 0, 10),
+            new Item("i_moon", "Moon", 3000, 0xFFFCE36A, 0, 11),
+            new Item("i_ghost", "Ghost", 3500, 0xFFE4E4EC, 0, 12),
+            new Item("i_pipe", "Pipe", 4000, 0xFF86D33A, 0, 13),
+            new Item("i_flame", "Flame", 4000, 0xFFFF7A1F, 0, 4),
+            new Item("i_shield", "Shield", 4500, 0xFF7CC8FF, 0, 14),
+            new Item("i_bird", "Little bird", 6000, 0xFFFFC93C, 0, 5),
+            new Item("i_trophy", "Trophy", 7000, 0xFFFFC93C, 0, 15),
+            new Item("i_crown", "Crown", 8000, 0xFFFFC93C, 0, 6),
+            new Item("i_diamond", "Diamond", 12000, 0xFF7FE3FF, 0, 7),
+            new Item("i_hot", "Hot streak", 0, 0xFF3FA9F5, 0, 16, EARN_STREAK, 7),
+            new Item("i_gem", "Extreme gem", 0, 0xFFA05CFF, 0, 17, EARN_EXTREME, 10),
     };
+
+    static {
+        for (int i = 0; i < ITEMS.length; i++) ITEMS[i].slot = i;
+    }
 
     private Shop() {
     }
@@ -11749,5 +12751,162 @@ final class Shop {
             if (item != null && item.kind == i) look[i] = item;
         }
         return look;
+    }
+}
+
+final class Pixels {
+    static final String PALETTE = "ABEGPQRSVYabcegnopqrsvwyDhkKN";
+    static final int[] COLORS = {0xFFE05A14, 0xFF3474D8, 0xFF9A9AAE, 0xFFC9781C, 0xFFE84A80, 0xFF4E8A1E, 0xFFB02A2E, 0xFF2A90B8, 0xFF8048D8, 0xFFF5B42A, 0xFFFF9A2A, 0xFF7CC8FF, 0xFFD8F8FF, 0xFFE4E4EC, 0xFF86D33A, 0xFFA0642C, 0xFF543847, 0xFFFF9CC0, 0xFFC4F070, 0xFFF0503C, 0xFF5ED0E8, 0xFFC89CFF, 0xFFFFFFFF, 0xFFFCE36A,
+            0xFF6C6C84, 0xFFC4C4D4, 0xFFE8A062, 0xFFC07030, 0xFF6E3C14};
+    static final String[] NAMES = {"coin", "star", "heart", "bolt", "flame", "crown", "diamond", "trophy", "moon", "clover", "ghost", "pipe", "cherry", "note", "shield", "hotflame", "gem", "check", "p_spark", "p_heart", "p_note", "p_coin", "p_snow", "p_bubble", "p_feather", "p_ember", "medal1", "medal2", "medal3"};
+    private static final String[] MEDAL = {"oooo.....oooo", "orrRo...oRrro", ".orrRo.oRrro.", "..orrRoRrro..", "...orrRrro...", "....orrro....",
+            "....ooooo....", "..oo44222oo..", "..o4411113o..", ".o411DDD113o.", ".o411DDD113o.", ".o211DDD113o.", ".o211DDD123o.", ".o221DDD223o.",
+            "..o2222233o..", "..oo23333oo..", "....ooooo...."};
+    private static final String[][] DIGITS = {{".X.", "XX.", ".X.", ".X.", "XXX"}, {"XX.", "..X", ".X.", "X..", "XXX"}, {"XX.", "..X", "XX.", "..X", "XX."}};
+    private static final String[] MEDAL_TONES = {"yYGwnrR", "ehEwDbB", "kKnyNgQ"};
+    static final String[][] ART = {
+            {"....oooooo....", "..oowyyynnoo..", ".owwyyyyyYnYo.", ".owyywYyyYnGo.", "owyyywYyyYGnYo", "oyyyywYyyYGnGo", "oyyyywYyYYGnYo", "oyyyywYYYGGnGo", ".oyyyYGYYGnGo.", ".oYYYYYYGGnno.", "..ooGGGGnnoo..", "....oooooo...."},
+            {".....o.....", "....oyo....", "....oyo....", "oooowyyoooo", "oyywyyyyyYo", ".oyyyyyyYo.", "..oyyyyyYo.", "..oyyoyyYo.", ".oyYo.oYYo.", ".oYo...oYo.", ".oo.....oo."},
+            {".ooo...ooo.", "owwro.orrro", "owrrrorrrRo", "orrrrrrrrRo", "orrrrrrrrRo", ".orrrrrrRo.", "..orrrrRo..", "...orrRo...", "....oRo....", ".....o....."},
+            {"....oooooo", "...oyyyyo.", "...oyyyo..", "..oyyyo...", "..oyyyoooo", ".oyyyyyyyo", ".ooooyyyo.", "....oyyo..", "...oyyo...", "...oyo....", "..oyo.....", "..oo......"},
+            {"....o......", "...oao.....", "...oaao.o..", "..oaaaoaao.", "..oaayaaao.", ".oaayyyaaAo", ".oayyyyyaAo", ".oayywyyaAo", ".oaayyyyaAo", "..oAaaaaAo.", "...ooooooo."},
+            {"o....o....o", "oyo.oyo.oyo", "oyyoyyyoyyo", "oyyyywyyyYo", "oyryyByyrYo", "oyyyyyyyyYo", "oGGGGGGGGGo", "ooooooooooo"},
+            {"..ooooooo..", ".ocwcbbbBo.", "ocwccbbbbBo", "ooooooooooo", ".obbcbbbBo.", "..obbbbBo..", "...obbBo...", "....obo....", ".....o....."},
+            {"oo.ooooooo.oo", "oyoywyyyyYoYo", "oyoyyyyyyYoYo", ".ooyyyyyyYoo.", "...oyyyyYo...", "....oyyYo....", ".....oYo.....", ".....oYo.....", "...ooYYYoo...", "...oGGGGGo...", "...ooooooo..."},
+            {"...oooo...", "..oyyyo...", ".oyyyo....", "oyyyo.....", "oyyyo.....", "oyyyo...o.", "oyyyyo.oo.", ".oyyyyyyo.", "..oyyyyo..", "...oooo..."},
+            {"..ooo.ooo..", ".oqggoqggo.", ".oggggggQo.", "..oggggQo..", ".oqggogggo.", "oqggggggggo", "oggggogggQo", ".oQQoQoQQo.", "..oo.oo.oo.", ".....oQo...", "......oo..."},
+            {"...ooooo...", "..oeeeeeo..", ".oeeeeeeeo.", "oeeoeeeoeEo", "oeeoeeeoeEo", "oeeeeeeeeEo", "oeeeeoeeeEo", "oeeeeeeeeEo", "oeEeoeEoeEo", ".o.oo.oo.o."},
+            {"ooooooooooo", "oqqggggggQo", "oqqggggggQo", "ooooooooooo", ".oqgggggQo.", ".oqgggggQo.", ".oqgggggQo.", ".oqgggggQo.", ".oqgggggQo.", ".ooooooooo."},
+            {".......oo..", "......oQo..", ".....oQoo..", "....oQo.o..", "..ooQo..oo.", ".orroo.orro", "owrrRo.owRo", "orrrRo.orRo", ".oRRo...oo.", "..oo......."},
+            {"...oooooo", "...ovvvvo", "...ooooVo", "...o..o.o", "...o..o.o", "...o..o.o", ".oooo.ooo", "ovvvo.vvo", "oVVo.oVVo", ".oo...oo."},
+            {"ooooooooooo", "obbcbbbbbBo", "obcbbbbbbBo", "obbbbwbbbBo", "obbbwwwbbBo", ".obbbwbbBo.", ".obbbbbbBo.", "..obbbbBo..", "...obbBo...", "....oBo....", ".....o....."},
+            {"....o......", "...obo.....", "...obbo.o..", "..obbboBbo.", "..obbcbbbo.", ".obbcccbbBo", ".obcccccbBo", ".obccwccbBo", ".obbcccbbBo", "..oBbbbbBo.", "...ooooooo."},
+            {"..ooooooo..", ".ovwvVVVVo.", "ovwvvVVVVVo", "ooooooooooo", ".oVVvVVVVo.", "..oVVVVVo..", "...oVVVo...", "....oVo....", ".....o....."},
+            {"........ooo", ".......oggo", "oo....oggo.", "ogo..oggo..", "oggoogQo...", ".oggggQo...", "..oggQo....", "...ooo....."},
+            {"..w..", "..w..", "wwyww", "..w..", "..w.."},
+            {".p.p.", "ppppp", "ppppp", ".ppp.", "..p.."},
+            {"..vvv", "..v.v", "..v.v", "vvv.v", "vv.vv"},
+            {".ooo.", "oyyYo", "oyGYo", "oyyYo", ".ooo."},
+            {"w.w.w", ".www.", "wwwww", ".www.", "w.w.w"},
+            {".ccc.", "cw..c", "c...c", "c...c", ".ccc."},
+            {"......ee.", "...eeeeEe", ".eeeeeEE.", "eeEEEE...", "E........"},
+            {"ya", "aA"},
+            medal(0), medal(1), medal(2),
+    };
+    static final int SHINE_FRAMES = 9;
+    private static final Bitmap[] CACHE = new Bitmap[NAMES.length];
+    private static final Bitmap[][] SHINE = new Bitmap[NAMES.length][];
+    private static final Bitmap[] SHADOW = new Bitmap[NAMES.length];
+
+    private Pixels() {
+    }
+
+    private static String[] medal(int place) {
+        String[] art = new String[MEDAL.length];
+        String tones = MEDAL_TONES[place];
+        int digitRow = 0;
+        for (int y = 0; y < MEDAL.length; y++) {
+            StringBuilder row = new StringBuilder();
+            int digitCol = 0;
+            boolean digits = false;
+            for (int x = 0; x < MEDAL[y].length(); x++) {
+                char c = MEDAL[y].charAt(x);
+                if (c == 'D') {
+                    digits = true;
+                    c = DIGITS[place][digitRow].charAt(digitCol++) == 'X' ? '5' : '1';
+                }
+                int at = "12345rR".indexOf(c);
+                row.append(at < 0 ? c : tones.charAt(at));
+            }
+            if (digits) digitRow++;
+            art[y] = row.toString();
+        }
+        return art;
+    }
+
+    static int index(String name) {
+        for (int i = 0; i < NAMES.length; i++) if (NAMES[i].equals(name)) return i;
+        return -1;
+    }
+
+    static Bitmap get(int index) {
+        if (index < 0 || index >= ART.length) return null;
+        if (CACHE[index] != null && !CACHE[index].isRecycled()) return CACHE[index];
+        String[] art = ART[index];
+        int height = art.length;
+        int width = art[0].length();
+        int[] colors = new int[width * height];
+        for (int y = 0; y < height; y++) {
+            for (int x = 0; x < width; x++) {
+                int at = PALETTE.indexOf(art[y].charAt(x));
+                colors[y * width + x] = at < 0 ? 0 : COLORS[at];
+            }
+        }
+        CACHE[index] = make(colors, width, height);
+        return CACHE[index];
+    }
+
+    private static Bitmap make(int[] colors, int width, int height) {
+        try {
+            return Bitmap.createBitmap(colors, width, height, Bitmap.Config.ARGB_8888);
+        } catch (RuntimeException e) {
+            return null;
+        }
+    }
+
+    private static int lighten(int color, float amount) {
+        int r = (color >> 16) & 0xFF;
+        int g = (color >> 8) & 0xFF;
+        int b = color & 0xFF;
+        r += Math.round((255 - r) * amount);
+        g += Math.round((255 - g) * amount);
+        b += Math.round((255 - b) * amount);
+        return (color & 0xFF000000) | (r << 16) | (g << 8) | b;
+    }
+
+    static Bitmap shine(int index, int frame) {
+        if (index < 0 || index >= ART.length) return null;
+        if (frame < 0 || frame >= SHINE_FRAMES) return get(index);
+        if (SHINE[index] == null) SHINE[index] = new Bitmap[SHINE_FRAMES];
+        Bitmap cached = SHINE[index][frame];
+        if (cached != null && !cached.isRecycled()) return cached;
+        String[] art = ART[index];
+        int height = art.length;
+        int width = art[0].length();
+        float center = -2f + (width + height + 2f) * frame / (SHINE_FRAMES - 1f);
+        int outline = PALETTE.indexOf('o');
+        int[] colors = new int[width * height];
+        for (int y = 0; y < height; y++) {
+            for (int x = 0; x < width; x++) {
+                int at = PALETTE.indexOf(art[y].charAt(x));
+                if (at < 0) continue;
+                int color = COLORS[at];
+                if (at != outline) {
+                    float d = x + y - center;
+                    if (d >= -1f && d <= 1f) color = lighten(color, 0.75f);
+                    else if (d >= -3.5f && d <= -2.5f) color = lighten(color, 0.45f);
+                    else if (d > 1f && d <= 2f) color = lighten(color, 0.25f);
+                }
+                colors[y * width + x] = color;
+            }
+        }
+        SHINE[index][frame] = make(colors, width, height);
+        return SHINE[index][frame];
+    }
+
+    static Bitmap shadow(int index) {
+        if (index < 0 || index >= ART.length) return null;
+        if (SHADOW[index] != null && !SHADOW[index].isRecycled()) return SHADOW[index];
+        String[] art = ART[index];
+        int height = art.length;
+        int width = art[0].length();
+        int[] colors = new int[width * height];
+        for (int y = 0; y < height; y++) {
+            for (int x = 0; x < width; x++) {
+                if (PALETTE.indexOf(art[y].charAt(x)) >= 0) colors[y * width + x] = 0x66301828;
+            }
+        }
+        SHADOW[index] = make(colors, width, height);
+        return SHADOW[index];
     }
 }
